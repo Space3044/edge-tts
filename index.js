@@ -6,2200 +6,475 @@ let tokenInfo = {
 };
 
 // HTML 页面模板
-const HTML_PAGE = `
-<!DOCTYPE html>
+const HTML_PAGE = `<!DOCTYPE html>
 <html lang="zh-CN">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title data-i18n="page.title">VoiceCraft - AI-Powered Voice Processing Platform</title>
-    <meta name="description" content="" data-i18n-content="page.description">
-    <meta name="keywords" content="" data-i18n-content="page.keywords">
-    <style>
-        :root {
-            --primary-color: #2563eb;
-            --primary-hover: #1d4ed8;
-            --secondary-color: #64748b;
-            --success-color: #059669;
-            --warning-color: #d97706;
-            --error-color: #dc2626;
-            --background-color: #f8fafc;
-            --surface-color: #ffffff;
-            --text-primary: #0f172a;
-            --text-secondary: #475569;  
-            --border-color: #e2e8f0;
-            --border-focus: #3b82f6;
-            --shadow-sm: 0 1px 2px 0 rgb(0 0 0 / 0.05);
-            --shadow-md: 0 4px 6px -1px rgb(0 0 0 / 0.1);
-            --shadow-lg: 0 10px 15px -3px rgb(0 0 0 / 0.1);
-            --radius-sm: 6px;
-            --radius-md: 8px;
-            --radius-lg: 12px;
-            --radius-xl: 16px;
-        }
-        
-        * {
-            margin: 0;
-            padding: 0;
-            box-sizing: border-box;
-        }
-        
-        body {
-            font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-            background-color: var(--background-color);
-            color: var(--text-primary);
-            line-height: 1.6;
-            min-height: 100vh;
-        }
-        
-        .container {
-            max-width: 900px;
-            margin: 0 auto;
-            padding: 20px;
-        }
-        
-        .header {
-            background: var(--surface-color);
-            border-radius: var(--radius-xl);
-            box-shadow: var(--shadow-lg);
-            padding: 40px 30px;
-            text-align: center;
-            margin-bottom: 30px;
-            border: 1px solid var(--border-color);
-        }
-        
-        .header h1 {
-            font-size: 2.5rem;
-            font-weight: 800;
-            color: var(--primary-color);
-            margin-bottom: 12px;
-            letter-spacing: -0.025em;
-        }
-        
-        .header .subtitle {
-            font-size: 1.125rem;
-            color: var(--text-secondary);
-            margin-bottom: 20px;
-            font-weight: 500;
-        }
-        
-        .header .features {
-            display: flex;
-            justify-content: center;
-            gap: 30px;
-            flex-wrap: wrap;
-            margin-top: 20px;
-        }
-        
-        .feature-item {
-            display: flex;
-            align-items: center;
-            gap: 8px;
-            color: var(--text-secondary);
-            font-size: 0.875rem;
-            font-weight: 500;
-        }
-        
-        .feature-icon {
-            width: 20px;
-            height: 20px;
-            color: var(--success-color);
-        }
-        
-        .main-content {
-            background: var(--surface-color);
-            border-radius: var(--radius-xl);
-            box-shadow: var(--shadow-lg);
-            border: 1px solid var(--border-color);
-            overflow: hidden;
-        }
-        
-        .form-container {
-            padding: 40px;
-        }
-        
-        .form-group {
-            margin-bottom: 24px;
-        }
-        
-        .form-label {
-            display: block;
-            margin-bottom: 8px;
-            font-weight: 600;
-            color: var(--text-primary);
-            font-size: 0.875rem;
-        }
-        
-        .form-input, .form-select, .form-textarea {
-            width: 100%;
-            padding: 12px 16px;
-            border: 2px solid var(--border-color);
-            border-radius: var(--radius-md);
-            font-size: 16px;
-            color: var(--text-primary);
-            background: var(--surface-color);
-            transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
-        }
-        
-        .form-input:focus, .form-select:focus, .form-textarea:focus {
-            outline: none;
-            border-color: var(--border-focus);
-            box-shadow: 0 0 0 3px rgb(59 130 246 / 0.1);
-        }
-        
-        .form-textarea {
-            min-height: 120px;
-            resize: vertical;
-            font-family: inherit;
-        }
-        
-        .controls-grid {
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
-            gap: 20px;
-            margin-bottom: 32px;
-        }
-        
-        .btn-primary {
-            width: 100%;
-            background: var(--primary-color);
-            color: white;
-            border: none;
-            padding: 16px 32px;
-            font-size: 16px;
-            font-weight: 600;
-            border-radius: var(--radius-md);
-            cursor: pointer;
-            transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            gap: 8px;
-        }
-        
-        .btn-primary:hover:not(:disabled) {
-            background: var(--primary-hover);
-            transform: translateY(-1px);
-            box-shadow: var(--shadow-md);
-        }
-        
-        .btn-primary:disabled {
-            opacity: 0.6;
-            cursor: not-allowed;
-            transform: none;
-        }
-        
-        .btn-secondary {
-            background: var(--success-color);
-            color: white;
-            border: none;
-            padding: 12px 24px;
-            border-radius: var(--radius-md);
-            cursor: pointer;
-            text-decoration: none;
-            display: inline-flex;
-            align-items: center;
-            gap: 8px;
-            font-weight: 500;
-            transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
-        }
-        
-        .btn-secondary:hover {
-            background: #047857;
-            transform: translateY(-1px);
-        }
-        
-        .result-container {
-            margin-top: 32px;
-            padding: 24px;
-            background: var(--background-color);
-            border-radius: var(--radius-lg);
-            border: 1px solid var(--border-color);
-            display: none;
-        }
-        
-        .audio-player {
-            width: 100%;
-            margin-bottom: 16px;
-            border-radius: var(--radius-md);
-        }
-        
-        .error-message {
-            color: var(--error-color);
-            background: #fef2f2;
-            border: 1px solid #fecaca;
-            padding: 16px;
-            border-radius: var(--radius-md);
-            margin-top: 16px;
-            font-weight: 500;
-        }
-        
-        .loading-container {
-            text-align: center;
-            padding: 32px 20px;
-        }
-        
-        .loading-spinner {
-            width: 40px;
-            height: 40px;
-            border: 3px solid var(--border-color);
-            border-top: 3px solid var(--primary-color);
-            border-radius: 50%;
-            animation: spin 1s linear infinite;
-            margin: 0 auto 16px;
-        }
-        
-        .loading-text {
-            color: var(--text-secondary);
-            font-weight: 500;
-        }
-        
-        .wechat-promotion {
-            margin-top: 40px;
-            background: var(--surface-color);
-            border-radius: var(--radius-xl);
-            box-shadow: var(--shadow-md);
-            border: 1px solid var(--border-color);
-            overflow: hidden;
-        }
-        
-        .promotion-header {
-            background: #f1f5f9;
-            padding: 20px 30px;
-            border-bottom: 1px solid var(--border-color);
-        }
-        
-        .promotion-title {
-            font-size: 1.25rem;
-            font-weight: 700;
-            color: var(--text-primary);
-            margin-bottom: 8px;
-        }
-        
-        .promotion-subtitle {
-            color: var(--text-secondary);
-            font-size: 0.875rem;
-        }
-        
-        .promotion-content {
-            padding: 30px;
-            display: grid;
-            grid-template-columns: auto 1fr;
-            gap: 24px;
-            align-items: center;
-        }
-        
-        .qr-code {
-            width: 120px;
-            height: 120px;
-            border: 2px solid var(--border-color);
-            border-radius: var(--radius-lg);
-            overflow: hidden;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-        }
-        
-        .qr-code img {
-            width: 100%;
-            height: 100%;
-            object-fit: cover;
-        }
-        
-        .promotion-info h3 {
-            font-size: 1.125rem;
-            font-weight: 600;
-            color: var(--text-primary);
-            margin-bottom: 12px;
-        }
-        
-        .promotion-info p {
-            color: var(--text-secondary);
-            margin-bottom: 16px;
-            line-height: 1.6;
-        }
-        
-        .benefits-list {
-            list-style: none;
-            padding: 0;
-            margin: 0;
-        }
-        
-        .benefits-list li {
-            display: flex;
-            align-items: center;
-            gap: 8px;
-            color: var(--text-secondary);
-            font-size: 0.875rem;
-            margin-bottom: 8px;
-        }
-        
-        .benefits-list li:before {
-            content: "✓";
-            color: var(--success-color);
-            font-weight: bold;
-            font-size: 1rem;
-        }
-        
-        @keyframes spin {
-            0% { transform: rotate(0deg); }
-            100% { transform: rotate(360deg); }
-        }
-        
-        @keyframes fadeIn {
-            from { opacity: 0; transform: translateY(10px); }
-            to { opacity: 1; transform: translateY(0); }
-        }
-        
-        .fade-in {
-            animation: fadeIn 0.3s ease-out;
-        }
-        
-        /* 输入方式选择优化样式 */
-        .input-method-tabs {
-            display: flex;
-            gap: 4px;
-            margin-bottom: 20px;
-            background: var(--background-color);
-            padding: 4px;
-            border-radius: var(--radius-lg);
-            border: 1px solid var(--border-color);
-        }
-        
-        .tab-btn {
-            flex: 1;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            gap: 10px;
-            padding: 14px 20px;
-            border: none;
-            background: transparent;
-            color: var(--text-secondary);
-            border-radius: var(--radius-md);
-            font-size: 0.9rem;
-            font-weight: 500;
-            cursor: pointer;
-            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-            position: relative;
-        }
-        
-        .tab-btn:hover {
-            color: var(--primary-color);
-            background: rgba(37, 99, 235, 0.05);
-        }
-        
-        .tab-btn.active {
-            background: var(--primary-color);
-            color: white;
-            box-shadow: var(--shadow-sm);
-            transform: translateY(-1px);
-        }
-        
-        .tab-btn .tab-icon {
-            width: 20px;
-            height: 20px;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            border-radius: 6px;
-            background: rgba(255, 255, 255, 0.1);
-            font-size: 0.875rem;
-        }
-        
-        .tab-btn:not(.active) .tab-icon {
-            background: rgba(100, 116, 139, 0.1);
-        }
-        
-        .file-upload-container {
-            width: 100%;
-        }
-        
-        .file-drop-zone {
-            border: 2px dashed var(--border-color);
-            border-radius: var(--radius-lg);
-            padding: 48px 24px;
-            text-align: center;
-            cursor: pointer;
-            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-            background: linear-gradient(135deg, var(--background-color) 0%, rgba(248, 250, 252, 0.8) 100%);
-            position: relative;
-            overflow: hidden;
-        }
-        
-        .file-drop-zone::before {
-            content: '';
-            position: absolute;
-            top: 0;
-            left: 0;
-            right: 0;
-            bottom: 0;
-            background: linear-gradient(135deg, rgba(37, 99, 235, 0.05) 0%, rgba(99, 102, 241, 0.05) 100%);
-            opacity: 0;
-            transition: opacity 0.3s ease;
-        }
-        
-        .file-drop-zone:hover::before,
-        .file-drop-zone.dragover::before {
-            opacity: 1;
-        }
-        
-        .file-drop-zone:hover,
-        .file-drop-zone.dragover {
-            border-color: var(--primary-color);
-            transform: translateY(-2px);
-            box-shadow: 0 8px 25px rgba(37, 99, 235, 0.15);
-        }
-        
-        .file-drop-content {
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            gap: 12px;
-            position: relative;
-            z-index: 1;
-        }
-        
-        .file-drop-icon {
-            width: 64px;
-            height: 64px;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            background: linear-gradient(135deg, var(--primary-color) 0%, #3b82f6 100%);
-            border-radius: var(--radius-lg);
-            color: white;
-            margin-bottom: 8px;
-            box-shadow: var(--shadow-md);
-            position: relative;
-        }
-        
-        .file-drop-text {
-            font-size: 1.1rem;
-            font-weight: 600;
-            color: var(--text-primary);
-            margin: 0;
-            line-height: 1.4;
-        }
-        
-        .file-drop-hint {
-            font-size: 0.875rem;
-            color: var(--text-secondary);
-            margin: 0;
-            padding: 8px 16px;
-            background: rgba(100, 116, 139, 0.1);
-            border-radius: var(--radius-sm);
-        }
-        
-        .file-info {
-            display: flex;
-            align-items: center;
-            justify-content: space-between;
-            padding: 20px;
-            background: linear-gradient(135deg, var(--surface-color) 0%, rgba(248, 250, 252, 0.5) 100%);
-            border: 1px solid var(--border-color);
-            border-radius: var(--radius-lg);
-            margin-top: 16px;
-            box-shadow: var(--shadow-sm);
-            transition: all 0.2s ease;
-        }
-        
-        .file-info:hover {
-            transform: translateY(-1px);
-            box-shadow: var(--shadow-md);
-        }
-        
-        .file-details {
-            display: flex;
-            flex-direction: column;
-            gap: 6px;
-            flex: 1;
-        }
-        
-        .file-name {
-            font-weight: 600;
-            color: var(--text-primary);
-            font-size: 0.95rem;
-            display: flex;
-            align-items: center;
-            gap: 8px;
-        }
-        
-        .file-name::before {
-            content: '';
-            width: 16px;
-            height: 16px;
-            background: var(--primary-color);
-            border-radius: 3px;
-            opacity: 0.8;
-            flex-shrink: 0;
-        }
-        
-        .file-size {
-            font-size: 0.8rem;
-            color: var(--text-secondary);
-            background: rgba(100, 116, 139, 0.1);
-            padding: 2px 8px;
-            border-radius: 4px;
-            display: inline-block;
-            width: fit-content;
-        }
-        
-        .file-remove-btn {
-            width: 32px;
-            height: 32px;
-            border: none;
-            background: var(--error-color);
-            color: white;
-            border-radius: var(--radius-md);
-            cursor: pointer;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            font-size: 0.875rem;
-            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-            font-weight: 600;
-        }
-        
-        .file-remove-btn:hover {
-            background: #b91c1c;
-            transform: scale(1.05);
-            box-shadow: 0 4px 12px rgba(220, 38, 38, 0.3);
-        }
-        
-        /* 主功能切换器样式 */
-        .mode-switcher {
-            max-width: 900px;
-            margin: 0 auto 30px;
-            padding: 0 20px;
-            display: flex;
-            justify-content: center;
-            gap: 20px;
-        }
-        
-        .mode-btn {
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            gap: 12px;
-            padding: 16px 32px;
-            border: 2px solid var(--border-color);
-            background: var(--surface-color);
-            color: var(--text-secondary);
-            border-radius: var(--radius-lg);
-            font-size: 1rem;
-            font-weight: 600;
-            cursor: pointer;
-            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-            position: relative;
-            flex: 1;
-            max-width: 250px;
-        }
-        
-        .mode-btn:hover {
-            border-color: var(--primary-color);
-            color: var(--primary-color);
-            transform: translateY(-2px);
-            box-shadow: var(--shadow-lg);
-        }
-        
-        .mode-btn.active {
-            background: var(--primary-color);
-            color: white;
-            border-color: var(--primary-color);
-            transform: translateY(-2px);
-            box-shadow: var(--shadow-lg);
-        }
-        
-        .mode-icon {
-            width: 24px;
-            height: 24px;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-        }
-        
-        /* 语音转录界面样式 */
-        .transcription-container {
-            background: var(--surface-color);
-            border-radius: var(--radius-xl);
-            box-shadow: var(--shadow-lg);
-            border: 1px solid var(--border-color);
-            overflow: hidden;
-            max-width: 900px;
-            margin: 0 auto;
-        }
-        
-        .audio-upload-zone {
-            border: 2px dashed var(--border-color);
-            border-radius: var(--radius-lg);
-            padding: 48px 24px;
-            text-align: center;
-            cursor: pointer;
-            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-            background: linear-gradient(135deg, var(--background-color) 0%, rgba(248, 250, 252, 0.8) 100%);
-            position: relative;
-            overflow: hidden;
-        }
-        
-        .audio-upload-zone::before {
-            content: '';
-            position: absolute;
-            top: 0;
-            left: 0;
-            right: 0;
-            bottom: 0;
-            background: linear-gradient(135deg, rgba(37, 99, 235, 0.05) 0%, rgba(99, 102, 241, 0.05) 100%);
-            opacity: 0;
-            transition: opacity 0.3s ease;
-        }
-        
-        .audio-upload-zone:hover::before,
-        .audio-upload-zone.dragover::before {
-            opacity: 1;
-        }
-        
-        .audio-upload-zone:hover,
-        .audio-upload-zone.dragover {
-            border-color: var(--primary-color);
-            transform: translateY(-2px);
-            box-shadow: 0 8px 25px rgba(37, 99, 235, 0.15);
-        }
-        
-        .token-config {
-            display: flex;
-            gap: 20px;
-            margin-bottom: 16px;
-        }
-        
-        .token-option {
-            display: flex;
-            align-items: center;
-        }
-        
-        .token-label {
-            display: flex;
-            align-items: center;
-            gap: 8px;
-            cursor: pointer;
-            font-weight: 500;
-            color: var(--text-secondary);
-            transition: color 0.2s ease;
-        }
-        
-        .token-label:hover {
-            color: var(--text-primary);
-        }
-        
-        .token-label input[type="radio"] {
-            width: 16px;
-            height: 16px;
-            border-radius: 50%;
-            border: 2px solid var(--border-color);
-            margin: 0;
-            cursor: pointer;
-            accent-color: var(--primary-color);
-        }
-        
-        .transcription-result {
-            margin-top: 20px;
-        }
-        
-        .result-actions {
-            display: flex;
-            gap: 12px;
-            margin-top: 16px;
-            flex-wrap: wrap;
-        }
-        
-        .result-actions .btn-secondary {
-            flex: 1;
-            min-width: 140px;
-        }
-        
-        /* 语言切换器样式 */
-        .language-switcher {
-            position: fixed;
-            top: 20px;
-            right: 20px;
-            z-index: 1000;
-        }
-        
-        .language-btn {
-            display: flex;
-            align-items: center;
-            gap: 8px;
-            padding: 8px 12px;
-            background: var(--surface-color);
-            border: 1px solid var(--border-color);
-            border-radius: var(--radius-md);
-            cursor: pointer;
-            font-size: 0.875rem;
-            font-weight: 500;
-            color: var(--text-secondary);
-            transition: all 0.2s ease;
-            box-shadow: var(--shadow-sm);
-        }
-        
-        .language-btn:hover {
-            color: var(--primary-color);
-            border-color: var(--primary-color);
-            box-shadow: var(--shadow-md);
-        }
-        
-        .language-dropdown {
-            position: absolute;
-            top: 100%;
-            right: 0;
-            margin-top: 4px;
-            background: var(--surface-color);
-            border: 1px solid var(--border-color);
-            border-radius: var(--radius-md);
-            box-shadow: var(--shadow-lg);
-            min-width: 120px;
-            display: none;
-        }
-        
-        .language-dropdown.show {
-            display: block;
-        }
-        
-        .language-option {
-            display: flex;
-            align-items: center;
-            gap: 8px;
-            padding: 8px 12px;
-            cursor: pointer;
-            font-size: 0.875rem;
-            color: var(--text-secondary);
-            transition: background-color 0.2s ease;
-        }
-        
-        .language-option:hover {
-            background: var(--background-color);
-            color: var(--text-primary);
-        }
-        
-        .language-option.active {
-            background: var(--primary-color);
-            color: white;
-        }
-        
-        @media (max-width: 768px) {
-            .container {
-                padding: 16px;
-            }
-            
-            .header {
-                padding: 30px 20px;
-            }
-            
-            .header h1 {
-                font-size: 2rem;
-            }
-            
-            .form-container {
-                padding: 24px;
-            }
-            
-            .controls-grid {
-                grid-template-columns: 1fr;
-                gap: 16px;
-            }
-            
-            .promotion-content {
-                grid-template-columns: 1fr;
-                text-align: center;
-                gap: 20px;
-            }
-            
-            .qr-code {
-                margin: 0 auto;
-            }
-            
-            .input-method-tabs {
-                gap: 2px;
-                padding: 2px;
-            }
-            
-            .tab-btn {
-                padding: 12px 16px;
-                font-size: 0.85rem;
-                gap: 8px;
-            }
-            
-            .tab-btn .tab-icon {
-                width: 18px;
-                height: 18px;
-            }
-            
-            .file-drop-zone {
-                padding: 32px 16px;
-            }
-            
-            .file-drop-icon {
-                width: 56px;
-                height: 56px;
-            }
-            
-            .file-info {
-                padding: 16px;
-                flex-direction: column;
-                gap: 12px;
-                align-items: flex-start;
-            }
-            
-            .file-remove-btn {
-                align-self: flex-end;
-            }
-            
-            /* 移动端模式切换器样式 */
-            .mode-switcher {
-                padding: 0 16px;
-                margin-bottom: 20px;
-                flex-direction: column;
-                gap: 12px;
-            }
-            
-            .mode-btn {
-                max-width: none;
-                padding: 14px 20px;
-                font-size: 0.9rem;
-                gap: 8px;
-            }
-            
-            .mode-icon {
-                width: 20px;
-                height: 20px;
-            }
-            
-            /* 移动端语音转录界面样式 */
-            .audio-upload-zone {
-                padding: 32px 16px;
-            }
-            
-            .token-config {
-                flex-direction: column;
-                gap: 12px;
-            }
-            
-            .result-actions {
-                flex-direction: column;
-            }
-            
-            .result-actions .btn-secondary {
-                min-width: auto;
-            }
-        }
-    </style>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title data-i18n="page.title">VoiceCraft - AI Voice Workspace</title>
+  <meta name="description" content="VoiceCraft is a focused AI voice workspace with 114 voices." data-i18n-content="page.description">
+  <meta name="keywords" content="text to speech,AI voice synthesis,online TTS,speech to text,voice transcription" data-i18n-content="page.keywords">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --font-display:"Space Grotesk",-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;
+      --font-body:Inter,-apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Microsoft YaHei",sans-serif;
+      --font-mono:"JetBrains Mono",ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+      --radius-sm:8px; --radius-md:12px; --radius-lg:16px; --radius-pill:999px;
+    }
+    :root, [data-theme="light"] {
+      --bg:#F4F3EF; --bg-tint:rgba(90,75,224,.05);
+      --surface:#FFFFFF; --surface-2:#EFEDE7; --surface-3:#E6E3DB;
+      --border:#E4E1D8; --border-strong:#D3CFC4;
+      --text:#1A1B1E; --text-2:#585B62; --text-3:#8A8D95;
+      --accent:#5A4BE0; --accent-hover:#4838C9; --accent-soft:rgba(90,75,224,.10); --accent-ring:rgba(90,75,224,.22);
+      --on-accent:#FFFFFF; --signal:#EE9A3D;
+      --error:#CF4436; --error-bg:#FBECEA; --error-border:#F3C9C3; --warning:#9A5B12;
+      --shadow-sm:0 1px 2px rgb(20 22 28 / .06),0 1px 3px rgb(20 22 28 / .05);
+      --shadow-md:0 14px 34px -14px rgb(20 22 28 / .20);
+      --shadow-accent:0 8px 24px -10px rgba(90,75,224,.50);
+      color-scheme:light;
+    }
+    [data-theme="dark"] {
+      --bg:#0D1015; --bg-tint:rgba(126,112,247,.07);
+      --surface:#161A21; --surface-2:#1B212B; --surface-3:#232A35;
+      --border:#2A313D; --border-strong:#3A4350;
+      --text:#E8ECF2; --text-2:#9AA2AF; --text-3:#6B7380;
+      --accent:#7E70F7; --accent-hover:#6F60F2; --accent-soft:rgba(126,112,247,.16); --accent-ring:rgba(126,112,247,.35);
+      --on-accent:#FFFFFF; --signal:#F2B45A;
+      --error:#F0796B; --error-bg:rgba(207,68,54,.14); --error-border:rgba(240,121,107,.30); --warning:#E0A451;
+      --shadow-sm:0 1px 2px rgb(0 0 0 / .35);
+      --shadow-md:0 18px 44px -18px rgb(0 0 0 / .65);
+      --shadow-accent:0 8px 28px -10px rgba(126,112,247,.55);
+      color-scheme:dark;
+    }
+    * { box-sizing:border-box; }
+    body {
+      margin:0; min-height:100vh; color:var(--text); font-family:var(--font-body); line-height:1.5;
+      background:var(--bg);
+      background-image:radial-gradient(1100px 560px at 100% -8%,var(--bg-tint),transparent 62%);
+      -webkit-font-smoothing:antialiased; text-rendering:optimizeLegibility;
+      transition:background-color .3s ease,color .3s ease;
+    }
+    button,input,select,textarea { font:inherit; color:inherit; }
+    :focus-visible { outline:2px solid var(--accent); outline-offset:2px; }
+    .form-input:focus-visible,.form-select:focus-visible,.form-textarea:focus-visible { outline:none; }
+    .app-shell { width:min(1200px,calc(100% - 40px)); margin:0 auto; padding:28px 0 48px; }
+    .topbar { display:flex; align-items:center; justify-content:space-between; gap:16px; margin-bottom:24px; }
+    .brand { display:flex; align-items:center; gap:13px; }
+    .brand-mark { width:44px; height:44px; border-radius:13px; display:grid; place-items:center; background:linear-gradient(140deg,var(--accent),var(--signal)); box-shadow:var(--shadow-accent); }
+    .wave { display:flex; align-items:center; gap:3px; height:20px; }
+    .wave i { display:block; width:3px; height:35%; border-radius:2px; background:var(--on-accent); animation:eq 1.2s ease-in-out infinite; }
+    .wave i:nth-child(1){ animation-delay:-.9s } .wave i:nth-child(2){ animation-delay:-.4s } .wave i:nth-child(3){ animation-delay:-.7s } .wave i:nth-child(4){ animation-delay:-.2s } .wave i:nth-child(5){ animation-delay:-.55s }
+    @keyframes eq { 0%,100%{ height:22% } 50%{ height:92% } }
+    .brand h1 { margin:0; font-family:var(--font-display); font-size:1.4rem; font-weight:700; letter-spacing:-.02em; }
+    .brand p { margin:1px 0 0; color:var(--text-2); font-size:.8rem; }
+    .topbar-actions { display:flex; align-items:center; gap:10px; }
+    .mode-switcher { display:flex; gap:4px; padding:4px; background:var(--surface-2); border:1px solid var(--border); border-radius:var(--radius-md); }
+    .mode-btn { border:0; background:transparent; color:var(--text-2); padding:8px 14px; font-family:var(--font-display); font-weight:600; font-size:.875rem; border-radius:var(--radius-sm); cursor:pointer; transition:color .2s ease,background-color .2s ease,box-shadow .2s ease; }
+    .mode-btn:hover { color:var(--text); }
+    .mode-btn.active { background:var(--surface); color:var(--accent); box-shadow:var(--shadow-sm); }
+    .theme-btn { width:42px; height:42px; display:inline-flex; align-items:center; justify-content:center; border:1px solid var(--border); background:var(--surface); color:var(--text); border-radius:var(--radius-md); cursor:pointer; transition:border-color .2s ease,background-color .2s ease,transform .2s ease; }
+    .theme-btn:hover { border-color:var(--border-strong); background:var(--surface-2); }
+    .theme-btn:active { transform:scale(.94); }
+    .theme-btn svg { width:18px; height:18px; }
+    .icon-sun { display:none; } .icon-moon { display:block; }
+    [data-theme="dark"] .icon-moon { display:none; } [data-theme="dark"] .icon-sun { display:block; }
+    .language-switcher { position:relative; }
+    .language-btn { display:inline-flex; align-items:center; gap:7px; height:42px; padding:0 13px; border:1px solid var(--border); background:var(--surface); color:var(--text); border-radius:var(--radius-md); font-weight:600; font-size:.875rem; cursor:pointer; transition:border-color .2s ease,background-color .2s ease; }
+    .language-btn:hover { border-color:var(--border-strong); background:var(--surface-2); }
+    .language-dropdown { position:absolute; right:0; top:calc(100% + 8px); z-index:10; min-width:160px; display:none; padding:6px; background:var(--surface); border:1px solid var(--border); border-radius:var(--radius-md); box-shadow:var(--shadow-md); }
+    .language-dropdown.show { display:grid; gap:2px; }
+    .language-option { border-radius:var(--radius-sm); padding:9px 11px; cursor:pointer; color:var(--text-2); font-size:.875rem; transition:background-color .15s ease,color .15s ease; }
+    .language-option:hover,.language-option.active { background:var(--accent-soft); color:var(--text); }
+    .workspace-grid { display:grid; grid-template-columns:minmax(0,1.35fr) minmax(330px,.85fr); gap:18px; align-items:start; }
+    .input-panel,.voice-panel,.transcription-panel { background:var(--surface); border:1px solid var(--border); border-radius:var(--radius-lg); box-shadow:var(--shadow-sm); padding:24px; transition:border-color .2s ease,box-shadow .2s ease; }
+    .panel-header { display:flex; justify-content:space-between; align-items:flex-start; gap:16px; margin-bottom:20px; }
+    .panel-header h2 { margin:0; font-family:var(--font-display); font-size:1.08rem; font-weight:600; letter-spacing:-.01em; }
+    .panel-header p { margin:4px 0 0; color:var(--text-2); font-size:.85rem; line-height:1.45; }
+    .voice-count { flex-shrink:0; font-family:var(--font-mono); font-size:.72rem; color:var(--text-2); background:var(--surface-2); border:1px solid var(--border); border-radius:var(--radius-pill); padding:4px 11px; white-space:nowrap; }
+    .form-group { margin-bottom:18px; }
+    .form-label { display:block; margin-bottom:8px; font-weight:600; font-size:.8rem; letter-spacing:.01em; }
+    .form-input,.form-select,.form-textarea { width:100%; border:1px solid var(--border); border-radius:var(--radius-sm); background:var(--surface); color:var(--text); padding:11px 13px; outline:none; transition:border-color .15s ease,box-shadow .15s ease; }
+    .form-input::placeholder,.form-textarea::placeholder { color:var(--text-3); }
+    .form-input:focus,.form-select:focus,.form-textarea:focus { border-color:var(--accent); box-shadow:0 0 0 3px var(--accent-ring); }
+    .form-select { cursor:pointer; }
+    .form-textarea { min-height:240px; resize:vertical; line-height:1.6; }
+    .transcription-panel .form-textarea { min-height:160px; }
+    .input-method-tabs { display:flex; gap:8px; }
+    .tab-btn { border:1px solid var(--border); background:var(--surface-2); color:var(--text-2); padding:8px 14px; font-weight:600; font-size:.82rem; border-radius:var(--radius-sm); cursor:pointer; transition:color .18s ease,background-color .18s ease,border-color .18s ease,box-shadow .18s ease; }
+    .tab-btn:hover { color:var(--text); border-color:var(--border-strong); }
+    .tab-btn.active { background:var(--accent); border-color:var(--accent); color:var(--on-accent); box-shadow:var(--shadow-accent); }
+    .file-drop-zone,.audio-upload-zone { border:1.5px dashed var(--border-strong); border-radius:var(--radius-md); background:var(--surface-2); padding:28px; text-align:center; cursor:pointer; transition:border-color .2s ease,background-color .2s ease; }
+    .file-drop-zone:hover,.audio-upload-zone:hover,.file-drop-zone.dragover,.audio-upload-zone.dragover { border-color:var(--accent); background:var(--accent-soft); }
+    .file-drop-text { margin:0; font-weight:600; }
+    .file-drop-hint { margin:6px 0 0; color:var(--text-2); font-size:.82rem; }
+    .file-info { display:flex; align-items:center; justify-content:space-between; gap:12px; border:1px solid var(--border); border-radius:var(--radius-sm); padding:11px 13px; background:var(--surface-2); }
+    .file-details { display:grid; gap:2px; min-width:0; }
+    .file-name { font-weight:600; overflow-wrap:anywhere; }
+    .file-size { color:var(--text-2); font-size:.78rem; font-family:var(--font-mono); }
+    .file-remove-btn { flex-shrink:0; border:0; background:var(--error); color:#fff; width:30px; height:30px; border-radius:var(--radius-sm); cursor:pointer; font-size:1.15rem; line-height:1; transition:opacity .15s ease; }
+    .file-remove-btn:hover { opacity:.85; }
+    .controls-grid { display:grid; grid-template-columns:repeat(3,1fr); gap:14px; }
+    .btn-primary,.btn-secondary { display:inline-flex; align-items:center; justify-content:center; gap:8px; border:0; border-radius:var(--radius-md); font-family:var(--font-display); font-weight:600; text-decoration:none; cursor:pointer; transition:background-color .2s ease,transform .15s ease,box-shadow .2s ease,border-color .2s ease; }
+    .btn-primary { width:100%; min-height:48px; margin-top:4px; background:var(--accent); color:var(--on-accent); padding:13px 18px; font-size:.95rem; box-shadow:var(--shadow-accent); }
+    .btn-primary:hover:not(:disabled) { background:var(--accent-hover); transform:translateY(-1px); }
+    .btn-primary:active:not(:disabled) { transform:translateY(0); }
+    .btn-primary:disabled { opacity:.55; cursor:not-allowed; box-shadow:none; }
+    .btn-secondary { background:var(--surface-2); color:var(--text); padding:10px 14px; border:1px solid var(--border); font-size:.85rem; }
+    .btn-secondary:hover { background:var(--surface-3); border-color:var(--border-strong); }
+    .filter-group { display:flex; flex-wrap:wrap; gap:7px; margin:12px 0; }
+    .filter-chip { border:1px solid var(--border); background:var(--surface-2); color:var(--text-2); padding:6px 13px; font-weight:600; font-size:.78rem; border-radius:var(--radius-pill); cursor:pointer; transition:color .18s ease,background-color .18s ease,border-color .18s ease; }
+    .filter-chip:hover { color:var(--text); border-color:var(--border-strong); }
+    .filter-chip.active { background:var(--accent); border-color:var(--accent); color:var(--on-accent); }
+    .selected-voice { margin:14px 0 12px; padding:10px 13px; background:var(--accent-soft); border:1px solid var(--border); border-left:3px solid var(--accent); border-radius:var(--radius-sm); color:var(--text); font-size:.8rem; overflow-wrap:anywhere; }
+    .voice-list { display:grid; gap:9px; max-height:430px; overflow:auto; padding:2px; margin:0 -2px; }
+    .voice-list::-webkit-scrollbar { width:8px; }
+    .voice-list::-webkit-scrollbar-thumb { background:var(--border-strong); border-radius:4px; }
+    .voice-list::-webkit-scrollbar-track { background:transparent; }
+    .voice-item { position:relative; display:grid; gap:3px; width:100%; border:1px solid var(--border); background:var(--surface); color:var(--text); padding:12px 14px; text-align:left; border-radius:var(--radius-md); cursor:pointer; transition:border-color .15s ease,background-color .15s ease,transform .15s ease; }
+    .voice-item:hover { border-color:var(--border-strong); background:var(--surface-2); transform:translateX(2px); }
+    .voice-item.active { border-color:var(--accent); background:var(--accent-soft); }
+    .voice-item.active::before { content:""; position:absolute; left:0; top:13px; bottom:13px; width:3px; border-radius:0 3px 3px 0; background:var(--accent); }
+    .voice-name { font-weight:600; font-size:.92rem; }
+    .voice-meta { color:var(--text-2); font-size:.78rem; }
+    .voice-id { color:var(--text-3); font-size:.72rem; font-family:var(--font-mono); overflow-wrap:anywhere; }
+    .empty-state { color:var(--warning); font-size:.85rem; padding:8px 0; }
+    .result-container { display:none; margin-top:18px; border:1px solid var(--border); border-radius:var(--radius-md); background:var(--surface-2); padding:16px; }
+    .loading-container { text-align:center; color:var(--text-2); padding:8px; }
+    .loading-spinner { width:30px; height:30px; margin:0 auto 12px; border-radius:50%; border:3px solid var(--border); border-top-color:var(--accent); animation:spin 1s linear infinite; }
+    .loading-text { margin:0 0 4px; font-weight:600; color:var(--text); }
+    .progress-info { font-size:.78rem; color:var(--text-2); font-family:var(--font-mono); }
+    .audio-player { width:100%; margin-bottom:12px; }
+    .error-message { color:var(--error); background:var(--error-bg); border:1px solid var(--error-border); border-radius:var(--radius-sm); padding:12px 14px; font-size:.88rem; }
+    .token-config { display:flex; flex-wrap:wrap; gap:14px; }
+    .token-config label { display:inline-flex; align-items:center; gap:7px; font-size:.85rem; color:var(--text-2); cursor:pointer; }
+    .token-config input[type=radio] { accent-color:var(--accent); }
+    .result-actions { display:flex; flex-wrap:wrap; gap:10px; margin-top:12px; }
+    @keyframes spin { to { transform:rotate(360deg); } }
+    @media (prefers-reduced-motion:reduce) {
+      *,*::before,*::after { animation-duration:.001ms!important; animation-iteration-count:1!important; transition-duration:.001ms!important; }
+      .wave i { height:55%; }
+    }
+    @media (max-width:880px) {
+      .app-shell { width:min(100% - 28px,720px); padding-top:18px; }
+      .topbar { flex-direction:column; align-items:stretch; gap:14px; }
+      .topbar-actions { justify-content:space-between; }
+      .mode-switcher { flex:1; } .mode-btn { flex:1; }
+      .workspace-grid,.controls-grid { grid-template-columns:1fr; }
+      .panel-header { flex-direction:column; }
+      .form-textarea { min-height:180px; }
+    }
+  </style>
+  <script>(function(){try{var t=localStorage.getItem('voicecraft-theme');if(!t){t=(window.matchMedia&&window.matchMedia('(prefers-color-scheme: dark)').matches)?'dark':'light';}document.documentElement.setAttribute('data-theme',t);}catch(e){document.documentElement.setAttribute('data-theme','light');}})();</script>
 </head>
 <body>
-    <!-- 语言切换器 -->
-    <div class="language-switcher">
-        <div class="language-btn" id="languageBtn">
-            <span id="currentLangFlag">🌐</span>
-            <span id="currentLangName" data-i18n="lang.current">English</span>
-            <svg width="12" height="12" fill="currentColor" viewBox="0 0 16 16">
-                <path fill-rule="evenodd" d="M1.646 4.646a.5.5 0 0 1 .708 0L8 10.293l5.646-5.647a.5.5 0 0 1 .708.708l-6 6a.5.5 0 0 1-.708 0l-6-6a.5.5 0 0 1 0-.708z"/>
-            </svg>
-        </div>
-        <div class="language-dropdown" id="languageDropdown">
-            <div class="language-option" data-lang="en">
-                <span>🇺🇸</span>
-                <span data-i18n="lang.en">English</span>
-            </div>
-            <div class="language-option" data-lang="zh">
-                <span>🇨🇳</span>
-                <span data-i18n="lang.zh">中文</span>
-            </div>
-            <div class="language-option" data-lang="ja">
-                <span>🇯🇵</span>
-                <span data-i18n="lang.ja">日本語</span>
-            </div>
-            <div class="language-option" data-lang="ko">
-                <span>🇰🇷</span>
-                <span data-i18n="lang.ko">한국어</span>
-            </div>
-            <div class="language-option" data-lang="es">
-                <span>🇪🇸</span>
-                <span data-i18n="lang.es">Español</span>
-            </div>
-            <div class="language-option" data-lang="fr">
-                <span>🇫🇷</span>
-                <span data-i18n="lang.fr">Français</span>
-            </div>
-            <div class="language-option" data-lang="de">
-                <span>🇩🇪</span>
-                <span data-i18n="lang.de">Deutsch</span>
-            </div>
-            <div class="language-option" data-lang="ru">
-                <span>🇷🇺</span>
-                <span data-i18n="lang.ru">Русский</span>
-            </div>
-        </div>
-    </div>
-
-    <div class="container">
-        <div class="header">
-            <h1 data-i18n="header.title">VoiceCraft</h1>
-            <p class="subtitle" data-i18n="header.subtitle">AI-Powered Voice Processing Platform</p>
-            <div class="features">
-                <div class="feature-item">
-                    <span class="feature-icon">✨</span>
-                    <span data-i18n="header.feature1">90+ Voice Options</span>
-                </div>
-                <div class="feature-item">
-                    <span class="feature-icon">⚡</span>
-                    <span data-i18n="header.feature2">Lightning Fast</span>
-                </div>
-                <div class="feature-item">
-                    <span class="feature-icon">🆓</span>
-                    <span data-i18n="header.feature3">Completely Free</span>
-                </div>
-                <div class="feature-item">
-                    <span class="feature-icon">📱</span>
-                    <span data-i18n="header.feature4">Download Support</span>
-                </div>
-            </div>
-        </div>
-        
-        <!-- 主功能切换器 -->
-        <div class="mode-switcher">
-            <button type="button" class="mode-btn active" id="ttsMode">
-                <span class="mode-icon">
-                    <svg width="20" height="20" fill="currentColor" viewBox="0 0 24 24">
-                        <path d="M12 14c1.66 0 2.99-1.34 2.99-3L15 5c0-1.66-1.34-3-3-3S9 3.34 9 5v6c0 1.66 1.34 3 3 3zm5.3-3c0 3-2.54 5.1-5.3 5.1S6.7 14 6.7 11H5c0 3.41 2.72 6.23 6 6.72V21h2v-3.28c3.28-.48 6-3.3 6-6.72h-1.7z"/>
-                    </svg>
-                </span>
-                <span data-i18n="mode.tts">Text to Speech</span>
-            </button>
-            <button type="button" class="mode-btn" id="transcriptionMode">
-                <span class="mode-icon">
-                    <svg width="20" height="20" fill="currentColor" viewBox="0 0 24 24">
-                        <path d="M9 9m-4 0a4 4 0 1 0 8 0a4 4 0 1 0 -8 0"/>
-                        <path d="M9 17v4"/>
-                        <path d="M12 13a3 3 0 0 0 3 -3"/>
-                        <path d="M15 9.5v-3a3 3 0 0 0 -3 -3h-1"/>
-                        <path d="M19 8v8"/>
-                        <path d="M17 9v6"/>
-                        <path d="M21 9v6"/>
-                    </svg>
-                </span>
-                <span data-i18n="mode.transcription">Speech to Text</span>
-            </button>
-        </div>
-        
-        <div class="main-content">
-            <div class="form-container">
-                <form id="ttsForm">
-                    <!-- 输入方式选择 -->
-                    <div class="form-group">
-                        <label class="form-label">选择输入方式</label>
-                        <div class="input-method-tabs">
-                            <button type="button" class="tab-btn active" id="textInputTab">
-                                <span class="tab-icon">
-                                    <svg width="16" height="16" fill="currentColor" viewBox="0 0 24 24">
-                                        <path d="M3 17.25V21h3.75L17.81 9.94l-3.75-3.75L3 17.25zM20.71 7.04c.39-.39.39-1.02 0-1.41l-2.34-2.34c-.39-.39-1.02-.39-1.41 0l-1.83 1.83 3.75 3.75 1.83-1.83z"/>
-                                    </svg>
-                                </span>
-                                <span>手动输入</span>
-                            </button>
-                            <button type="button" class="tab-btn" id="fileUploadTab">
-                                <span class="tab-icon">
-                                    <svg width="16" height="16" fill="currentColor" viewBox="0 0 24 24">
-                                        <path d="M14,2H6A2,2 0 0,0 4,4V20A2,2 0 0,0 6,22H18A2,2 0 0,0 20,20V8L14,2M18,20H6V4H13V9H18V20Z"/>
-                                    </svg>
-                                </span>
-                                <span>上传文件</span>
-                            </button>
-                        </div>
-                    </div>
-
-                    <!-- 手动输入区域 -->
-                    <div class="form-group" id="textInputArea">
-                        <label class="form-label" for="text">输入文本</label>
-                        <textarea class="form-textarea" id="text" placeholder="请输入要转换为语音的文本内容，支持中文、英文、数字等..." required></textarea>
-                    </div>
-
-                    <!-- 文件上传区域 -->
-                    <div class="form-group" id="fileUploadArea" style="display: none;">
-                        <label class="form-label" for="fileInput">上传txt文件</label>
-                        <div class="file-upload-container">
-                            <div class="file-drop-zone" id="fileDropZone">
-                                <div class="file-drop-content">
-                                    <div class="file-drop-icon">
-                                        <svg width="28" height="28" fill="currentColor" viewBox="0 0 24 24">
-                                            <path d="M12 2L13.09 8.26L19 7L17.74 13.09L24 12L17.74 10.91L19 5L13.09 6.26L12 0L10.91 6.26L5 5L6.26 10.91L0 12L6.26 13.09L5 19L10.91 17.74L12 24L13.09 17.74L19 19L17.74 13.09L24 12Z"/>
-                                            <path d="M14 2H6A2 2 0 0 0 4 4V20A2 2 0 0 0 6 22H18A2 2 0 0 0 20 20V8L14 2M18 20H6V4H13V9H18V20Z"/>
-                                        </svg>
-                                    </div>
-                                    <p class="file-drop-text">拖拽txt文件到此处，或点击选择文件</p>
-                                    <p class="file-drop-hint">支持txt格式，最大500KB</p>
-                                </div>
-                                <input type="file" id="fileInput" accept=".txt,text/plain" style="display: none;">
-                            </div>
-                            <div class="file-info" id="fileInfo" style="display: none;">
-                                <div class="file-details">
-                                    <span class="file-name" id="fileName"></span>
-                                    <span class="file-size" id="fileSize"></span>
-                                </div>
-                                <button type="button" class="file-remove-btn" id="fileRemoveBtn">✕</button>
-                            </div>
-                        </div>
-                    </div>
-                
-                    <div class="controls-grid">
-                        <div class="form-group">
-                            <label class="form-label" for="voice">语音选择</label>
-                            <select class="form-select" id="voice">
-                                <option value="zh-CN-XiaoxiaoNeural" selected>晓晓 Xiaoxiao (女声·温柔)</option>
-                                <option value="zh-CN-YunxiNeural">云希 Yunxi (男声·清朗)</option>
-                                <option value="zh-CN-YunyangNeural">云扬 Yunyang (男声·阳光)</option>
-                                <option value="zh-CN-XiaoyiNeural">晓伊 Xiaoyi (女声·甜美)</option>
-                                <option value="zh-CN-YunjianNeural">云健 Yunjian (男声·稳重)</option>
-                                <option value="zh-CN-XiaochenNeural">晓辰 Xiaochen (女声·知性)</option>
-                                <option value="zh-CN-XiaohanNeural">晓涵 Xiaohan (女声·优雅)</option>
-                                <option value="zh-CN-XiaomengNeural">晓梦 Xiaomeng (女声·梦幻)</option>
-                                <option value="zh-CN-XiaomoNeural">晓墨 Xiaomo (女声·文艺)</option>
-                                <option value="zh-CN-XiaoqiuNeural">晓秋 Xiaoqiu (女声·成熟)</option>
-                                <option value="zh-CN-XiaoruiNeural">晓睿 Xiaorui (女声·智慧)</option>
-                                <option value="zh-CN-XiaoshuangNeural">晓双 Xiaoshuang (女声·活泼)</option>
-                                <option value="zh-CN-XiaoxuanNeural">晓萱 Xiaoxuan (女声·清新)</option>
-                                <option value="zh-CN-XiaoyanNeural">晓颜 Xiaoyan (女声·柔美)</option>
-                                <option value="zh-CN-XiaoyouNeural">晓悠 Xiaoyou (女声·悠扬)</option>
-                                <option value="zh-CN-XiaozhenNeural">晓甄 Xiaozhen (女声·端庄)</option>
-                                <option value="zh-CN-YunfengNeural">云枫 Yunfeng (男声·磁性)</option>
-                                <option value="zh-CN-YunhaoNeural">云皓 Yunhao (男声·豪迈)</option>
-                                <option value="zh-CN-YunxiaNeural">云夏 Yunxia (男声·热情)</option>
-                                <option value="zh-CN-YunyeNeural">云野 Yunye (男声·野性)</option>
-                                <option value="zh-CN-YunzeNeural">云泽 Yunze (男声·深沉)</option>
-                                <option value="en-US-JennyNeural">Jenny (Female, US)</option>
-                                <option value="en-US-GuyNeural">Guy (Male, US)</option>
-                                <option value="en-US-AriaNeural">Aria (Female, US)</option>
-                                <option value="en-US-DavisNeural">Davis (Male, US)</option>
-                                <option value="en-US-AmberNeural">Amber (Female, US)</option>
-                                <option value="en-US-AnaNeural">Ana (Female, Child, US)</option>
-                                <option value="en-US-AndrewNeural">Andrew (Male, US)</option>
-                                <option value="en-US-AshleyNeural">Ashley (Female, US)</option>
-                                <option value="en-US-BrandonNeural">Brandon (Male, US)</option>
-                                <option value="en-US-ChristopherNeural">Christopher (Male, US)</option>
-                                <option value="en-US-CoraNeural">Cora (Female, US)</option>
-                                <option value="en-US-ElizabethNeural">Elizabeth (Female, US)</option>
-                                <option value="en-US-EricNeural">Eric (Male, US)</option>
-                                <option value="en-US-JacobNeural">Jacob (Male, US)</option>
-                                <option value="en-US-JaneNeural">Jane (Female, US)</option>
-                                <option value="en-US-JasonNeural">Jason (Male, US)</option>
-                                <option value="en-US-MichelleNeural">Michelle (Female, US)</option>
-                                <option value="en-US-MonicaNeural">Monica (Female, US)</option>
-                                <option value="en-US-NancyNeural">Nancy (Female, US)</option>
-                                <option value="en-US-RogerNeural">Roger (Male, US)</option>
-                                <option value="en-US-SaraNeural">Sara (Female, US)</option>
-                                <option value="en-US-SteffanNeural">Steffan (Male, US)</option>
-                                <option value="en-US-TonyNeural">Tony (Male, US)</option>
-                                <option value="en-GB-SoniaNeural">Sonia (Female, UK)</option>
-                                <option value="en-GB-RyanNeural">Ryan (Male, UK)</option>
-                                <option value="en-GB-LibbyNeural">Libby (Female, UK)</option>
-                                <option value="en-GB-MaisieNeural">Maisie (Female, Child, UK)</option>
-                                <option value="en-AU-NatashaNeural">Natasha (Female, AU)</option>
-                                <option value="en-AU-WilliamNeural">William (Male, AU)</option>
-                                <option value="ja-JP-NanamiNeural">Nanami 七海 (女性)</option>
-                                <option value="ja-JP-KeitaNeural">Keita 圭太 (男性)</option>
-                                <option value="ja-JP-AoiNeural">Aoi 葵 (女性)</option>
-                                <option value="ja-JP-DaichiNeural">Daichi 大地 (男性)</option>
-                                <option value="ja-JP-MayuNeural">Mayu 真由 (女性)</option>
-                                <option value="ja-JP-NaokiNeural">Naoki 直樹 (男性)</option>
-                                <option value="ja-JP-ShioriNeural">Shiori 栞 (女性)</option>
-                                <option value="ko-KR-SunHiNeural">SunHi 선희 (여성)</option>
-                                <option value="ko-KR-InJoonNeural">InJoon 인준 (남성)</option>
-                                <option value="ko-KR-BongJinNeural">BongJin 봉진 (남성)</option>
-                                <option value="ko-KR-GookMinNeural">GookMin 국민 (남성)</option>
-                                <option value="ko-KR-JiMinNeural">JiMin 지민 (여성)</option>
-                                <option value="ko-KR-SeoHyeonNeural">SeoHyeon 서현 (여성)</option>
-                                <option value="ko-KR-SoonBokNeural">SoonBok 순복 (여성)</option>
-                                <option value="ko-KR-YuJinNeural">YuJin 유진 (여성)</option>
-                                <option value="fr-FR-DeniseNeural">Denise (Femme)</option>
-                                <option value="fr-FR-HenriNeural">Henri (Homme)</option>
-                                <option value="fr-FR-EloiseNeural">Eloise (Femme)</option>
-                                <option value="fr-FR-AlainNeural">Alain (Homme)</option>
-                                <option value="fr-FR-BrigitteNeural">Brigitte (Femme)</option>
-                                <option value="fr-FR-CelesteNeural">Celeste (Femme)</option>
-                                <option value="fr-FR-ClaudeNeural">Claude (Homme)</option>
-                                <option value="fr-FR-CoraliNeural">Corali (Femme)</option>
-                                <option value="fr-FR-JacquelineNeural">Jacqueline (Femme)</option>
-                                <option value="fr-FR-JeromeNeural">Jerome (Homme)</option>
-                                <option value="fr-FR-JosephineNeural">Josephine (Femme)</option>
-                                <option value="fr-FR-MauriceNeural">Maurice (Homme)</option>
-                                <option value="fr-FR-YvesNeural">Yves (Homme)</option>
-                                <option value="fr-FR-YvetteNeural">Yvette (Femme)</option>
-                                <option value="de-DE-KatjaNeural">Katja (Frau)</option>
-                                <option value="de-DE-ConradNeural">Conrad (Mann)</option>
-                                <option value="de-DE-AmalaNeural">Amala (Frau)</option>
-                                <option value="de-DE-BerndNeural">Bernd (Mann)</option>
-                                <option value="de-DE-ChristophNeural">Christoph (Mann)</option>
-                                <option value="de-DE-ElkeNeural">Elke (Frau)</option>
-                                <option value="de-DE-GiselaNeural">Gisela (Frau)</option>
-                                <option value="de-DE-KasperNeural">Kasper (Mann)</option>
-                                <option value="de-DE-KillianNeural">Killian (Mann)</option>
-                                <option value="de-DE-KlarissaNeural">Klarissa (Frau)</option>
-                                <option value="de-DE-KlausNeural">Klaus (Mann)</option>
-                                <option value="de-DE-LouisaNeural">Louisa (Frau)</option>
-                                <option value="de-DE-MajaNeural">Maja (Frau)</option>
-                                <option value="de-DE-RalfNeural">Ralf (Mann)</option>
-                                <option value="de-DE-TanjaNeural">Tanja (Frau)</option>
-                                <option value="es-ES-ElviraNeural">Elvira (Mujer)</option>
-                                <option value="es-ES-AlvaroNeural">Alvaro (Hombre)</option>
-                                <option value="es-ES-AbrilNeural">Abril (Mujer)</option>
-                                <option value="es-ES-ArnauNeural">Arnau (Hombre)</option>
-                                <option value="es-ES-DarioNeural">Dario (Hombre)</option>
-                                <option value="es-ES-EliasNeural">Elias (Hombre)</option>
-                                <option value="es-ES-EstrellaNeural">Estrella (Mujer)</option>
-                                <option value="es-ES-IreneNeural">Irene (Mujer)</option>
-                                <option value="es-ES-LaiaNeural">Laia (Mujer)</option>
-                                <option value="es-ES-LiaNeural">Lia (Mujer)</option>
-                                <option value="es-ES-NilNeural">Nil (Hombre)</option>
-                                <option value="es-ES-SaulNeural">Saul (Hombre)</option>
-                                <option value="es-ES-TeoNeural">Teo (Hombre)</option>
-                                <option value="es-ES-TrianaNeural">Triana (Mujer)</option>
-                                <option value="es-ES-VeraNeural">Vera (Mujer)</option>
-                                <option value="es-MX-DaliaNeural">Dalia (Mujer, MX)</option>
-                                <option value="es-MX-JorgeNeural">Jorge (Hombre, MX)</option>
-                                <option value="ru-RU-SvetlanaNeural">Svetlana Светлана (Женский)</option>
-                                <option value="ru-RU-DmitryNeural">Dmitry Дмитрий (Мужской)</option>
-                                <option value="ru-RU-DariyaNeural">Dariya Дарья (Женский)</option>
-                            </select>
-                        </div>
-                        
-                        <div class="form-group">
-                            <label class="form-label" for="speed">语速调节</label>
-                            <select class="form-select" id="speed">
-                                <option value="0.5">🐌 很慢</option>
-                                <option value="0.75">🚶 慢速</option>
-                                <option value="1.0" selected>⚡ 正常</option>
-                                <option value="1.25">🏃 快速</option>
-                                <option value="1.5">🚀 很快</option>
-                                <option value="2.0">💨 极速</option>
-                            </select>
-                        </div>
-                        
-                        <div class="form-group">
-                            <label class="form-label" for="pitch">音调高低</label>
-                            <select class="form-select" id="pitch">
-                                <option value="-50">📉 很低沉</option>
-                                <option value="-25">📊 低沉</option>
-                                <option value="0" selected>🎵 标准</option>
-                                <option value="25">📈 高亢</option>
-                                <option value="50">🎶 很高亢</option>
-                            </select>
-                        </div>
-                        
-                        <div class="form-group">
-                            <label class="form-label" for="style">语音风格</label>
-                            <select class="form-select" id="style">
-                                <option value="general" selected>🎭 通用风格</option>
-                                <option value="assistant">🤖 智能助手</option>
-                                <option value="chat">💬 聊天对话</option>
-                                <option value="customerservice">📞 客服专业</option>
-                                <option value="newscast">📺 新闻播报</option>
-                                <option value="affectionate">💕 亲切温暖</option>
-                                <option value="calm">😌 平静舒缓</option>
-                                <option value="cheerful">😊 愉快欢乐</option>
-                                <option value="gentle">🌸 温和柔美</option>
-                                <option value="lyrical">🎼 抒情诗意</option>
-                                <option value="serious">🎯 严肃正式</option>
-                            </select>
-                        </div>
-                    </div>
-                    
-                    <button type="submit" class="btn-primary" id="generateBtn">
-                        <span>🎙️</span>
-                        <span>开始生成语音</span>
-                    </button>
-            </form>
-            
-                <div id="result" class="result-container">
-                    <div id="loading" class="loading-container" style="display: none;">
-                        <div class="loading-spinner"></div>
-                        <p class="loading-text" id="loadingText">正在生成语音，请稍候...</p>
-                        <div class="progress-info" id="progressInfo" style="margin-top: 12px; font-size: 0.875rem; color: var(--text-secondary);"></div>
-                    </div>
-                    
-                    <div id="success" style="display: none;">
-                        <audio id="audioPlayer" class="audio-player" controls></audio>
-                        <a id="downloadBtn" class="btn-secondary" download="speech.mp3">
-                            <span>📥</span>
-                            <span>下载音频文件</span>
-                        </a>
-                    </div>
-                    
-                    <div id="error" class="error-message" style="display: none;"></div>
-                </div>
-            </div>
-        </div>
-        
-        <!-- 语音转录界面 -->
-        <div class="transcription-container" id="transcriptionContainer" style="display: none;">
-            <div class="form-container">
-                <form id="transcriptionForm">
-                    <div class="form-group">
-                        <label class="form-label">上传音频文件</label>
-                        <div class="audio-upload-zone" id="audioDropZone">
-                            <div class="file-drop-content">
-                                <div class="file-drop-icon">
-                                    <svg width="28" height="28" fill="currentColor" viewBox="0 0 24 24">
-                                        <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8l-6-6z"/>
-                                        <path d="M14 2v6h6"/>
-                                        <path d="M12 18v-6"/>
-                                        <path d="M9 15l3-3 3 3"/>
-                                    </svg>
-                                </div>
-                                <p class="file-drop-text">拖拽音频文件到此处，或点击选择文件</p>
-                                <p class="file-drop-hint">支持mp3、wav、m4a、flac、aac、ogg、webm、amr、3gp格式，最大10MB</p>
-                            </div>
-                            <input type="file" id="audioFileInput" accept=".mp3,.wav,.m4a,.flac,.aac,.ogg,.webm,.amr,.3gp,audio/*" style="display: none;">
-                        </div>
-                        <div class="file-info" id="audioFileInfo" style="display: none;">
-                            <div class="file-details">
-                                <span class="file-name" id="audioFileName"></span>
-                                <span class="file-size" id="audioFileSize"></span>
-                            </div>
-                            <button type="button" class="file-remove-btn" id="audioFileRemoveBtn">✕</button>
-                        </div>
-                    </div>
-
-                    <div class="form-group">
-                        <label class="form-label" for="tokenInput">API Token配置</label>
-                        <div class="token-config">
-                            <div class="token-option">
-                                <label class="token-label">
-                                    <input type="radio" name="tokenOption" value="default" checked>
-                                    <span>使用默认Token</span>
-                                </label>
-                            </div>
-                            <div class="token-option">
-                                <label class="token-label">
-                                    <input type="radio" name="tokenOption" value="custom">
-                                    <span>使用硅基流动自定义Token</span>
-                                </label>
-                            </div>
-                        </div>
-                        <input type="password" class="form-input" id="tokenInput" 
-                               placeholder="输入您的API Token（可选）" style="display: none;">
-                    </div>
-
-                    <button type="submit" class="btn-primary" id="transcribeBtn">
-                        <span>🎧</span>
-                        <span>开始语音转录</span>
-                    </button>
-                </form>
-
-                <div id="transcriptionResult" class="result-container">
-                    <div id="transcriptionLoading" class="loading-container" style="display: none;">
-                        <div class="loading-spinner"></div>
-                        <p class="loading-text" id="transcriptionLoadingText">正在转录音频，请稍候...</p>
-                        <div class="progress-info" id="transcriptionProgressInfo" style="margin-top: 12px; font-size: 0.875rem; color: var(--text-secondary);"></div>
-                    </div>
-                    
-                    <div id="transcriptionSuccess" style="display: none;">
-                        <div class="transcription-result">
-                            <label class="form-label">转录结果</label>
-                            <textarea class="form-textarea" id="transcriptionText" 
-                                      placeholder="转录结果将在这里显示..." readonly></textarea>
-                            <div class="result-actions">
-                                <button type="button" class="btn-secondary" id="copyTranscriptionBtn">
-                                    <span>📋</span>
-                                    <span>复制文本</span>
-                                </button>
-                                <button type="button" class="btn-secondary" id="editTranscriptionBtn">
-                                    <span>✏️</span>
-                                    <span>编辑文本</span>
-                                </button>
-                                <button type="button" class="btn-secondary" id="useForTtsBtn">
-                                    <span>🎙️</span>
-                                    <span>转为语音</span>
-                                </button>
-                            </div>
-                        </div>
-                    </div>
-                    
-                    <div id="transcriptionError" class="error-message" style="display: none;"></div>
-                </div>
-            </div>
-        </div>
-        
-        <!-- 公众号推广组件 -->
-        <div class="wechat-promotion" id="wechatPromotion" style="display: none;">
-            <div class="promotion-header">
-                <h2 class="promotion-title">🎉 生成成功！喜欢这个工具吗？</h2>
-                <p class="promotion-subtitle">关注我们获取更多AI工具和技术分享</p>
-            </div>
-            <div class="promotion-content">
-                <div class="qr-code">
-                    <img src="https://img.996007.icu/file/img1/a48c4eac2f2a99909da5611c3885726.jpg" alt="微信公众号二维码" />
-                </div>
-                <div class="promotion-info">
-                    <h3>关注「一只会飞的旺旺」公众号</h3>
-                    <p>获取更多实用的AI工具、技术教程和独家资源分享</p>
-                    <ul class="benefits-list">
-                        <li>最新AI工具推荐和使用教程</li>
-                        <li>前沿技术解析和实战案例</li>
-                        <li>独家资源和工具源码分享</li>
-                        <li>技术问题答疑和交流社群</li>
-                    </ul>
-                </div>
-            </div>
-        </div>
-    </div>
-
-    <script>
-        let selectedFile = null;
-        let currentInputMethod = 'text'; // 'text' or 'file'
-        let currentMode = 'tts'; // 'tts' or 'transcription'
-        let selectedAudioFile = null;
-        let transcriptionToken = null;
-        let currentLanguage = 'en'; // 默认语言
-
-        // 国际化翻译数据
-        const translations = {
-            en: {
-                'page.title': 'VoiceCraft - AI-Powered Voice Processing Platform',
-                'page.description': 'VoiceCraft is an AI-powered platform that converts text to speech and speech to text with 90+ voice options, lightning fast processing, completely free to use.',
-                'page.keywords': 'text to speech,AI voice synthesis,online TTS,voice generator,free voice tools,speech to text,voice transcription',
-                'lang.current': 'English',
-                'lang.en': 'English',
-                'lang.zh': '中文',
-                'lang.ja': '日本語',
-                'lang.ko': '한국어',
-                'lang.es': 'Español',
-                'lang.fr': 'Français',
-                'lang.de': 'Deutsch',
-                'lang.ru': 'Русский',
-                'header.title': 'VoiceCraft',
-                'header.subtitle': 'AI-Powered Voice Processing Platform',
-                'header.feature1': '90+ Voice Options',
-                'header.feature2': 'Lightning Fast',
-                'header.feature3': 'Completely Free',
-                'header.feature4': 'Download Support',
-                'mode.tts': 'Text to Speech',
-                'mode.transcription': 'Speech to Text'
-            },
-            zh: {
-                'page.title': 'VoiceCraft - AI驱动的语音处理平台',
-                'page.description': 'VoiceCraft是一个AI驱动的平台，支持文字转语音和语音转文字，拥有90+种语音选项，闪电般的处理速度，完全免费使用。',
-                'page.keywords': '文字转语音,AI语音合成,在线TTS,语音生成器,免费语音工具,语音转文字,语音转录',
-                'lang.current': '中文',
-                'lang.en': 'English',
-                'lang.zh': '中文',
-                'lang.ja': '日本語',
-                'lang.ko': '한국어',
-                'lang.es': 'Español',
-                'lang.fr': 'Français',
-                'lang.de': 'Deutsch',
-                'lang.ru': 'Русский',
-                'header.title': 'VoiceCraft',
-                'header.subtitle': 'AI驱动的语音处理平台',
-                'header.feature1': '90+种语音选项',
-                'header.feature2': '闪电般快速',
-                'header.feature3': '完全免费',
-                'header.feature4': '支持下载',
-                'mode.tts': '文字转语音',
-                'mode.transcription': '语音转文字'
-            },
-            ja: {
-                'page.title': 'VoiceCraft - AI音声処理プラットフォーム',
-                'page.description': 'VoiceCraftはAI駆動のプラットフォームで、テキスト読み上げと音声テキスト変換に対応。90以上の音声オプション、高速処理、完全無料でご利用いただけます。',
-                'page.keywords': 'テキスト読み上げ,AI音声合成,オンラインTTS,音声ジェネレーター,無料音声ツール,音声テキスト変換,音声転写',
-                'lang.current': '日本語',
-                'lang.en': 'English',
-                'lang.zh': '中文',
-                'lang.ja': '日本語',
-                'lang.ko': '한국어',
-                'lang.es': 'Español',
-                'lang.fr': 'Français',
-                'lang.de': 'Deutsch',
-                'lang.ru': 'Русский',
-                'header.title': 'VoiceCraft',
-                'header.subtitle': 'AI音声処理プラットフォーム',
-                'header.feature1': '90以上の音声オプション',
-                'header.feature2': '高速処理',
-                'header.feature3': '完全無料',
-                'header.feature4': 'ダウンロード対応',
-                'mode.tts': 'テキスト読み上げ',
-                'mode.transcription': '音声テキスト変換'
-            },
-            ko: {
-                'page.title': 'VoiceCraft - AI 음성 처리 플랫폼',
-                'page.description': 'VoiceCraft는 AI 기반 플랫폼으로 텍스트 음성 변환과 음성 텍스트 변환을 지원합니다. 90개 이상의 음성 옵션, 빠른 처리 속도, 완전 무료로 이용하실 수 있습니다.',
-                'page.keywords': '텍스트 음성 변환,AI 음성 합성,온라인 TTS,음성 생성기,무료 음성 도구,음성 텍스트 변환,음성 전사',
-                'lang.current': '한국어',
-                'lang.en': 'English',
-                'lang.zh': '中文',
-                'lang.ja': '日本語',
-                'lang.ko': '한국어',
-                'lang.es': 'Español',
-                'lang.fr': 'Français',
-                'lang.de': 'Deutsch',
-                'lang.ru': 'Русский',
-                'header.title': 'VoiceCraft',
-                'header.subtitle': 'AI 음성 처리 플랫폼',
-                'header.feature1': '90개 이상의 음성 옵션',
-                'header.feature2': '빠른 처리',
-                'header.feature3': '완전 무료',
-                'header.feature4': '다운로드 지원',
-                'mode.tts': '텍스트 음성 변환',
-                'mode.transcription': '음성 텍스트 변환'
-            },
-            es: {
-                'page.title': 'VoiceCraft - Plataforma de Procesamiento de Voz con IA',
-                'page.description': 'VoiceCraft es una plataforma impulsada por IA que convierte texto a voz y voz a texto con más de 90 opciones de voz, procesamiento ultrarrápido, completamente gratis.',
-                'page.keywords': 'texto a voz,síntesis de voz IA,TTS en línea,generador de voz,herramientas de voz gratis,voz a texto,transcripción de voz',
-                'lang.current': 'Español',
-                'lang.en': 'English',
-                'lang.zh': '中文',
-                'lang.ja': '日本語',
-                'lang.ko': '한국어',
-                'lang.es': 'Español',
-                'lang.fr': 'Français',
-                'lang.de': 'Deutsch',
-                'lang.ru': 'Русский',
-                'header.title': 'VoiceCraft',
-                'header.subtitle': 'Plataforma de Procesamiento de Voz con IA',
-                'header.feature1': 'Más de 90 Opciones de Voz',
-                'header.feature2': 'Ultrarrápido',
-                'header.feature3': 'Completamente Gratis',
-                'header.feature4': 'Soporte de Descarga',
-                'mode.tts': 'Texto a Voz',
-                'mode.transcription': 'Voz a Texto'
-            },
-            fr: {
-                'page.title': 'VoiceCraft - Plateforme de Traitement Vocal IA',
-                'page.description': 'VoiceCraft est une plateforme alimentée par IA qui convertit le texte en parole et la parole en texte avec plus de 90 options vocales, traitement ultra-rapide, entièrement gratuit.',
-                'page.keywords': 'texte vers parole,synthèse vocale IA,TTS en ligne,générateur vocal,outils vocaux gratuits,parole vers texte,transcription vocale',
-                'lang.current': 'Français',
-                'lang.en': 'English',
-                'lang.zh': '中文',
-                'lang.ja': '日本語',
-                'lang.ko': '한국어',
-                'lang.es': 'Español',
-                'lang.fr': 'Français',
-                'lang.de': 'Deutsch',
-                'lang.ru': 'Русский',
-                'header.title': 'VoiceCraft',
-                'header.subtitle': 'Plateforme de Traitement Vocal IA',
-                'header.feature1': 'Plus de 90 Options Vocales',
-                'header.feature2': 'Ultra-rapide',
-                'header.feature3': 'Entièrement Gratuit',
-                'header.feature4': 'Support de Téléchargement',
-                'mode.tts': 'Texte vers Parole',
-                'mode.transcription': 'Parole vers Texte'
-            },
-            de: {
-                'page.title': 'VoiceCraft - KI-gestützte Sprachverarbeitungsplattform',
-                'page.description': 'VoiceCraft ist eine KI-gestützte Plattform, die Text in Sprache und Sprache in Text umwandelt, mit über 90 Sprachoptionen, blitzschneller Verarbeitung, völlig kostenlos.',
-                'page.keywords': 'Text zu Sprache,KI-Sprachsynthese,Online-TTS,Sprachgenerator,kostenlose Sprachtools,Sprache zu Text,Sprachtranskription',
-                'lang.current': 'Deutsch',
-                'lang.en': 'English',
-                'lang.zh': '中文',
-                'lang.ja': '日本語',
-                'lang.ko': '한국어',
-                'lang.es': 'Español',
-                'lang.fr': 'Français',
-                'lang.de': 'Deutsch',
-                'lang.ru': 'Русский',
-                'header.title': 'VoiceCraft',
-                'header.subtitle': 'KI-gestützte Sprachverarbeitungsplattform',
-                'header.feature1': 'Über 90 Sprachoptionen',
-                'header.feature2': 'Blitzschnell',
-                'header.feature3': 'Völlig Kostenlos',
-                'header.feature4': 'Download-Unterstützung',
-                'mode.tts': 'Text zu Sprache',
-                'mode.transcription': 'Sprache zu Text'
-            },
-            ru: {
-                'page.title': 'VoiceCraft - ИИ-платформа обработки голоса',
-                'page.description': 'VoiceCraft - это платформа на базе ИИ, которая преобразует текст в речь и речь в текст с более чем 90 голосовыми опциями, молниеносной обработкой, совершенно бесплатно.',
-                'page.keywords': 'текст в речь,ИИ синтез речи,онлайн TTS,генератор голоса,бесплатные голосовые инструменты,речь в текст,транскрипция речи',
-                'lang.current': 'Русский',
-                'lang.en': 'English',
-                'lang.zh': '中文',
-                'lang.ja': '日本語',
-                'lang.ko': '한국어',
-                'lang.es': 'Español',
-                'lang.fr': 'Français',
-                'lang.de': 'Deutsch',
-                'lang.ru': 'Русский',
-                'header.title': 'VoiceCraft',
-                'header.subtitle': 'ИИ-платформа обработки голоса',
-                'header.feature1': 'Более 90 голосовых опций',
-                'header.feature2': 'Молниеносно',
-                'header.feature3': 'Совершенно Бесплатно',
-                'header.feature4': 'Поддержка Загрузки',
-                'mode.tts': 'Текст в Речь',
-                'mode.transcription': 'Речь в Текст'
-            }
-        };
-
-        // 国际化功能
-        function detectLanguage() {
-            // 检测浏览器语言
-            const browserLang = navigator.language || navigator.userLanguage;
-            const shortLang = browserLang.split('-')[0];
-            
-            // 检查是否支持该语言
-            if (translations[shortLang]) {
-                return shortLang;
-            }
-            
-            // 默认返回英语
-            return 'en';
-        }
-
-        function setLanguage(lang) {
-            currentLanguage = lang;
-            localStorage.setItem('voicecraft-language', lang);
-            
-            // 更新页面语言属性
-            document.documentElement.lang = lang === 'zh' ? 'zh-CN' : lang;
-            
-            // 应用翻译
-            applyTranslations();
-            
-            // 更新语言切换器
-            updateLanguageSwitcher();
-        }
-
-        function applyTranslations() {
-            const langData = translations[currentLanguage];
-            
-            // 更新所有带有 data-i18n 属性的元素
-            document.querySelectorAll('[data-i18n]').forEach(element => {
-                const key = element.getAttribute('data-i18n');
-                if (langData[key]) {
-                    element.textContent = langData[key];
-                }
-            });
-            
-            // 更新 meta 标签
-            document.querySelectorAll('[data-i18n-content]').forEach(element => {
-                const key = element.getAttribute('data-i18n-content');
-                if (langData[key]) {
-                    element.setAttribute('content', langData[key]);
-                }
-            });
-            
-            // 更新页面标题
-            if (langData['page.title']) {
-                document.title = langData['page.title'];
-            }
-        }
-
-        function updateLanguageSwitcher() {
-            const langFlags = {
-                'en': '🇺🇸',
-                'zh': '🇨🇳',
-                'ja': '🇯🇵',
-                'ko': '🇰🇷',
-                'es': '🇪🇸',
-                'fr': '🇫🇷',
-                'de': '🇩🇪',
-                'ru': '🇷🇺'
-            };
-            
-            const langData = translations[currentLanguage];
-            document.getElementById('currentLangFlag').textContent = langFlags[currentLanguage];
-            document.getElementById('currentLangName').textContent = langData['lang.current'];
-            
-            // 更新选中状态
-            document.querySelectorAll('.language-option').forEach(option => {
-                option.classList.remove('active');
-                if (option.getAttribute('data-lang') === currentLanguage) {
-                    option.classList.add('active');
-                }
-            });
-        }
-
-        // 初始化页面
-        document.addEventListener('DOMContentLoaded', function() {
-            // 初始化国际化
-            initializeI18n();
-            
-            // 初始化其他功能
-            initializeInputMethodTabs();
-            initializeFileUpload();
-            initializeModeSwitcher();
-            initializeAudioUpload();
-            initializeTokenConfig();
-            initializeLanguageSwitcher();
-        });
-
-        // 初始化输入方式切换
-        function initializeInputMethodTabs() {
-            const textInputTab = document.getElementById('textInputTab');
-            const fileUploadTab = document.getElementById('fileUploadTab');
-            const textInputArea = document.getElementById('textInputArea');
-            const fileUploadArea = document.getElementById('fileUploadArea');
-
-            textInputTab.addEventListener('click', function() {
-                currentInputMethod = 'text';
-                textInputTab.classList.add('active');
-                fileUploadTab.classList.remove('active');
-                textInputArea.style.display = 'block';
-                fileUploadArea.style.display = 'none';
-                document.getElementById('text').required = true;
-            });
-
-            fileUploadTab.addEventListener('click', function() {
-                currentInputMethod = 'file';
-                fileUploadTab.classList.add('active');
-                textInputTab.classList.remove('active');
-                textInputArea.style.display = 'none';
-                fileUploadArea.style.display = 'block';
-                document.getElementById('text').required = false;
-            });
-        }
-
-        // 初始化文件上传功能
-        function initializeFileUpload() {
-            const fileDropZone = document.getElementById('fileDropZone');
-            const fileInput = document.getElementById('fileInput');
-            const fileInfo = document.getElementById('fileInfo');
-            const fileRemoveBtn = document.getElementById('fileRemoveBtn');
-
-            // 点击上传区域
-            fileDropZone.addEventListener('click', function() {
-                fileInput.click();
-            });
-
-            // 文件选择
-            fileInput.addEventListener('change', function(e) {
-                const file = e.target.files[0];
-                if (file) {
-                    handleFileSelect(file);
-                }
-            });
-
-            // 拖拽功能
-            fileDropZone.addEventListener('dragover', function(e) {
-                e.preventDefault();
-                fileDropZone.classList.add('dragover');
-            });
-
-            fileDropZone.addEventListener('dragleave', function(e) {
-                e.preventDefault();
-                fileDropZone.classList.remove('dragover');
-            });
-
-            fileDropZone.addEventListener('drop', function(e) {
-                e.preventDefault();
-                fileDropZone.classList.remove('dragover');
-                const file = e.dataTransfer.files[0];
-                if (file) {
-                    handleFileSelect(file);
-                }
-            });
-
-            // 移除文件
-            fileRemoveBtn.addEventListener('click', function() {
-                selectedFile = null;
-                fileInput.value = '';
-                fileInfo.style.display = 'none';
-                fileDropZone.style.display = 'block';
-            });
-        }
-
-        // 处理文件选择
-        function handleFileSelect(file) {
-            // 验证文件类型
-            if (!file.type.includes('text/') && !file.name.toLowerCase().endsWith('.txt')) {
-                alert('请选择txt格式的文本文件');
-                return;
-            }
-
-            // 验证文件大小
-            if (file.size > 500 * 1024) {
-                alert('文件大小不能超过500KB');
-                return;
-            }
-
-            selectedFile = file;
-            
-            // 显示文件信息
-            document.getElementById('fileName').textContent = file.name;
-            document.getElementById('fileSize').textContent = formatFileSize(file.size);
-            document.getElementById('fileInfo').style.display = 'flex';
-            document.getElementById('fileDropZone').style.display = 'none';
-        }
-
-        // 格式化文件大小
-        function formatFileSize(bytes) {
-            if (bytes === 0) return '0 Bytes';
-            const k = 1024;
-            const sizes = ['Bytes', 'KB', 'MB'];
-            const i = Math.floor(Math.log(bytes) / Math.log(k));
-            return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
-        }
-
-        // 表单提交处理
-        document.getElementById('ttsForm').addEventListener('submit', async function(e) {
-            e.preventDefault();
-            
-            const voice = document.getElementById('voice').value;
-            const speed = document.getElementById('speed').value;
-            const pitch = document.getElementById('pitch').value;
-            const style = document.getElementById('style').value;
-            
-            const generateBtn = document.getElementById('generateBtn');
-            const resultContainer = document.getElementById('result');
-            const loading = document.getElementById('loading');
-            const success = document.getElementById('success');
-            const error = document.getElementById('error');
-            
-            // 验证输入
-            if (currentInputMethod === 'text') {
-                const text = document.getElementById('text').value;
-                if (!text.trim()) {
-                    alert('请输入要转换的文本内容');
-                    return;
-                }
-            } else if (currentInputMethod === 'file') {
-                if (!selectedFile) {
-                    alert('请选择要上传的txt文件');
-                    return;
-                }
-            }
-            
-            // 重置状态
-            resultContainer.style.display = 'block';
-            loading.style.display = 'block';
-            success.style.display = 'none';
-            error.style.display = 'none';
-            generateBtn.disabled = true;
-            generateBtn.textContent = '生成中...';
-            
-            try {
-                let response;
-                let textLength = 0;
-                
-                // 更新加载提示
-                const loadingText = document.getElementById('loadingText');
-                const progressInfo = document.getElementById('progressInfo');
-                
-                if (currentInputMethod === 'text') {
-                    // 手动输入文本
-                    const text = document.getElementById('text').value;
-                    textLength = text.length;
-                    
-                    // 根据文本长度显示不同的提示
-                    if (textLength > 3000) {
-                        loadingText.textContent = '正在处理长文本，请耐心等待...';
-                        progressInfo.textContent = '文本长度: ' + textLength + ' 字符，预计需要 ' + (Math.ceil(textLength / 1500) * 2) + ' 秒';
-                    } else {
-                        loadingText.textContent = '正在生成语音，请稍候...';
-                        progressInfo.textContent = '文本长度: ' + textLength + ' 字符';
-                    }
-                    
-                    response = await fetch('/v1/audio/speech', {
-                        method: 'POST',
-                        headers: {
-                            'Content-Type': 'application/json',
-                        },
-                        body: JSON.stringify({
-                            input: text,
-                            voice: voice,
-                            speed: parseFloat(speed),
-                            pitch: pitch,
-                            style: style
-                        })
-                    });
-                } else {
-                    // 文件上传
-                    loadingText.textContent = '正在处理上传的文件...';
-                    progressInfo.textContent = '文件: ' + selectedFile.name + ' (' + formatFileSize(selectedFile.size) + ')';
-                    
-                    const formData = new FormData();
-                    formData.append('file', selectedFile);
-                    formData.append('voice', voice);
-                    formData.append('speed', speed);
-                    formData.append('pitch', pitch);
-                    formData.append('style', style);
-                    
-                    response = await fetch('/v1/audio/speech', {
-                        method: 'POST',
-                        body: formData
-                    });
-                }
-                
-                if (!response.ok) {
-                    const errorData = await response.json();
-                    throw new Error(errorData.error?.message || '生成失败');
-                }
-                
-                const audioBlob = await response.blob();
-                const audioUrl = URL.createObjectURL(audioBlob);
-                
-                // 显示音频播放器
-                const audioPlayer = document.getElementById('audioPlayer');
-                const downloadBtn = document.getElementById('downloadBtn');
-                
-                audioPlayer.src = audioUrl;
-                downloadBtn.href = audioUrl;
-                
-                loading.style.display = 'none';
-                success.style.display = 'block';
-                
-                // 显示公众号推广组件
-                setTimeout(() => {
-                    const wechatPromotion = document.getElementById('wechatPromotion');
-                    wechatPromotion.style.display = 'block';
-                    wechatPromotion.classList.add('fade-in');
-                }, 1000);
-                
-            } catch (err) {
-                loading.style.display = 'none';
-                error.style.display = 'block';
-                
-                // 根据错误类型显示不同的提示
-                if (err.message.includes('Too many subrequests')) {
-                    error.textContent = '错误: 文本过长导致请求过多，请缩短文本内容或分段处理';
-                } else if (err.message.includes('频率限制') || err.message.includes('429')) {
-                    error.textContent = '错误: 请求过于频繁，请稍后再试';
-                } else if (err.message.includes('分块数量') && err.message.includes('超过限制')) {
-                    error.textContent = '错误: ' + err.message;
-                } else {
-                    error.textContent = '错误: ' + err.message;
-                }
-            } finally {
-                generateBtn.disabled = false;
-                generateBtn.innerHTML = '<span>🎙️</span><span>开始生成语音</span>';
-            }
-        });
-
-        // 初始化模式切换器
-        function initializeModeSwitcher() {
-            const ttsMode = document.getElementById('ttsMode');
-            const transcriptionMode = document.getElementById('transcriptionMode');
-            const mainContent = document.querySelector('.main-content');
-            const transcriptionContainer = document.getElementById('transcriptionContainer');
-
-            ttsMode.addEventListener('click', function() {
-                switchMode('tts');
-            });
-
-            transcriptionMode.addEventListener('click', function() {
-                switchMode('transcription');
-            });
-        }
-
-        // 切换功能模式
-        function switchMode(mode) {
-            const ttsMode = document.getElementById('ttsMode');
-            const transcriptionMode = document.getElementById('transcriptionMode');
-            const mainContent = document.querySelector('.main-content');
-            const transcriptionContainer = document.getElementById('transcriptionContainer');
-            const wechatPromotion = document.getElementById('wechatPromotion');
-
-            currentMode = mode;
-
-            if (mode === 'tts') {
-                // 切换到TTS模式
-                ttsMode.classList.add('active');
-                transcriptionMode.classList.remove('active');
-                mainContent.style.display = 'block';
-                transcriptionContainer.style.display = 'none';
-            } else {
-                // 切换到语音转录模式
-                transcriptionMode.classList.add('active');
-                ttsMode.classList.remove('active');
-                mainContent.style.display = 'none';
-                transcriptionContainer.style.display = 'block';
-            }
-
-            // 隐藏推广组件
-            wechatPromotion.style.display = 'none';
-        }
-
-        // 初始化音频上传功能
-        function initializeAudioUpload() {
-            const audioDropZone = document.getElementById('audioDropZone');
-            const audioFileInput = document.getElementById('audioFileInput');
-            const audioFileInfo = document.getElementById('audioFileInfo');
-            const audioFileRemoveBtn = document.getElementById('audioFileRemoveBtn');
-
-            // 点击上传区域
-            audioDropZone.addEventListener('click', function() {
-                audioFileInput.click();
-            });
-
-            // 文件选择
-            audioFileInput.addEventListener('change', function(e) {
-                const file = e.target.files[0];
-                if (file) {
-                    handleAudioFileSelect(file);
-                }
-            });
-
-            // 拖拽功能
-            audioDropZone.addEventListener('dragover', function(e) {
-                e.preventDefault();
-                audioDropZone.classList.add('dragover');
-            });
-
-            audioDropZone.addEventListener('dragleave', function(e) {
-                e.preventDefault();
-                audioDropZone.classList.remove('dragover');
-            });
-
-            audioDropZone.addEventListener('drop', function(e) {
-                e.preventDefault();
-                audioDropZone.classList.remove('dragover');
-                const file = e.dataTransfer.files[0];
-                if (file) {
-                    handleAudioFileSelect(file);
-                }
-            });
-
-            // 移除文件
-            audioFileRemoveBtn.addEventListener('click', function() {
-                selectedAudioFile = null;
-                audioFileInput.value = '';
-                audioFileInfo.style.display = 'none';
-                audioDropZone.style.display = 'block';
-            });
-        }
-
-        // 处理音频文件选择
-        function handleAudioFileSelect(file) {
-            // 验证文件类型
-            const allowedTypes = [
-                'audio/mpeg', 'audio/mp3', 'audio/wav', 'audio/m4a', 'audio/flac', 'audio/aac',
-                'audio/ogg', 'audio/webm', 'audio/amr', 'audio/3gpp'
-            ];
-            
-            const isValidType = allowedTypes.some(type => 
-                file.type.includes(type) || 
-                file.name.toLowerCase().match(/\.(mp3|wav|m4a|flac|aac|ogg|webm|amr|3gp)$/i)
-            );
-
-            if (!isValidType) {
-                alert('请选择音频格式的文件（mp3、wav、m4a、flac、aac、ogg、webm、amr、3gp）');
-                return;
-            }
-
-            // 验证文件大小（限制为10MB）
-            if (file.size > 10 * 1024 * 1024) {
-                alert('音频文件大小不能超过10MB');
-                return;
-            }
-
-            selectedAudioFile = file;
-            
-            // 显示文件信息
-            document.getElementById('audioFileName').textContent = file.name;
-            document.getElementById('audioFileSize').textContent = formatFileSize(file.size);
-            document.getElementById('audioFileInfo').style.display = 'flex';
-            document.getElementById('audioDropZone').style.display = 'none';
-        }
-
-        // 初始化Token配置
-        function initializeTokenConfig() {
-            const tokenRadios = document.querySelectorAll('input[name="tokenOption"]');
-            const tokenInput = document.getElementById('tokenInput');
-
-            tokenRadios.forEach(radio => {
-                radio.addEventListener('change', function() {
-                    if (this.value === 'custom') {
-                        tokenInput.style.display = 'block';
-                        tokenInput.required = true;
-                    } else {
-                        tokenInput.style.display = 'none';
-                        tokenInput.required = false;
-                        tokenInput.value = '';
-                    }
-                });
-            });
-        }
-
-        // 处理语音转录表单提交
-        document.getElementById('transcriptionForm').addEventListener('submit', async function(e) {
-            e.preventDefault();
-            
-            const transcribeBtn = document.getElementById('transcribeBtn');
-            const transcriptionResult = document.getElementById('transcriptionResult');
-            const transcriptionLoading = document.getElementById('transcriptionLoading');
-            const transcriptionSuccess = document.getElementById('transcriptionSuccess');
-            const transcriptionError = document.getElementById('transcriptionError');
-            
-            // 验证音频文件
-            if (!selectedAudioFile) {
-                alert('请选择要转录的音频文件');
-                return;
-            }
-            
-            // 获取Token配置
-            const tokenOption = document.querySelector('input[name="tokenOption"]:checked').value;
-            const customToken = document.getElementById('tokenInput').value;
-            
-            if (tokenOption === 'custom' && !customToken.trim()) {
-                alert('请输入自定义Token');
-                return;
-            }
-            
-            // 重置状态
-            transcriptionResult.style.display = 'block';
-            transcriptionLoading.style.display = 'block';
-            transcriptionSuccess.style.display = 'none';
-            transcriptionError.style.display = 'none';
-            transcribeBtn.disabled = true;
-            transcribeBtn.textContent = '转录中...';
-            
-            // 更新加载提示
-            const loadingText = document.getElementById('transcriptionLoadingText');
-            const progressInfo = document.getElementById('transcriptionProgressInfo');
-            loadingText.textContent = '正在转录音频，请稍候...';
-            progressInfo.textContent = '文件: ' + selectedAudioFile.name + ' (' + formatFileSize(selectedAudioFile.size) + ')';
-            
-            try {
-                // 构建FormData
-                const formData = new FormData();
-                formData.append('file', selectedAudioFile);
-                
-                if (tokenOption === 'custom') {
-                    formData.append('token', customToken);
-                }
-                
-                const response = await fetch('/v1/audio/transcriptions', {
-                    method: 'POST',
-                    body: formData
-                });
-                
-                if (!response.ok) {
-                    const errorData = await response.json();
-                    throw new Error(errorData.error?.message || '转录失败');
-                }
-                
-                const result = await response.json();
-                
-                // 显示转录结果
-                document.getElementById('transcriptionText').value = result.text || '';
-                transcriptionLoading.style.display = 'none';
-                transcriptionSuccess.style.display = 'block';
-                
-                // 显示公众号推广组件
-                setTimeout(() => {
-                    const wechatPromotion = document.getElementById('wechatPromotion');
-                    wechatPromotion.style.display = 'block';
-                    wechatPromotion.classList.add('fade-in');
-                }, 1000);
-                
-            } catch (err) {
-                transcriptionLoading.style.display = 'none';
-                transcriptionError.style.display = 'block';
-                transcriptionError.textContent = '错误: ' + err.message;
-            } finally {
-                transcribeBtn.disabled = false;
-                transcribeBtn.innerHTML = '<span>🎧</span><span>开始语音转录</span>';
-            }
-        });
-
-        // 复制转录结果
-        document.getElementById('copyTranscriptionBtn').addEventListener('click', function() {
-            const transcriptionText = document.getElementById('transcriptionText');
-            transcriptionText.select();
-            document.execCommand('copy');
-            
-            // 临时改变按钮文本
-            const originalText = this.innerHTML;
-            this.innerHTML = '<span>✅</span><span>已复制</span>';
-            setTimeout(() => {
-                this.innerHTML = originalText;
-            }, 2000);
-        });
-
-        // 编辑转录结果
-        document.getElementById('editTranscriptionBtn').addEventListener('click', function() {
-            const transcriptionText = document.getElementById('transcriptionText');
-            const isReadonly = transcriptionText.readOnly;
-            
-            if (isReadonly) {
-                transcriptionText.readOnly = false;
-                transcriptionText.focus();
-                this.innerHTML = '<span>💾</span><span>保存编辑</span>';
-            } else {
-                transcriptionText.readOnly = true;
-                this.innerHTML = '<span>✏️</span><span>编辑文本</span>';
-            }
-        });
-
-        // 转为语音功能
-        document.getElementById('useForTtsBtn').addEventListener('click', function() {
-            const transcriptionText = document.getElementById('transcriptionText').value;
-            
-            if (!transcriptionText.trim()) {
-                alert('转录结果为空，无法转换为语音');
-                return;
-            }
-            
-            // 切换到TTS模式
-            switchMode('tts');
-            
-            // 将转录文本填入TTS文本框
-            document.getElementById('text').value = transcriptionText;
-            
-            // 滚动到TTS区域
-            document.querySelector('.main-content').scrollIntoView({ behavior: 'smooth' });
-        });
-
-        // 初始化国际化
-        function initializeI18n() {
-            // 检查本地存储中的语言设置
-            const savedLang = localStorage.getItem('voicecraft-language');
-            
-            if (savedLang && translations[savedLang]) {
-                currentLanguage = savedLang;
-            } else {
-                // 自动检测浏览器语言
-                currentLanguage = detectLanguage();
-            }
-            
-            // 应用语言设置
-            setLanguage(currentLanguage);
-        }
-
-        // 初始化语言切换器
-        function initializeLanguageSwitcher() {
-            const languageBtn = document.getElementById('languageBtn');
-            const languageDropdown = document.getElementById('languageDropdown');
-
-            // 切换下拉菜单显示/隐藏
-            languageBtn.addEventListener('click', function(e) {
-                e.stopPropagation();
-                languageDropdown.classList.toggle('show');
-            });
-
-            // 点击页面其他地方时隐藏下拉菜单
-            document.addEventListener('click', function() {
-                languageDropdown.classList.remove('show');
-            });
-
-            // 语言选择
-            document.querySelectorAll('.language-option').forEach(option => {
-                option.addEventListener('click', function() {
-                    const selectedLang = this.getAttribute('data-lang');
-                    setLanguage(selectedLang);
-                    languageDropdown.classList.remove('show');
-                });
-            });
-        }
-    </script>
+  <div class="toast-host" id="toastHost" aria-live="assertive" aria-atomic="true"></div>
+  <div class="app-shell">
+    <header class="topbar">
+      <div class="brand"><span class="brand-mark" aria-hidden="true"><span class="wave"><i></i><i></i><i></i><i></i><i></i></span></span><div><h1 data-i18n="header.title">VoiceCraft</h1><p data-i18n="header.subtitle">AI voice workspace</p></div></div>
+      <div class="topbar-actions">
+        <div class="mode-switcher" role="tablist" aria-label="VoiceCraft mode"><button type="button" class="mode-btn active" id="ttsMode" role="tab" aria-selected="true"><span data-i18n="mode.tts">Text to Speech</span></button><button type="button" class="mode-btn" id="transcriptionMode" role="tab" aria-selected="false"><span data-i18n="mode.transcription">Speech to Text</span></button></div>
+        <button type="button" class="theme-btn" id="themeBtn" aria-label="Toggle color theme" title="Toggle theme"><svg class="icon-sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="4"></circle><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M6.34 17.66l-1.41 1.41M19.07 4.93l-1.41 1.41"></path></svg><svg class="icon-moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"></path></svg></button>
+        <div class="language-switcher"><button type="button" class="language-btn" id="languageBtn" aria-haspopup="listbox" aria-expanded="false"><span id="currentLangFlag">🌐</span><span id="currentLangName" data-i18n="lang.current">English</span></button><div class="language-dropdown" id="languageDropdown" role="listbox" aria-label="Language"><div class="language-option" data-lang="en">English</div><div class="language-option" data-lang="zh">中文</div><div class="language-option" data-lang="ja">日本語</div><div class="language-option" data-lang="ko">한국어</div><div class="language-option" data-lang="es">Español</div><div class="language-option" data-lang="fr">Français</div><div class="language-option" data-lang="de">Deutsch</div><div class="language-option" data-lang="ru">Русский</div></div></div>
+      </div>
+    </header>
+    <main class="workspace">
+      <section class="workspace-grid" id="ttsWorkspace">
+        <form id="ttsForm" class="input-panel">
+          <div class="panel-header"><div><h2 data-i18n="tts.title">Text to Speech</h2><p data-i18n="tts.subtitle">Write or upload text, tune the voice, then generate an MP3.</p></div></div>
+          <div class="form-group"><label class="form-label" data-i18n="input.method">Input method</label><div class="input-method-tabs"><button type="button" class="tab-btn active" id="textInputTab" data-i18n="input.manual">Manual text</button><button type="button" class="tab-btn" id="fileUploadTab" data-i18n="input.upload">Upload txt</button></div></div>
+          <div class="form-group" id="textInputArea"><label class="form-label" for="text" data-i18n="input.text">Input text</label><textarea class="form-textarea" id="text" placeholder="请输入要转换为语音的文本内容..." data-i18n-placeholder="input.textPlaceholder" required></textarea><span id="textCounter" class="char-counter" aria-hidden="true"></span></div>
+          <div class="form-group" id="fileUploadArea" style="display:none"><label class="form-label" for="fileInput" data-i18n="input.file">Upload txt file</label><div class="file-drop-zone" id="fileDropZone" role="button" tabindex="0" aria-label="Upload txt file, drop or activate to choose"><p class="file-drop-text" data-i18n="input.fileDrop">Drop a txt file here, or click to choose</p><p class="file-drop-hint" data-i18n="input.fileHint">TXT only, max 500KB</p><input type="file" id="fileInput" accept=".txt,text/plain" style="display:none"></div><div class="file-info" id="fileInfo" style="display:none"><div class="file-details"><span class="file-name" id="fileName"></span><span class="file-size" id="fileSize"></span></div><button type="button" class="file-remove-btn" id="fileRemoveBtn">×</button></div></div>
+          <div class="controls-grid"><div class="form-group"><label class="form-label" for="speed" data-i18n="control.speed">Speed</label><select class="form-select" id="speed"><option value="0.5">Very slow</option><option value="0.75">Slow</option><option value="1.0" selected>Normal</option><option value="1.25">Fast</option><option value="1.5">Very fast</option><option value="2.0">Extreme</option></select></div><div class="form-group"><label class="form-label" for="pitch" data-i18n="control.pitch">Pitch</label><select class="form-select" id="pitch"><option value="-50">Very low</option><option value="-25">Low</option><option value="0" selected>Standard</option><option value="25">High</option><option value="50">Very high</option></select></div><div class="form-group"><label class="form-label" for="style" data-i18n="control.style">Style</label><select class="form-select" id="style"><option value="general" selected>General</option><option value="assistant">Assistant</option><option value="chat">Chat</option><option value="customerservice">Customer service</option><option value="newscast">Newscast</option><option value="affectionate">Affectionate</option><option value="calm">Calm</option><option value="cheerful">Cheerful</option><option value="gentle">Gentle</option><option value="lyrical">Lyrical</option><option value="serious">Serious</option></select></div></div>
+          <button type="submit" class="btn-primary" id="generateBtn"><span data-i18n="action.generate">Generate voice</span></button>
+          <div id="result" class="result-container"><div id="loading" class="loading-container" style="display:none" aria-live="polite"><div class="loading-spinner"></div><p class="loading-text" id="loadingText">Generating voice...</p><div class="progress-info" id="progressInfo"></div></div><div id="success" style="display:none"><audio id="audioPlayer" class="audio-player" controls></audio><a id="downloadBtn" class="btn-secondary" download="speech.mp3">Download MP3</a></div><div id="error" class="error-message" style="display:none" role="alert"></div></div>
+        </form>
+        <aside class="voice-panel"><div class="panel-header"><div><h2 data-i18n="voice.title">Voice Library</h2><p data-i18n="voice.subtitle">Search 114 Edge voices by name, locale, gender, or ID.</p></div><span class="voice-count" id="voiceCount">114 voices</span></div><div class="voice-search"><label class="form-label" for="voiceSearch" data-i18n="voice.search">Search voices</label><input class="form-input" id="voiceSearch" type="search" placeholder="Xiaoxiao, Jenny, zh-CN, en-US..." data-i18n-placeholder="voice.searchPlaceholder" autocomplete="off"></div><div class="filter-group" id="voiceLanguageFilters" aria-label="Language filters"></div><div class="filter-group" id="voiceGenderFilters" aria-label="Gender filters"></div><input type="hidden" id="selectedVoiceId" value="zh-CN-XiaoxiaoNeural"><p class="selected-voice" id="selectedVoiceSummary">Selected: zh-CN-XiaoxiaoNeural</p><div class="voice-list" id="voiceList" role="listbox" aria-label="Voice options"></div><p class="empty-state" id="voiceEmptyState" style="display:none" data-i18n="voice.empty">No voices match your search.</p></aside>
+      </section>
+      <section class="transcription-panel" id="transcriptionContainer" style="display:none">
+        <form id="transcriptionForm"><div class="panel-header"><div><h2 data-i18n="stt.title">Speech to Text</h2><p data-i18n="stt.subtitle">Upload audio and transcribe it with the existing API flow.</p></div></div><div class="form-group"><label class="form-label" data-i18n="stt.upload">Upload audio file</label><div class="audio-upload-zone" id="audioDropZone" role="button" tabindex="0" aria-label="Upload audio file, drop or activate to choose"><p class="file-drop-text" data-i18n="stt.fileDrop">Drop an audio file here, or click to choose</p><p class="file-drop-hint" data-i18n="stt.fileHint">mp3, wav, m4a, flac, aac, ogg, webm, amr, 3gp. Max 10MB</p><input type="file" id="audioFileInput" accept=".mp3,.wav,.m4a,.flac,.aac,.ogg,.webm,.amr,.3gp,audio/*" style="display:none"></div><div class="file-info" id="audioFileInfo" style="display:none"><div class="file-details"><span class="file-name" id="audioFileName"></span><span class="file-size" id="audioFileSize"></span></div><button type="button" class="file-remove-btn" id="audioFileRemoveBtn">×</button></div></div><div class="form-group"><label class="form-label" for="tokenInput" data-i18n="token.title">API Token</label><div class="token-config"><label><input type="radio" name="tokenOption" value="default" checked> <span data-i18n="token.default">Use default token</span></label><label><input type="radio" name="tokenOption" value="custom"> <span data-i18n="token.custom">Use custom SiliconFlow token</span></label></div><input type="password" class="form-input" id="tokenInput" placeholder="Enter API token" data-i18n-placeholder="token.placeholder" style="display:none;margin-top:10px"></div><button type="submit" class="btn-primary" id="transcribeBtn"><span data-i18n="action.transcribe">Transcribe audio</span></button></form>
+        <div id="transcriptionResult" class="result-container"><div id="transcriptionLoading" class="loading-container" style="display:none" aria-live="polite"><div class="loading-spinner"></div><p class="loading-text" id="transcriptionLoadingText">Transcribing audio...</p><div class="progress-info" id="transcriptionProgressInfo"></div></div><div id="transcriptionSuccess" style="display:none"><div class="transcription-result"><label class="form-label" for="transcriptionText" data-i18n="stt.result">Transcription result</label><textarea class="form-textarea" id="transcriptionText" placeholder="Transcription result appears here..." data-i18n-placeholder="stt.resultPlaceholder" readonly></textarea><div class="result-actions"><button type="button" class="btn-secondary" id="copyTranscriptionBtn" data-i18n="action.copy">Copy text</button><button type="button" class="btn-secondary" id="editTranscriptionBtn" data-i18n="action.edit">Edit text</button><button type="button" class="btn-secondary" id="useForTtsBtn" data-i18n="action.useForTts">Use for TTS</button></div></div></div><div id="transcriptionError" class="error-message" style="display:none" role="alert"></div></div>
+      </section>
+    </main>
+  </div>
+  <script>
+    const VOICES = [
+  { id: "zh-CN-XiaoxiaoNeural", name: "晓晓 Xiaoxiao", locale: "zh-CN", language: "Chinese", gender: "Female", description: "温柔" },
+  { id: "zh-CN-YunxiNeural", name: "云希 Yunxi", locale: "zh-CN", language: "Chinese", gender: "Male", description: "清朗" },
+  { id: "zh-CN-YunyangNeural", name: "云扬 Yunyang", locale: "zh-CN", language: "Chinese", gender: "Male", description: "阳光" },
+  { id: "zh-CN-XiaoyiNeural", name: "晓伊 Xiaoyi", locale: "zh-CN", language: "Chinese", gender: "Female", description: "甜美" },
+  { id: "zh-CN-YunjianNeural", name: "云健 Yunjian", locale: "zh-CN", language: "Chinese", gender: "Male", description: "稳重" },
+  { id: "zh-CN-XiaochenNeural", name: "晓辰 Xiaochen", locale: "zh-CN", language: "Chinese", gender: "Female", description: "知性" },
+  { id: "zh-CN-XiaohanNeural", name: "晓涵 Xiaohan", locale: "zh-CN", language: "Chinese", gender: "Female", description: "优雅" },
+  { id: "zh-CN-XiaomengNeural", name: "晓梦 Xiaomeng", locale: "zh-CN", language: "Chinese", gender: "Female", description: "梦幻" },
+  { id: "zh-CN-XiaomoNeural", name: "晓墨 Xiaomo", locale: "zh-CN", language: "Chinese", gender: "Female", description: "文艺" },
+  { id: "zh-CN-XiaoqiuNeural", name: "晓秋 Xiaoqiu", locale: "zh-CN", language: "Chinese", gender: "Female", description: "成熟" },
+  { id: "zh-CN-XiaoruiNeural", name: "晓睿 Xiaorui", locale: "zh-CN", language: "Chinese", gender: "Female", description: "智慧" },
+  { id: "zh-CN-XiaoshuangNeural", name: "晓双 Xiaoshuang", locale: "zh-CN", language: "Chinese", gender: "Female", description: "活泼" },
+  { id: "zh-CN-XiaoxuanNeural", name: "晓萱 Xiaoxuan", locale: "zh-CN", language: "Chinese", gender: "Female", description: "清新" },
+  { id: "zh-CN-XiaoyanNeural", name: "晓颜 Xiaoyan", locale: "zh-CN", language: "Chinese", gender: "Female", description: "柔美" },
+  { id: "zh-CN-XiaoyouNeural", name: "晓悠 Xiaoyou", locale: "zh-CN", language: "Chinese", gender: "Female", description: "悠扬" },
+  { id: "zh-CN-XiaozhenNeural", name: "晓甄 Xiaozhen", locale: "zh-CN", language: "Chinese", gender: "Female", description: "端庄" },
+  { id: "zh-CN-YunfengNeural", name: "云枫 Yunfeng", locale: "zh-CN", language: "Chinese", gender: "Male", description: "磁性" },
+  { id: "zh-CN-YunhaoNeural", name: "云皓 Yunhao", locale: "zh-CN", language: "Chinese", gender: "Male", description: "豪迈" },
+  { id: "zh-CN-YunxiaNeural", name: "云夏 Yunxia", locale: "zh-CN", language: "Chinese", gender: "Male", description: "热情" },
+  { id: "zh-CN-YunyeNeural", name: "云野 Yunye", locale: "zh-CN", language: "Chinese", gender: "Male", description: "野性" },
+  { id: "zh-CN-YunzeNeural", name: "云泽 Yunze", locale: "zh-CN", language: "Chinese", gender: "Male", description: "深沉" },
+  { id: "en-US-JennyNeural", name: "Jenny", locale: "en-US", language: "English", gender: "Female", description: "US" },
+  { id: "en-US-GuyNeural", name: "Guy", locale: "en-US", language: "English", gender: "Male", description: "US" },
+  { id: "en-US-AriaNeural", name: "Aria", locale: "en-US", language: "English", gender: "Female", description: "US" },
+  { id: "en-US-DavisNeural", name: "Davis", locale: "en-US", language: "English", gender: "Male", description: "US" },
+  { id: "en-US-AmberNeural", name: "Amber", locale: "en-US", language: "English", gender: "Female", description: "US" },
+  { id: "en-US-AnaNeural", name: "Ana", locale: "en-US", language: "English", gender: "Female", description: "Child, US" },
+  { id: "en-US-AndrewNeural", name: "Andrew", locale: "en-US", language: "English", gender: "Male", description: "US" },
+  { id: "en-US-AshleyNeural", name: "Ashley", locale: "en-US", language: "English", gender: "Female", description: "US" },
+  { id: "en-US-BrandonNeural", name: "Brandon", locale: "en-US", language: "English", gender: "Male", description: "US" },
+  { id: "en-US-ChristopherNeural", name: "Christopher", locale: "en-US", language: "English", gender: "Male", description: "US" },
+  { id: "en-US-CoraNeural", name: "Cora", locale: "en-US", language: "English", gender: "Female", description: "US" },
+  { id: "en-US-ElizabethNeural", name: "Elizabeth", locale: "en-US", language: "English", gender: "Female", description: "US" },
+  { id: "en-US-EricNeural", name: "Eric", locale: "en-US", language: "English", gender: "Male", description: "US" },
+  { id: "en-US-JacobNeural", name: "Jacob", locale: "en-US", language: "English", gender: "Male", description: "US" },
+  { id: "en-US-JaneNeural", name: "Jane", locale: "en-US", language: "English", gender: "Female", description: "US" },
+  { id: "en-US-JasonNeural", name: "Jason", locale: "en-US", language: "English", gender: "Male", description: "US" },
+  { id: "en-US-MichelleNeural", name: "Michelle", locale: "en-US", language: "English", gender: "Female", description: "US" },
+  { id: "en-US-MonicaNeural", name: "Monica", locale: "en-US", language: "English", gender: "Female", description: "US" },
+  { id: "en-US-NancyNeural", name: "Nancy", locale: "en-US", language: "English", gender: "Female", description: "US" },
+  { id: "en-US-RogerNeural", name: "Roger", locale: "en-US", language: "English", gender: "Male", description: "US" },
+  { id: "en-US-SaraNeural", name: "Sara", locale: "en-US", language: "English", gender: "Female", description: "US" },
+  { id: "en-US-SteffanNeural", name: "Steffan", locale: "en-US", language: "English", gender: "Male", description: "US" },
+  { id: "en-US-TonyNeural", name: "Tony", locale: "en-US", language: "English", gender: "Male", description: "US" },
+  { id: "en-GB-SoniaNeural", name: "Sonia", locale: "en-GB", language: "English", gender: "Female", description: "UK" },
+  { id: "en-GB-RyanNeural", name: "Ryan", locale: "en-GB", language: "English", gender: "Male", description: "UK" },
+  { id: "en-GB-LibbyNeural", name: "Libby", locale: "en-GB", language: "English", gender: "Female", description: "UK" },
+  { id: "en-GB-MaisieNeural", name: "Maisie", locale: "en-GB", language: "English", gender: "Female", description: "Child, UK" },
+  { id: "en-AU-NatashaNeural", name: "Natasha", locale: "en-AU", language: "English", gender: "Female", description: "AU" },
+  { id: "en-AU-WilliamNeural", name: "William", locale: "en-AU", language: "English", gender: "Male", description: "AU" },
+  { id: "ja-JP-NanamiNeural", name: "Nanami 七海", locale: "ja-JP", language: "Japanese", gender: "Female", description: "" },
+  { id: "ja-JP-KeitaNeural", name: "Keita 圭太", locale: "ja-JP", language: "Japanese", gender: "Male", description: "" },
+  { id: "ja-JP-AoiNeural", name: "Aoi 葵", locale: "ja-JP", language: "Japanese", gender: "Female", description: "" },
+  { id: "ja-JP-DaichiNeural", name: "Daichi 大地", locale: "ja-JP", language: "Japanese", gender: "Male", description: "" },
+  { id: "ja-JP-MayuNeural", name: "Mayu 真由", locale: "ja-JP", language: "Japanese", gender: "Female", description: "" },
+  { id: "ja-JP-NaokiNeural", name: "Naoki 直樹", locale: "ja-JP", language: "Japanese", gender: "Male", description: "" },
+  { id: "ja-JP-ShioriNeural", name: "Shiori 栞", locale: "ja-JP", language: "Japanese", gender: "Female", description: "" },
+  { id: "ko-KR-SunHiNeural", name: "SunHi 선희", locale: "ko-KR", language: "Korean", gender: "Female", description: "" },
+  { id: "ko-KR-InJoonNeural", name: "InJoon 인준", locale: "ko-KR", language: "Korean", gender: "Male", description: "" },
+  { id: "ko-KR-BongJinNeural", name: "BongJin 봉진", locale: "ko-KR", language: "Korean", gender: "Male", description: "" },
+  { id: "ko-KR-GookMinNeural", name: "GookMin 국민", locale: "ko-KR", language: "Korean", gender: "Male", description: "" },
+  { id: "ko-KR-JiMinNeural", name: "JiMin 지민", locale: "ko-KR", language: "Korean", gender: "Female", description: "" },
+  { id: "ko-KR-SeoHyeonNeural", name: "SeoHyeon 서현", locale: "ko-KR", language: "Korean", gender: "Female", description: "" },
+  { id: "ko-KR-SoonBokNeural", name: "SoonBok 순복", locale: "ko-KR", language: "Korean", gender: "Female", description: "" },
+  { id: "ko-KR-YuJinNeural", name: "YuJin 유진", locale: "ko-KR", language: "Korean", gender: "Female", description: "" },
+  { id: "fr-FR-DeniseNeural", name: "Denise", locale: "fr-FR", language: "French", gender: "Female", description: "" },
+  { id: "fr-FR-HenriNeural", name: "Henri", locale: "fr-FR", language: "French", gender: "Male", description: "" },
+  { id: "fr-FR-EloiseNeural", name: "Eloise", locale: "fr-FR", language: "French", gender: "Female", description: "" },
+  { id: "fr-FR-AlainNeural", name: "Alain", locale: "fr-FR", language: "French", gender: "Male", description: "" },
+  { id: "fr-FR-BrigitteNeural", name: "Brigitte", locale: "fr-FR", language: "French", gender: "Female", description: "" },
+  { id: "fr-FR-CelesteNeural", name: "Celeste", locale: "fr-FR", language: "French", gender: "Female", description: "" },
+  { id: "fr-FR-ClaudeNeural", name: "Claude", locale: "fr-FR", language: "French", gender: "Male", description: "" },
+  { id: "fr-FR-CoraliNeural", name: "Corali", locale: "fr-FR", language: "French", gender: "Female", description: "" },
+  { id: "fr-FR-JacquelineNeural", name: "Jacqueline", locale: "fr-FR", language: "French", gender: "Female", description: "" },
+  { id: "fr-FR-JeromeNeural", name: "Jerome", locale: "fr-FR", language: "French", gender: "Male", description: "" },
+  { id: "fr-FR-JosephineNeural", name: "Josephine", locale: "fr-FR", language: "French", gender: "Female", description: "" },
+  { id: "fr-FR-MauriceNeural", name: "Maurice", locale: "fr-FR", language: "French", gender: "Male", description: "" },
+  { id: "fr-FR-YvesNeural", name: "Yves", locale: "fr-FR", language: "French", gender: "Male", description: "" },
+  { id: "fr-FR-YvetteNeural", name: "Yvette", locale: "fr-FR", language: "French", gender: "Female", description: "" },
+  { id: "de-DE-KatjaNeural", name: "Katja", locale: "de-DE", language: "German", gender: "Female", description: "" },
+  { id: "de-DE-ConradNeural", name: "Conrad", locale: "de-DE", language: "German", gender: "Male", description: "" },
+  { id: "de-DE-AmalaNeural", name: "Amala", locale: "de-DE", language: "German", gender: "Female", description: "" },
+  { id: "de-DE-BerndNeural", name: "Bernd", locale: "de-DE", language: "German", gender: "Male", description: "" },
+  { id: "de-DE-ChristophNeural", name: "Christoph", locale: "de-DE", language: "German", gender: "Male", description: "" },
+  { id: "de-DE-ElkeNeural", name: "Elke", locale: "de-DE", language: "German", gender: "Female", description: "" },
+  { id: "de-DE-GiselaNeural", name: "Gisela", locale: "de-DE", language: "German", gender: "Female", description: "" },
+  { id: "de-DE-KasperNeural", name: "Kasper", locale: "de-DE", language: "German", gender: "Male", description: "" },
+  { id: "de-DE-KillianNeural", name: "Killian", locale: "de-DE", language: "German", gender: "Male", description: "" },
+  { id: "de-DE-KlarissaNeural", name: "Klarissa", locale: "de-DE", language: "German", gender: "Female", description: "" },
+  { id: "de-DE-KlausNeural", name: "Klaus", locale: "de-DE", language: "German", gender: "Male", description: "" },
+  { id: "de-DE-LouisaNeural", name: "Louisa", locale: "de-DE", language: "German", gender: "Female", description: "" },
+  { id: "de-DE-MajaNeural", name: "Maja", locale: "de-DE", language: "German", gender: "Female", description: "" },
+  { id: "de-DE-RalfNeural", name: "Ralf", locale: "de-DE", language: "German", gender: "Male", description: "" },
+  { id: "de-DE-TanjaNeural", name: "Tanja", locale: "de-DE", language: "German", gender: "Female", description: "" },
+  { id: "es-ES-ElviraNeural", name: "Elvira", locale: "es-ES", language: "Spanish", gender: "Female", description: "" },
+  { id: "es-ES-AlvaroNeural", name: "Alvaro", locale: "es-ES", language: "Spanish", gender: "Male", description: "" },
+  { id: "es-ES-AbrilNeural", name: "Abril", locale: "es-ES", language: "Spanish", gender: "Female", description: "" },
+  { id: "es-ES-ArnauNeural", name: "Arnau", locale: "es-ES", language: "Spanish", gender: "Male", description: "" },
+  { id: "es-ES-DarioNeural", name: "Dario", locale: "es-ES", language: "Spanish", gender: "Male", description: "" },
+  { id: "es-ES-EliasNeural", name: "Elias", locale: "es-ES", language: "Spanish", gender: "Male", description: "" },
+  { id: "es-ES-EstrellaNeural", name: "Estrella", locale: "es-ES", language: "Spanish", gender: "Female", description: "" },
+  { id: "es-ES-IreneNeural", name: "Irene", locale: "es-ES", language: "Spanish", gender: "Female", description: "" },
+  { id: "es-ES-LaiaNeural", name: "Laia", locale: "es-ES", language: "Spanish", gender: "Female", description: "" },
+  { id: "es-ES-LiaNeural", name: "Lia", locale: "es-ES", language: "Spanish", gender: "Female", description: "" },
+  { id: "es-ES-NilNeural", name: "Nil", locale: "es-ES", language: "Spanish", gender: "Male", description: "" },
+  { id: "es-ES-SaulNeural", name: "Saul", locale: "es-ES", language: "Spanish", gender: "Male", description: "" },
+  { id: "es-ES-TeoNeural", name: "Teo", locale: "es-ES", language: "Spanish", gender: "Male", description: "" },
+  { id: "es-ES-TrianaNeural", name: "Triana", locale: "es-ES", language: "Spanish", gender: "Female", description: "" },
+  { id: "es-ES-VeraNeural", name: "Vera", locale: "es-ES", language: "Spanish", gender: "Female", description: "" },
+  { id: "es-MX-DaliaNeural", name: "Dalia", locale: "es-MX", language: "Spanish", gender: "Female", description: "MX" },
+  { id: "es-MX-JorgeNeural", name: "Jorge", locale: "es-MX", language: "Spanish", gender: "Male", description: "MX" },
+  { id: "ru-RU-SvetlanaNeural", name: "Svetlana Светлана", locale: "ru-RU", language: "Russian", gender: "Female", description: "" },
+  { id: "ru-RU-DmitryNeural", name: "Dmitry Дмитрий", locale: "ru-RU", language: "Russian", gender: "Male", description: "" },
+  { id: "ru-RU-DariyaNeural", name: "Dariya Дарья", locale: "ru-RU", language: "Russian", gender: "Female", description: "" }
+    ];
+    let selectedFile = null;
+    let currentInputMethod = 'text';
+    let currentMode = 'tts';
+    let selectedAudioFile = null;
+    let currentLanguage = 'en';
+    let selectedVoiceId = 'zh-CN-XiaoxiaoNeural';
+    let activeLanguageFilter = 'All';
+    let activeGenderFilter = 'All';
+    let voiceSearchTimer = null;
+    const CONFIG = { SEARCH_DEBOUNCE: 120, COPY_FEEDBACK: 1500, MAX_TEXT_LENGTH: 10000 };
+    const translations = {
+      en: {
+        'page.title': 'VoiceCraft - AI Voice Workspace',
+        'page.description': 'VoiceCraft is a focused AI voice workspace with 114 voices.',
+        'page.keywords': 'text to speech,AI voice synthesis,online TTS,speech to text,voice transcription',
+        'lang.current': 'English',
+        'header.title': 'VoiceCraft',
+        'header.subtitle': 'AI voice workspace',
+        'mode.tts': 'Text to Speech',
+        'mode.transcription': 'Speech to Text',
+        'tts.title': 'Text to Speech',
+        'tts.subtitle': 'Write or upload text, tune the voice, then generate an MP3.',
+        'input.method': 'Input method',
+        'input.manual': 'Manual text',
+        'input.upload': 'Upload txt',
+        'input.text': 'Input text',
+        'input.textPlaceholder': 'Enter text to convert to speech...',
+        'input.file': 'Upload txt file',
+        'input.fileDrop': 'Drop a txt file here, or click to choose',
+        'input.fileHint': 'TXT only, max 500KB',
+        'control.speed': 'Speed',
+        'control.pitch': 'Pitch',
+        'control.style': 'Style',
+        'voice.title': 'Voice Library',
+        'voice.subtitle': 'Search 114 Edge voices by name, locale, gender, or ID.',
+        'voice.search': 'Search voices',
+        'voice.searchPlaceholder': 'Xiaoxiao, Jenny, zh-CN, en-US...',
+        'voice.empty': 'No voices match your search.',
+        'voice.selected': 'Selected',
+        'stt.title': 'Speech to Text',
+        'stt.subtitle': 'Upload audio and transcribe it with the existing API flow.',
+        'stt.upload': 'Upload audio file',
+        'stt.fileDrop': 'Drop an audio file here, or click to choose',
+        'stt.fileHint': 'mp3, wav, m4a, flac, aac, ogg, webm, amr, 3gp. Max 10MB',
+        'stt.result': 'Transcription result',
+        'stt.resultPlaceholder': 'Transcription result appears here...',
+        'token.title': 'API Token',
+        'token.default': 'Use default token',
+        'token.custom': 'Use custom SiliconFlow token',
+        'token.placeholder': 'Enter API token',
+        'action.generate': 'Generate voice',
+        'action.transcribe': 'Transcribe audio',
+        'action.copy': 'Copy text',
+        'action.edit': 'Edit text',
+        'action.save': 'Save edit',
+        'action.copied': 'Copied',
+        'action.useForTts': 'Use for TTS',
+        'status.generating': 'Generating...',
+        'status.longText': 'Processing long text...',
+        'status.file': 'Processing uploaded file...',
+        'status.transcribing': 'Transcribing...'
+      },
+      zh: {
+        'page.title': 'VoiceCraft - AI 语音工作台',
+        'page.description': 'VoiceCraft 是一个 AI 语音工作台，支持 114 种声音。',
+        'page.keywords': '文字转语音,AI语音合成,在线TTS,语音转文字,语音转录',
+        'lang.current': '中文',
+        'header.title': 'VoiceCraft',
+        'header.subtitle': 'AI 语音工作台',
+        'mode.tts': '文字转语音',
+        'mode.transcription': '语音转文字',
+        'tts.title': '文字转语音',
+        'tts.subtitle': '输入或上传文本，选择声音和参数后生成 MP3。',
+        'input.method': '输入方式',
+        'input.manual': '手动输入',
+        'input.upload': '上传 txt',
+        'input.text': '输入文本',
+        'input.textPlaceholder': '请输入要转换为语音的文本内容...',
+        'input.file': '上传 txt 文件',
+        'input.fileDrop': '拖拽 txt 文件到此处，或点击选择',
+        'input.fileHint': '仅支持 TXT，最大 500KB',
+        'control.speed': '语速',
+        'control.pitch': '音调',
+        'control.style': '风格',
+        'voice.title': '声音库',
+        'voice.subtitle': '按名称、地区、性别或 ID 搜索 114 个 Edge 声音。',
+        'voice.search': '搜索声音',
+        'voice.searchPlaceholder': '晓晓、Jenny、zh-CN、en-US...',
+        'voice.empty': '没有匹配的声音。',
+        'voice.selected': '已选择',
+        'stt.title': '语音转文字',
+        'stt.subtitle': '上传音频，使用现有 API 流程转录。',
+        'stt.upload': '上传音频文件',
+        'stt.fileDrop': '拖拽音频文件到此处，或点击选择',
+        'stt.fileHint': '支持 mp3、wav、m4a、flac、aac、ogg、webm、amr、3gp，最大 10MB',
+        'stt.result': '转录结果',
+        'stt.resultPlaceholder': '转录结果将在这里显示...',
+        'token.title': 'API Token',
+        'token.default': '使用默认 Token',
+        'token.custom': '使用硅基流动自定义 Token',
+        'token.placeholder': '输入 API Token',
+        'action.generate': '生成语音',
+        'action.transcribe': '开始转录',
+        'action.copy': '复制文本',
+        'action.edit': '编辑文本',
+        'action.save': '保存编辑',
+        'action.copied': '已复制',
+        'action.useForTts': '转为语音',
+        'status.generating': '正在生成...',
+        'status.longText': '正在处理长文本...',
+        'status.file': '正在处理上传文件...',
+        'status.transcribing': '正在转录...'
+      },
+      ja: { 'page.title': 'VoiceCraft - AI音声ワークスペース', 'page.description': 'VoiceCraft AI音声ワークスペース with 114 voices.', 'page.keywords': 'text to speech,AI voice,TTS,STT', 'header.title': 'VoiceCraft', 'lang.current': '日本語', 'header.subtitle': 'AI音声ワークスペース', 'mode.tts': 'テキスト読み上げ', 'mode.transcription': '音声テキスト変換', 'tts.title': 'テキスト読み上げ', 'tts.subtitle': 'テキストを入力またはアップロードし、音声と設定を選んでMP3を生成します。', 'input.method': '入力方法', 'input.manual': '手動入力', 'input.upload': 'txtをアップロード', 'input.text': '入力テキスト', 'input.textPlaceholder': '音声に変換するテキストを入力してください...', 'input.file': 'txtファイルをアップロード', 'input.fileDrop': 'txtファイルをここにドロップ、またはクリックして選択', 'input.fileHint': 'TXTのみ、最大500KB', 'control.speed': '速度', 'control.pitch': 'ピッチ', 'control.style': 'スタイル', 'voice.title': '音声ライブラリ', 'voice.subtitle': '名前、ロケール、性別、IDで114個のEdge音声を検索します。', 'voice.search': '音声を検索', 'voice.searchPlaceholder': 'Xiaoxiao、Jenny、zh-CN、en-US...', 'voice.empty': '一致する音声がありません。', 'voice.selected': '選択中', 'stt.title': '音声テキスト変換', 'stt.subtitle': '音声をアップロードし、既存のAPIフローで文字起こしします。', 'stt.upload': '音声ファイルをアップロード', 'stt.fileDrop': '音声ファイルをここにドロップ、またはクリックして選択', 'stt.fileHint': 'mp3、wav、m4a、flac、aac、ogg、webm、amr、3gp、最大10MB', 'stt.result': '文字起こし結果', 'stt.resultPlaceholder': '文字起こし結果がここに表示されます...', 'token.title': 'API Token', 'token.default': '既定のTokenを使用', 'token.custom': 'カスタムSiliconFlow Tokenを使用', 'token.placeholder': 'API Tokenを入力', 'action.generate': '音声を生成', 'action.transcribe': '文字起こしを開始', 'action.copy': 'テキストをコピー', 'action.edit': '編集', 'action.save': '編集を保存', 'action.copied': 'コピーしました', 'action.useForTts': 'TTSで使う', 'status.generating': '生成中...', 'status.longText': '長いテキストを処理中...', 'status.file': 'アップロードファイルを処理中...', 'status.transcribing': '文字起こし中...' }, ko: { 'page.title': 'VoiceCraft - AI 음성 작업 공간', 'page.description': 'VoiceCraft AI 음성 작업 공간 with 114 voices.', 'page.keywords': 'text to speech,AI voice,TTS,STT', 'header.title': 'VoiceCraft', 'lang.current': '한국어', 'header.subtitle': 'AI 음성 작업 공간', 'mode.tts': '텍스트 음성 변환', 'mode.transcription': '음성 텍스트 변환', 'tts.title': '텍스트 음성 변환', 'tts.subtitle': '텍스트를 입력하거나 업로드하고 음성과 설정을 선택해 MP3를 생성합니다.', 'input.method': '입력 방식', 'input.manual': '직접 입력', 'input.upload': 'txt 업로드', 'input.text': '입력 텍스트', 'input.textPlaceholder': '음성으로 변환할 텍스트를 입력하세요...', 'input.file': 'txt 파일 업로드', 'input.fileDrop': 'txt 파일을 여기에 놓거나 클릭해 선택', 'input.fileHint': 'TXT만 지원, 최대 500KB', 'control.speed': '속도', 'control.pitch': '피치', 'control.style': '스타일', 'voice.title': '음성 라이브러리', 'voice.subtitle': '이름, 로캘, 성별 또는 ID로 114개 Edge 음성을 검색합니다.', 'voice.search': '음성 검색', 'voice.searchPlaceholder': 'Xiaoxiao, Jenny, zh-CN, en-US...', 'voice.empty': '일치하는 음성이 없습니다.', 'voice.selected': '선택됨', 'stt.title': '음성 텍스트 변환', 'stt.subtitle': '오디오를 업로드하고 기존 API 흐름으로 전사합니다.', 'stt.upload': '오디오 파일 업로드', 'stt.fileDrop': '오디오 파일을 여기에 놓거나 클릭해 선택', 'stt.fileHint': 'mp3, wav, m4a, flac, aac, ogg, webm, amr, 3gp. 최대 10MB', 'stt.result': '전사 결과', 'stt.resultPlaceholder': '전사 결과가 여기에 표시됩니다...', 'token.title': 'API Token', 'token.default': '기본 Token 사용', 'token.custom': '사용자 SiliconFlow Token 사용', 'token.placeholder': 'API Token 입력', 'action.generate': '음성 생성', 'action.transcribe': '전사 시작', 'action.copy': '텍스트 복사', 'action.edit': '편집', 'action.save': '편집 저장', 'action.copied': '복사됨', 'action.useForTts': 'TTS에 사용', 'status.generating': '생성 중...', 'status.longText': '긴 텍스트 처리 중...', 'status.file': '업로드 파일 처리 중...', 'status.transcribing': '전사 중...' }, es: { 'page.title': 'VoiceCraft - Espacio de trabajo de voz con IA', 'page.description': 'VoiceCraft Espacio de trabajo de voz con IA with 114 voices.', 'page.keywords': 'text to speech,AI voice,TTS,STT', 'header.title': 'VoiceCraft', 'lang.current': 'Español', 'header.subtitle': 'Espacio de trabajo de voz con IA', 'mode.tts': 'Texto a voz', 'mode.transcription': 'Voz a texto', 'tts.title': 'Texto a voz', 'tts.subtitle': 'Escribe o sube texto, ajusta la voz y genera un MP3.', 'input.method': 'Método de entrada', 'input.manual': 'Texto manual', 'input.upload': 'Subir txt', 'input.text': 'Texto de entrada', 'input.textPlaceholder': 'Introduce el texto para convertirlo en voz...', 'input.file': 'Subir archivo txt', 'input.fileDrop': 'Suelta un txt aquí o haz clic para elegir', 'input.fileHint': 'Solo TXT, máximo 500KB', 'control.speed': 'Velocidad', 'control.pitch': 'Tono', 'control.style': 'Estilo', 'voice.title': 'Biblioteca de voces', 'voice.subtitle': 'Busca 114 voces Edge por nombre, región, género o ID.', 'voice.search': 'Buscar voces', 'voice.searchPlaceholder': 'Xiaoxiao, Jenny, zh-CN, en-US...', 'voice.empty': 'No hay voces coincidentes.', 'voice.selected': 'Seleccionado', 'stt.title': 'Voz a texto', 'stt.subtitle': 'Sube audio y transcríbelo con el flujo API existente.', 'stt.upload': 'Subir audio', 'stt.fileDrop': 'Suelta un audio aquí o haz clic para elegir', 'stt.fileHint': 'mp3, wav, m4a, flac, aac, ogg, webm, amr, 3gp. Máximo 10MB', 'stt.result': 'Resultado de transcripción', 'stt.resultPlaceholder': 'El resultado aparecerá aquí...', 'token.title': 'API Token', 'token.default': 'Usar Token predeterminado', 'token.custom': 'Usar Token personalizado de SiliconFlow', 'token.placeholder': 'Introduce API Token', 'action.generate': 'Generar voz', 'action.transcribe': 'Transcribir audio', 'action.copy': 'Copiar texto', 'action.edit': 'Editar texto', 'action.save': 'Guardar edición', 'action.copied': 'Copiado', 'action.useForTts': 'Usar para TTS', 'status.generating': 'Generando...', 'status.longText': 'Procesando texto largo...', 'status.file': 'Procesando archivo subido...', 'status.transcribing': 'Transcribiendo...' }, fr: { 'page.title': 'VoiceCraft - Espace de travail vocal IA', 'page.description': 'VoiceCraft Espace de travail vocal IA with 114 voices.', 'page.keywords': 'text to speech,AI voice,TTS,STT', 'header.title': 'VoiceCraft', 'lang.current': 'Français', 'header.subtitle': 'Espace de travail vocal IA', 'mode.tts': 'Texte vers parole', 'mode.transcription': 'Parole vers texte', 'tts.title': 'Texte vers parole', 'tts.subtitle': 'Saisissez ou importez du texte, réglez la voix, puis générez un MP3.', 'input.method': 'Méthode de saisie', 'input.manual': 'Texte manuel', 'input.upload': 'Importer txt', 'input.text': 'Texte à saisir', 'input.textPlaceholder': 'Saisissez le texte à convertir en parole...', 'input.file': 'Importer un fichier txt', 'input.fileDrop': 'Déposez un txt ici ou cliquez pour choisir', 'input.fileHint': 'TXT uniquement, 500KB max', 'control.speed': 'Vitesse', 'control.pitch': 'Hauteur', 'control.style': 'Style', 'voice.title': 'Bibliothèque de voix', 'voice.subtitle': 'Recherchez 114 voix Edge par nom, région, genre ou ID.', 'voice.search': 'Rechercher des voix', 'voice.searchPlaceholder': 'Xiaoxiao, Jenny, zh-CN, en-US...', 'voice.empty': 'Aucune voix correspondante.', 'voice.selected': 'Sélectionné', 'stt.title': 'Parole vers texte', 'stt.subtitle': 'Importez un audio et transcrivez-le avec le flux API existant.', 'stt.upload': 'Importer un audio', 'stt.fileDrop': 'Déposez un audio ici ou cliquez pour choisir', 'stt.fileHint': 'mp3, wav, m4a, flac, aac, ogg, webm, amr, 3gp. 10MB max', 'stt.result': 'Résultat de transcription', 'stt.resultPlaceholder': 'Le résultat apparaîtra ici...', 'token.title': 'API Token', 'token.default': 'Utiliser le Token par défaut', 'token.custom': 'Utiliser un Token SiliconFlow personnalisé', 'token.placeholder': 'Saisir API Token', 'action.generate': 'Générer la voix', 'action.transcribe': 'Transcrire audio', 'action.copy': 'Copier le texte', 'action.edit': 'Modifier', 'action.save': 'Enregistrer', 'action.copied': 'Copié', 'action.useForTts': 'Utiliser pour TTS', 'status.generating': 'Génération...', 'status.longText': 'Traitement du texte long...', 'status.file': 'Traitement du fichier importé...', 'status.transcribing': 'Transcription...' }, de: { 'page.title': 'VoiceCraft - KI-Sprach-Arbeitsbereich', 'page.description': 'VoiceCraft KI-Sprach-Arbeitsbereich with 114 voices.', 'page.keywords': 'text to speech,AI voice,TTS,STT', 'header.title': 'VoiceCraft', 'lang.current': 'Deutsch', 'header.subtitle': 'KI-Sprach-Arbeitsbereich', 'mode.tts': 'Text zu Sprache', 'mode.transcription': 'Sprache zu Text', 'tts.title': 'Text zu Sprache', 'tts.subtitle': 'Text eingeben oder hochladen, Stimme einstellen und MP3 erzeugen.', 'input.method': 'Eingabemethode', 'input.manual': 'Manueller Text', 'input.upload': 'txt hochladen', 'input.text': 'Eingabetext', 'input.textPlaceholder': 'Text zur Sprachsynthese eingeben...', 'input.file': 'txt-Datei hochladen', 'input.fileDrop': 'txt hier ablegen oder klicken', 'input.fileHint': 'Nur TXT, max. 500KB', 'control.speed': 'Geschwindigkeit', 'control.pitch': 'Tonhöhe', 'control.style': 'Stil', 'voice.title': 'Stimmenbibliothek', 'voice.subtitle': '114 Edge-Stimmen nach Name, Region, Geschlecht oder ID suchen.', 'voice.search': 'Stimmen suchen', 'voice.searchPlaceholder': 'Xiaoxiao, Jenny, zh-CN, en-US...', 'voice.empty': 'Keine passenden Stimmen.', 'voice.selected': 'Ausgewählt', 'stt.title': 'Sprache zu Text', 'stt.subtitle': 'Audio hochladen und mit dem bestehenden API-Ablauf transkribieren.', 'stt.upload': 'Audiodatei hochladen', 'stt.fileDrop': 'Audio hier ablegen oder klicken', 'stt.fileHint': 'mp3, wav, m4a, flac, aac, ogg, webm, amr, 3gp. Max. 10MB', 'stt.result': 'Transkriptionsergebnis', 'stt.resultPlaceholder': 'Das Ergebnis erscheint hier...', 'token.title': 'API Token', 'token.default': 'Standard-Token verwenden', 'token.custom': 'Eigenes SiliconFlow-Token verwenden', 'token.placeholder': 'API Token eingeben', 'action.generate': 'Stimme erzeugen', 'action.transcribe': 'Audio transkribieren', 'action.copy': 'Text kopieren', 'action.edit': 'Bearbeiten', 'action.save': 'Speichern', 'action.copied': 'Kopiert', 'action.useForTts': 'Für TTS verwenden', 'status.generating': 'Erzeuge...', 'status.longText': 'Langer Text wird verarbeitet...', 'status.file': 'Hochgeladene Datei wird verarbeitet...', 'status.transcribing': 'Transkribiere...' }, ru: { 'page.title': 'VoiceCraft - AI рабочая область голоса', 'page.description': 'VoiceCraft AI рабочая область голоса with 114 voices.', 'page.keywords': 'text to speech,AI voice,TTS,STT', 'header.title': 'VoiceCraft', 'lang.current': 'Русский', 'header.subtitle': 'AI рабочая область голоса', 'mode.tts': 'Текст в речь', 'mode.transcription': 'Речь в текст', 'tts.title': 'Текст в речь', 'tts.subtitle': 'Введите или загрузите текст, настройте голос и создайте MP3.', 'input.method': 'Способ ввода', 'input.manual': 'Ввести текст', 'input.upload': 'Загрузить txt', 'input.text': 'Текст', 'input.textPlaceholder': 'Введите текст для озвучивания...', 'input.file': 'Загрузить txt файл', 'input.fileDrop': 'Перетащите txt сюда или нажмите для выбора', 'input.fileHint': 'Только TXT, до 500KB', 'control.speed': 'Скорость', 'control.pitch': 'Тон', 'control.style': 'Стиль', 'voice.title': 'Библиотека голосов', 'voice.subtitle': 'Поиск 114 голосов Edge по имени, региону, полу или ID.', 'voice.search': 'Поиск голосов', 'voice.searchPlaceholder': 'Xiaoxiao, Jenny, zh-CN, en-US...', 'voice.empty': 'Подходящих голосов нет.', 'voice.selected': 'Выбрано', 'stt.title': 'Речь в текст', 'stt.subtitle': 'Загрузите аудио и расшифруйте через текущий API.', 'stt.upload': 'Загрузить аудио', 'stt.fileDrop': 'Перетащите аудио сюда или нажмите для выбора', 'stt.fileHint': 'mp3, wav, m4a, flac, aac, ogg, webm, amr, 3gp. До 10MB', 'stt.result': 'Результат распознавания', 'stt.resultPlaceholder': 'Результат появится здесь...', 'token.title': 'API Token', 'token.default': 'Использовать Token по умолчанию', 'token.custom': 'Использовать свой SiliconFlow Token', 'token.placeholder': 'Введите API Token', 'action.generate': 'Создать голос', 'action.transcribe': 'Распознать аудио', 'action.copy': 'Копировать текст', 'action.edit': 'Редактировать', 'action.save': 'Сохранить', 'action.copied': 'Скопировано', 'action.useForTts': 'Использовать для TTS', 'status.generating': 'Создание...', 'status.longText': 'Обработка длинного текста...', 'status.file': 'Обработка загруженного файла...', 'status.transcribing': 'Распознавание...' }
+    };
+    const languageNames = { en:'English', zh:'中文', ja:'日本語', ko:'한국어', es:'Español', fr:'Français', de:'Deutsch', ru:'Русский' };
+    document.addEventListener('DOMContentLoaded', function() { initializeTheme(); initializeI18n(); initializeInputMethodTabs(); initializeFileUpload(); initializeModeSwitcher(); initializeAudioUpload(); initializeTokenConfig(); initializeLanguageSwitcher(); initializeVoicePicker(); initializeTextCounter(); });
+    function applyTheme(theme) { document.documentElement.setAttribute('data-theme', theme); }
+    function initializeTheme() { const themeBtn = document.getElementById('themeBtn'); if (themeBtn) themeBtn.addEventListener('click', function() { const next = document.documentElement.getAttribute('data-theme') === 'dark' ? 'light' : 'dark'; localStorage.setItem('voicecraft-theme', next); applyTheme(next); }); if (window.matchMedia) { window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', function(event) { if (!localStorage.getItem('voicecraft-theme')) applyTheme(event.matches ? 'dark' : 'light'); }); } }
+    function detectLanguage() { const browserLang = (navigator.language || navigator.userLanguage || 'en').toLowerCase(); if (browserLang.startsWith('zh')) return 'zh'; if (browserLang.startsWith('ja')) return 'ja'; if (browserLang.startsWith('ko')) return 'ko'; if (browserLang.startsWith('es')) return 'es'; if (browserLang.startsWith('fr')) return 'fr'; if (browserLang.startsWith('de')) return 'de'; if (browserLang.startsWith('ru')) return 'ru'; return 'en'; }
+    function setLanguage(lang) { currentLanguage = translations[lang] ? lang : 'en'; localStorage.setItem('voicecraft-language', currentLanguage); applyTranslations(); updateLanguageSwitcher(); updateTextCounter(); }
+    function t(key) { const dict = translations[currentLanguage] || translations.en; return dict[key] || translations.en[key] || key; }
+    function applyTranslations() { document.querySelectorAll('[data-i18n]').forEach(function(element) { element.textContent = t(element.getAttribute('data-i18n')); }); document.querySelectorAll('[data-i18n-content]').forEach(function(element) { element.setAttribute('content', t(element.getAttribute('data-i18n-content'))); }); document.querySelectorAll('[data-i18n-placeholder]').forEach(function(element) { element.setAttribute('placeholder', t(element.getAttribute('data-i18n-placeholder'))); }); document.title = t('page.title'); if (document.getElementById('voiceList')) renderVoiceList(); }
+    function updateLanguageSwitcher() { document.getElementById('currentLangName').textContent = languageNames[currentLanguage] || 'English'; document.querySelectorAll('.language-option').forEach(function(option) { option.classList.toggle('active', option.dataset.lang === currentLanguage); }); }
+    function initializeI18n() { setLanguage(localStorage.getItem('voicecraft-language') || detectLanguage()); }
+    function initializeLanguageSwitcher() { const languageBtn = document.getElementById('languageBtn'); const languageDropdown = document.getElementById('languageDropdown'); languageBtn.addEventListener('click', function(event) { event.stopPropagation(); const open = languageDropdown.classList.toggle('show'); languageBtn.setAttribute('aria-expanded', open ? 'true' : 'false'); }); document.addEventListener('click', function() { languageDropdown.classList.remove('show'); languageBtn.setAttribute('aria-expanded', 'false'); }); document.querySelectorAll('.language-option').forEach(function(option) { option.addEventListener('click', function(event) { event.stopPropagation(); setLanguage(option.dataset.lang); languageDropdown.classList.remove('show'); languageBtn.setAttribute('aria-expanded', 'false'); }); }); }
+    function getSelectedVoiceId() { return selectedVoiceId; }
+    function getVoiceById(voiceId) { return VOICES.find(function(voice) { return voice.id === voiceId; }) || VOICES[0]; }
+    function getUniqueVoiceValues(key) { return ['All'].concat(Array.from(new Set(VOICES.map(function(voice) { return voice[key]; }))).sort()); }
+    function filterVoices() { const query = document.getElementById('voiceSearch').value.trim().toLowerCase(); return VOICES.filter(function(voice) { const matchesLanguage = activeLanguageFilter === 'All' || voice.language === activeLanguageFilter; const matchesGender = activeGenderFilter === 'All' || voice.gender === activeGenderFilter; const searchText = [voice.id, voice.name, voice.locale, voice.language, voice.gender, voice.description].join(' ').toLowerCase(); return matchesLanguage && matchesGender && (!query || searchText.includes(query)); }); }
+    function renderFilterGroup(containerId, values, activeValue, onSelect) { const container = document.getElementById(containerId); container.innerHTML = values.map(function(value) { const active = value === activeValue ? ' active' : ''; return '<button type="button" class="filter-chip' + active + '" data-value="' + value + '">' + value + '</button>'; }).join(''); container.querySelectorAll('.filter-chip').forEach(function(button) { button.addEventListener('click', function() { onSelect(button.dataset.value); }); }); }
+    function renderVoiceList() { const voices = filterVoices(); const list = document.getElementById('voiceList'); const emptyState = document.getElementById('voiceEmptyState'); const selectedVoice = getVoiceById(selectedVoiceId); updateSelectedVoiceSummary(); document.getElementById('voiceCount').textContent = voices.length + ' of ' + VOICES.length + ' voices'; emptyState.style.display = voices.length ? 'none' : 'block'; list.innerHTML = voices.map(function(voice) { const active = voice.id === selectedVoice.id ? ' active' : ''; const description = voice.description ? ' · ' + voice.description : ''; return '<button type="button" class="voice-item' + active + '" data-voice-id="' + voice.id + '" role="option" tabindex="' + (voice.id === selectedVoice.id ? '0' : '-1') + '" aria-selected="' + (voice.id === selectedVoice.id) + '"><span class="voice-name">' + voice.name + '</span><span class="voice-meta">' + voice.locale + ' · ' + voice.gender + description + '</span><span class="voice-id">' + voice.id + '</span></button>'; }).join(''); }
+    function updateSelectedVoiceSummary() { const v = getVoiceById(selectedVoiceId); document.getElementById('selectedVoiceId').value = v.id; document.getElementById('selectedVoiceSummary').textContent = t('voice.selected') + ': ' + v.name + ' · ' + v.id; }
+    function selectVoice(voiceId) { selectedVoiceId = voiceId; const list = document.getElementById('voiceList'); list.querySelectorAll('.voice-item').forEach(function(item) { const active = item.dataset.voiceId === voiceId; item.classList.toggle('active', active); item.setAttribute('aria-selected', active); item.setAttribute('tabindex', active ? '0' : '-1'); }); updateSelectedVoiceSummary(); }
+    function handleLanguageFilterSelect(value) { activeLanguageFilter = value; renderFilterGroup('voiceLanguageFilters', getUniqueVoiceValues('language'), activeLanguageFilter, handleLanguageFilterSelect); renderVoiceList(); }
+    function handleGenderFilterSelect(value) { activeGenderFilter = value; renderFilterGroup('voiceGenderFilters', getUniqueVoiceValues('gender'), activeGenderFilter, handleGenderFilterSelect); renderVoiceList(); }
+    function initializeVoicePicker() { renderFilterGroup('voiceLanguageFilters', getUniqueVoiceValues('language'), activeLanguageFilter, handleLanguageFilterSelect); renderFilterGroup('voiceGenderFilters', getUniqueVoiceValues('gender'), activeGenderFilter, handleGenderFilterSelect); document.getElementById('voiceSearch').addEventListener('input', function() { clearTimeout(voiceSearchTimer); voiceSearchTimer = setTimeout(renderVoiceList, CONFIG.SEARCH_DEBOUNCE); }); initializeVoiceKeyboard(); document.getElementById('voiceList').addEventListener('click', function(event) { const item = event.target.closest('.voice-item'); if (item) selectVoice(item.dataset.voiceId); }); renderVoiceList(); }
+    function initializeVoiceKeyboard() { const list = document.getElementById('voiceList'); list.addEventListener('keydown', function(event) { const items = Array.from(list.querySelectorAll('.voice-item')); if (!items.length) return; const currentIndex = Math.max(0, items.findIndex(function(item) { return item.dataset.voiceId === selectedVoiceId; })); let nextIndex = currentIndex; if (event.key === 'ArrowDown') nextIndex = Math.min(items.length - 1, currentIndex + 1); else if (event.key === 'ArrowUp') nextIndex = Math.max(0, currentIndex - 1); else if (event.key === 'Home') nextIndex = 0; else if (event.key === 'End') nextIndex = items.length - 1; else if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); selectVoice(items[currentIndex].dataset.voiceId); return; } else return; event.preventDefault(); selectVoice(items[nextIndex].dataset.voiceId); items[nextIndex].focus(); }); }
+    function updateTextCounter() { const textInput = document.getElementById('text'); const counter = document.getElementById('textCounter'); if (!textInput || !counter) return; const length = textInput.value.length; counter.textContent = length ? length + ' / ' + CONFIG.MAX_TEXT_LENGTH : ''; counter.classList.toggle('warning', length > CONFIG.MAX_TEXT_LENGTH); }
+    function initializeTextCounter() { const textInput = document.getElementById('text'); if (!textInput) return; textInput.addEventListener('input', updateTextCounter); updateTextCounter(); }
+    function showToast(message) { if (!message) return; window.alert(message); }
+    function initializeInputMethodTabs() { const textInputTab = document.getElementById('textInputTab'); const fileUploadTab = document.getElementById('fileUploadTab'); const textInputArea = document.getElementById('textInputArea'); const fileUploadArea = document.getElementById('fileUploadArea'); textInputTab.addEventListener('click', function() { currentInputMethod = 'text'; textInputTab.classList.add('active'); fileUploadTab.classList.remove('active'); textInputArea.style.display = 'block'; fileUploadArea.style.display = 'none'; document.getElementById('text').required = true; }); fileUploadTab.addEventListener('click', function() { currentInputMethod = 'file'; fileUploadTab.classList.add('active'); textInputTab.classList.remove('active'); textInputArea.style.display = 'none'; fileUploadArea.style.display = 'block'; document.getElementById('text').required = false; }); }
+    function initializeFileUpload() { const fileDropZone = document.getElementById('fileDropZone'); const fileInput = document.getElementById('fileInput'); const fileRemoveBtn = document.getElementById('fileRemoveBtn'); fileDropZone.addEventListener('click', function() { fileInput.click(); }); fileDropZone.addEventListener('keydown', function(event) { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); fileInput.click(); } }); fileInput.addEventListener('change', function(event) { if (event.target.files[0]) handleFileSelect(event.target.files[0]); }); fileDropZone.addEventListener('dragover', function(event) { event.preventDefault(); fileDropZone.classList.add('dragover'); }); fileDropZone.addEventListener('dragleave', function(event) { event.preventDefault(); fileDropZone.classList.remove('dragover'); }); fileDropZone.addEventListener('drop', function(event) { event.preventDefault(); fileDropZone.classList.remove('dragover'); if (event.dataTransfer.files[0]) handleFileSelect(event.dataTransfer.files[0]); }); fileRemoveBtn.addEventListener('click', function() { selectedFile = null; fileInput.value = ''; document.getElementById('fileInfo').style.display = 'none'; fileDropZone.style.display = 'block'; }); }
+    function handleFileSelect(file) { if (!file.type.includes('text/') && !file.name.toLowerCase().endsWith('.txt')) { alert('请选择txt格式的文本文件'); return; } if (file.size > 500 * 1024) { alert('文件大小不能超过500KB'); return; } selectedFile = file; document.getElementById('fileName').textContent = file.name; document.getElementById('fileSize').textContent = formatFileSize(file.size); document.getElementById('fileInfo').style.display = 'flex'; document.getElementById('fileDropZone').style.display = 'none'; }
+    function formatFileSize(bytes) { if (bytes === 0) return '0 Bytes'; const k = 1024; const sizes = ['Bytes', 'KB', 'MB']; const i = Math.floor(Math.log(bytes) / Math.log(k)); return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i]; }
+    document.getElementById('ttsForm').addEventListener('submit', async function(event) { event.preventDefault(); const voice = getSelectedVoiceId(); const speed = document.getElementById('speed').value; const pitch = document.getElementById('pitch').value; const style = document.getElementById('style').value; const generateBtn = document.getElementById('generateBtn'); const resultContainer = document.getElementById('result'); const loading = document.getElementById('loading'); const success = document.getElementById('success'); const error = document.getElementById('error'); if (currentInputMethod === 'text' && !document.getElementById('text').value.trim()) { alert('请输入要转换的文本内容'); return; } if (currentInputMethod === 'file' && !selectedFile) { alert('请选择要上传的txt文件'); return; } resultContainer.style.display = 'block'; loading.style.display = 'block'; success.style.display = 'none'; error.style.display = 'none'; generateBtn.disabled = true; generateBtn.textContent = t('status.generating'); try { let response; const loadingText = document.getElementById('loadingText'); const progressInfo = document.getElementById('progressInfo'); if (currentInputMethod === 'text') { const text = document.getElementById('text').value; loadingText.textContent = text.length > 3000 ? t('status.longText') : t('status.generating'); progressInfo.textContent = 'Text length: ' + text.length + ' characters'; response = await fetch('/v1/audio/speech', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ input: text, voice: voice, speed: parseFloat(speed), pitch: pitch, style: style }) }); } else { loadingText.textContent = t('status.file'); progressInfo.textContent = 'File: ' + selectedFile.name + ' (' + formatFileSize(selectedFile.size) + ')'; const formData = new FormData(); formData.append('file', selectedFile); formData.append('voice', voice); formData.append('speed', speed); formData.append('pitch', pitch); formData.append('style', style); response = await fetch('/v1/audio/speech', { method: 'POST', body: formData }); } if (!response.ok) { const errorData = await response.json(); throw new Error(errorData.error && errorData.error.message ? errorData.error.message : '生成失败'); } const audioBlob = await response.blob(); const audioUrl = URL.createObjectURL(audioBlob); document.getElementById('audioPlayer').src = audioUrl; document.getElementById('downloadBtn').href = audioUrl; loading.style.display = 'none'; success.style.display = 'block'; } catch (err) { loading.style.display = 'none'; error.style.display = 'block'; error.textContent = '错误: ' + err.message; } finally { generateBtn.disabled = false; generateBtn.textContent = t('action.generate'); } });
+    function initializeModeSwitcher() { document.getElementById('ttsMode').addEventListener('click', function() { switchMode('tts'); }); document.getElementById('transcriptionMode').addEventListener('click', function() { switchMode('transcription'); }); }
+    function switchMode(mode) { const ttsMode = document.getElementById('ttsMode'); const transcriptionMode = document.getElementById('transcriptionMode'); const ttsWorkspace = document.getElementById('ttsWorkspace'); const transcriptionContainer = document.getElementById('transcriptionContainer'); currentMode = mode; if (mode === 'tts') { ttsMode.classList.add('active'); transcriptionMode.classList.remove('active'); ttsMode.setAttribute('aria-selected', 'true'); transcriptionMode.setAttribute('aria-selected', 'false'); ttsWorkspace.style.display = 'grid'; transcriptionContainer.style.display = 'none'; } else { transcriptionMode.classList.add('active'); ttsMode.classList.remove('active'); transcriptionMode.setAttribute('aria-selected', 'true'); ttsMode.setAttribute('aria-selected', 'false'); ttsWorkspace.style.display = 'none'; transcriptionContainer.style.display = 'block'; } }
+    function initializeAudioUpload() { const audioDropZone = document.getElementById('audioDropZone'); const audioFileInput = document.getElementById('audioFileInput'); const audioFileRemoveBtn = document.getElementById('audioFileRemoveBtn'); audioDropZone.addEventListener('click', function() { audioFileInput.click(); }); audioDropZone.addEventListener('keydown', function(event) { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); audioFileInput.click(); } }); audioFileInput.addEventListener('change', function(event) { if (event.target.files[0]) handleAudioFileSelect(event.target.files[0]); }); audioDropZone.addEventListener('dragover', function(event) { event.preventDefault(); audioDropZone.classList.add('dragover'); }); audioDropZone.addEventListener('dragleave', function(event) { event.preventDefault(); audioDropZone.classList.remove('dragover'); }); audioDropZone.addEventListener('drop', function(event) { event.preventDefault(); audioDropZone.classList.remove('dragover'); if (event.dataTransfer.files[0]) handleAudioFileSelect(event.dataTransfer.files[0]); }); audioFileRemoveBtn.addEventListener('click', function() { selectedAudioFile = null; audioFileInput.value = ''; document.getElementById('audioFileInfo').style.display = 'none'; audioDropZone.style.display = 'block'; }); }
+    function handleAudioFileSelect(file) { const isValidType = file.name.toLowerCase().match(/\.(mp3|wav|m4a|flac|aac|ogg|webm|amr|3gp)$/i) || file.type.includes('audio/'); if (!isValidType) { alert('请选择音频格式的文件（mp3、wav、m4a、flac、aac、ogg、webm、amr、3gp）'); return; } if (file.size > 10 * 1024 * 1024) { alert('音频文件大小不能超过10MB'); return; } selectedAudioFile = file; document.getElementById('audioFileName').textContent = file.name; document.getElementById('audioFileSize').textContent = formatFileSize(file.size); document.getElementById('audioFileInfo').style.display = 'flex'; document.getElementById('audioDropZone').style.display = 'none'; }
+    function initializeTokenConfig() { const tokenRadios = document.querySelectorAll('input[name="tokenOption"]'); const tokenInput = document.getElementById('tokenInput'); tokenRadios.forEach(function(radio) { radio.addEventListener('change', function() { tokenInput.style.display = this.value === 'custom' ? 'block' : 'none'; tokenInput.required = this.value === 'custom'; if (this.value !== 'custom') tokenInput.value = ''; }); }); }
+    document.getElementById('transcriptionForm').addEventListener('submit', async function(event) { event.preventDefault(); const transcribeBtn = document.getElementById('transcribeBtn'); const transcriptionResult = document.getElementById('transcriptionResult'); const transcriptionLoading = document.getElementById('transcriptionLoading'); const transcriptionSuccess = document.getElementById('transcriptionSuccess'); const transcriptionError = document.getElementById('transcriptionError'); if (!selectedAudioFile) { alert('请选择要转录的音频文件'); return; } const tokenOption = document.querySelector('input[name="tokenOption"]:checked').value; const customToken = document.getElementById('tokenInput').value; if (tokenOption === 'custom' && !customToken.trim()) { alert('请输入自定义Token'); return; } transcriptionResult.style.display = 'block'; transcriptionLoading.style.display = 'block'; transcriptionSuccess.style.display = 'none'; transcriptionError.style.display = 'none'; transcribeBtn.disabled = true; transcribeBtn.textContent = t('status.transcribing'); document.getElementById('transcriptionProgressInfo').textContent = t('status.fileLabel') + ': ' + selectedAudioFile.name + ' (' + formatFileSize(selectedAudioFile.size) + ')'; try { const formData = new FormData(); formData.append('file', selectedAudioFile); if (tokenOption === 'custom') formData.append('token', customToken); const response = await fetch('/v1/audio/transcriptions', { method: 'POST', body: formData }); if (!response.ok) { const errorData = await response.json(); throw new Error(errorData.error && errorData.error.message ? errorData.error.message : '转录失败'); } const result = await response.json(); document.getElementById('transcriptionText').value = result.text || ''; transcriptionLoading.style.display = 'none'; transcriptionSuccess.style.display = 'block'; } catch (err) { transcriptionLoading.style.display = 'none'; transcriptionError.style.display = 'block'; transcriptionError.textContent = '错误: ' + err.message; } finally { transcribeBtn.disabled = false; transcribeBtn.textContent = t('action.transcribe'); } });
+    document.getElementById('copyTranscriptionBtn').addEventListener('click', function() { const transcriptionText = document.getElementById('transcriptionText'); const button = this; const showCopied = function() { const originalText = button.textContent; button.textContent = t('action.copied'); setTimeout(function() { button.textContent = originalText; }, CONFIG.COPY_FEEDBACK); }; const fallbackCopy = function() { try { transcriptionText.select(); document.execCommand('copy'); showCopied(); } catch (err) { showToast(t('error.copyFailed')); } }; if (navigator.clipboard && navigator.clipboard.writeText) { navigator.clipboard.writeText(transcriptionText.value).then(showCopied).catch(fallbackCopy); } else { fallbackCopy(); } });
+    document.getElementById('editTranscriptionBtn').addEventListener('click', function() { const transcriptionText = document.getElementById('transcriptionText'); transcriptionText.readOnly = !transcriptionText.readOnly; this.textContent = transcriptionText.readOnly ? t('action.edit') : t('action.save'); if (!transcriptionText.readOnly) transcriptionText.focus(); });
+    document.getElementById('useForTtsBtn').addEventListener('click', function() { const transcriptionText = document.getElementById('transcriptionText').value; if (!transcriptionText.trim()) { alert('转录结果为空，无法转换为语音'); return; } switchMode('tts'); currentInputMethod = 'text'; document.getElementById('textInputTab').click(); document.getElementById('text').value = transcriptionText; document.getElementById('ttsWorkspace').scrollIntoView({ behavior: 'smooth' }); });
+  </script>
 </body>
-</html>
-`;
-
-export default {
-    async fetch(request, env, ctx) {
-        return handleRequest(request);
-    }
-};
-
+</html>`;
 async function handleRequest(request) {
     if (request.method === "OPTIONS") {
         return handleOptions(request);
@@ -2300,6 +575,12 @@ async function handleRequest(request) {
     // 默认返回 404
     return new Response("Not Found", { status: 404 });
 }
+
+export default {
+    async fetch(request) {
+        return handleRequest(request);
+    }
+};
 
 async function handleOptions(request) {
     return new Response(null, {

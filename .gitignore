@@ -1,0 +1,5 @@
+.wrangler/
+.superpowers/
+wrangler-dev.*.log
+docs/
+.playwright-cli
