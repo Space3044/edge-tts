@@ -946,7 +946,7 @@ const HTML_PAGE = `
             <div class="features">
                 <div class="feature-item">
                     <span class="feature-icon">✨</span>
-                    <span data-i18n="header.feature1">20+ Voice Options</span>
+                    <span data-i18n="header.feature1">90+ Voice Options</span>
                 </div>
                 <div class="feature-item">
                     <span class="feature-icon">⚡</span>
@@ -1052,27 +1052,120 @@ const HTML_PAGE = `
                         <div class="form-group">
                             <label class="form-label" for="voice">语音选择</label>
                             <select class="form-select" id="voice">
-                                <option value="zh-CN-XiaoxiaoNeural">晓晓 (女声·温柔)</option>
-                                <option value="zh-CN-YunxiNeural">云希 (男声·清朗)</option>
-                                <option value="zh-CN-YunyangNeural">云扬 (男声·阳光)</option>
-                                <option value="zh-CN-XiaoyiNeural">晓伊 (女声·甜美)</option>
-                                <option value="zh-CN-YunjianNeural">云健 (男声·稳重)</option>
-                                <option value="zh-CN-XiaochenNeural">晓辰 (女声·知性)</option>
-                                <option value="zh-CN-XiaohanNeural">晓涵 (女声·优雅)</option>
-                                <option value="zh-CN-XiaomengNeural">晓梦 (女声·梦幻)</option>
-                                <option value="zh-CN-XiaomoNeural">晓墨 (女声·文艺)</option>
-                                <option value="zh-CN-XiaoqiuNeural">晓秋 (女声·成熟)</option>
-                                <option value="zh-CN-XiaoruiNeural">晓睿 (女声·智慧)</option>
-                                <option value="zh-CN-XiaoshuangNeural">晓双 (女声·活泼)</option>
-                                <option value="zh-CN-XiaoxuanNeural">晓萱 (女声·清新)</option>
-                                <option value="zh-CN-XiaoyanNeural">晓颜 (女声·柔美)</option>
-                                <option value="zh-CN-XiaoyouNeural">晓悠 (女声·悠扬)</option>
-                                <option value="zh-CN-XiaozhenNeural">晓甄 (女声·端庄)</option>
-                                <option value="zh-CN-YunfengNeural">云枫 (男声·磁性)</option>
-                                <option value="zh-CN-YunhaoNeural">云皓 (男声·豪迈)</option>
-                                <option value="zh-CN-YunxiaNeural">云夏 (男声·热情)</option>
-                                <option value="zh-CN-YunyeNeural">云野 (男声·野性)</option>
-                                <option value="zh-CN-YunzeNeural">云泽 (男声·深沉)</option>
+                                <option value="zh-CN-XiaoxiaoNeural" selected>晓晓 Xiaoxiao (女声·温柔)</option>
+                                <option value="zh-CN-YunxiNeural">云希 Yunxi (男声·清朗)</option>
+                                <option value="zh-CN-YunyangNeural">云扬 Yunyang (男声·阳光)</option>
+                                <option value="zh-CN-XiaoyiNeural">晓伊 Xiaoyi (女声·甜美)</option>
+                                <option value="zh-CN-YunjianNeural">云健 Yunjian (男声·稳重)</option>
+                                <option value="zh-CN-XiaochenNeural">晓辰 Xiaochen (女声·知性)</option>
+                                <option value="zh-CN-XiaohanNeural">晓涵 Xiaohan (女声·优雅)</option>
+                                <option value="zh-CN-XiaomengNeural">晓梦 Xiaomeng (女声·梦幻)</option>
+                                <option value="zh-CN-XiaomoNeural">晓墨 Xiaomo (女声·文艺)</option>
+                                <option value="zh-CN-XiaoqiuNeural">晓秋 Xiaoqiu (女声·成熟)</option>
+                                <option value="zh-CN-XiaoruiNeural">晓睿 Xiaorui (女声·智慧)</option>
+                                <option value="zh-CN-XiaoshuangNeural">晓双 Xiaoshuang (女声·活泼)</option>
+                                <option value="zh-CN-XiaoxuanNeural">晓萱 Xiaoxuan (女声·清新)</option>
+                                <option value="zh-CN-XiaoyanNeural">晓颜 Xiaoyan (女声·柔美)</option>
+                                <option value="zh-CN-XiaoyouNeural">晓悠 Xiaoyou (女声·悠扬)</option>
+                                <option value="zh-CN-XiaozhenNeural">晓甄 Xiaozhen (女声·端庄)</option>
+                                <option value="zh-CN-YunfengNeural">云枫 Yunfeng (男声·磁性)</option>
+                                <option value="zh-CN-YunhaoNeural">云皓 Yunhao (男声·豪迈)</option>
+                                <option value="zh-CN-YunxiaNeural">云夏 Yunxia (男声·热情)</option>
+                                <option value="zh-CN-YunyeNeural">云野 Yunye (男声·野性)</option>
+                                <option value="zh-CN-YunzeNeural">云泽 Yunze (男声·深沉)</option>
+                                <option value="en-US-JennyNeural">Jenny (Female, US)</option>
+                                <option value="en-US-GuyNeural">Guy (Male, US)</option>
+                                <option value="en-US-AriaNeural">Aria (Female, US)</option>
+                                <option value="en-US-DavisNeural">Davis (Male, US)</option>
+                                <option value="en-US-AmberNeural">Amber (Female, US)</option>
+                                <option value="en-US-AnaNeural">Ana (Female, Child, US)</option>
+                                <option value="en-US-AndrewNeural">Andrew (Male, US)</option>
+                                <option value="en-US-AshleyNeural">Ashley (Female, US)</option>
+                                <option value="en-US-BrandonNeural">Brandon (Male, US)</option>
+                                <option value="en-US-ChristopherNeural">Christopher (Male, US)</option>
+                                <option value="en-US-CoraNeural">Cora (Female, US)</option>
+                                <option value="en-US-ElizabethNeural">Elizabeth (Female, US)</option>
+                                <option value="en-US-EricNeural">Eric (Male, US)</option>
+                                <option value="en-US-JacobNeural">Jacob (Male, US)</option>
+                                <option value="en-US-JaneNeural">Jane (Female, US)</option>
+                                <option value="en-US-JasonNeural">Jason (Male, US)</option>
+                                <option value="en-US-MichelleNeural">Michelle (Female, US)</option>
+                                <option value="en-US-MonicaNeural">Monica (Female, US)</option>
+                                <option value="en-US-NancyNeural">Nancy (Female, US)</option>
+                                <option value="en-US-RogerNeural">Roger (Male, US)</option>
+                                <option value="en-US-SaraNeural">Sara (Female, US)</option>
+                                <option value="en-US-SteffanNeural">Steffan (Male, US)</option>
+                                <option value="en-US-TonyNeural">Tony (Male, US)</option>
+                                <option value="en-GB-SoniaNeural">Sonia (Female, UK)</option>
+                                <option value="en-GB-RyanNeural">Ryan (Male, UK)</option>
+                                <option value="en-GB-LibbyNeural">Libby (Female, UK)</option>
+                                <option value="en-GB-MaisieNeural">Maisie (Female, Child, UK)</option>
+                                <option value="en-AU-NatashaNeural">Natasha (Female, AU)</option>
+                                <option value="en-AU-WilliamNeural">William (Male, AU)</option>
+                                <option value="ja-JP-NanamiNeural">Nanami 七海 (女性)</option>
+                                <option value="ja-JP-KeitaNeural">Keita 圭太 (男性)</option>
+                                <option value="ja-JP-AoiNeural">Aoi 葵 (女性)</option>
+                                <option value="ja-JP-DaichiNeural">Daichi 大地 (男性)</option>
+                                <option value="ja-JP-MayuNeural">Mayu 真由 (女性)</option>
+                                <option value="ja-JP-NaokiNeural">Naoki 直樹 (男性)</option>
+                                <option value="ja-JP-ShioriNeural">Shiori 栞 (女性)</option>
+                                <option value="ko-KR-SunHiNeural">SunHi 선희 (여성)</option>
+                                <option value="ko-KR-InJoonNeural">InJoon 인준 (남성)</option>
+                                <option value="ko-KR-BongJinNeural">BongJin 봉진 (남성)</option>
+                                <option value="ko-KR-GookMinNeural">GookMin 국민 (남성)</option>
+                                <option value="ko-KR-JiMinNeural">JiMin 지민 (여성)</option>
+                                <option value="ko-KR-SeoHyeonNeural">SeoHyeon 서현 (여성)</option>
+                                <option value="ko-KR-SoonBokNeural">SoonBok 순복 (여성)</option>
+                                <option value="ko-KR-YuJinNeural">YuJin 유진 (여성)</option>
+                                <option value="fr-FR-DeniseNeural">Denise (Femme)</option>
+                                <option value="fr-FR-HenriNeural">Henri (Homme)</option>
+                                <option value="fr-FR-EloiseNeural">Eloise (Femme)</option>
+                                <option value="fr-FR-AlainNeural">Alain (Homme)</option>
+                                <option value="fr-FR-BrigitteNeural">Brigitte (Femme)</option>
+                                <option value="fr-FR-CelesteNeural">Celeste (Femme)</option>
+                                <option value="fr-FR-ClaudeNeural">Claude (Homme)</option>
+                                <option value="fr-FR-CoraliNeural">Corali (Femme)</option>
+                                <option value="fr-FR-JacquelineNeural">Jacqueline (Femme)</option>
+                                <option value="fr-FR-JeromeNeural">Jerome (Homme)</option>
+                                <option value="fr-FR-JosephineNeural">Josephine (Femme)</option>
+                                <option value="fr-FR-MauriceNeural">Maurice (Homme)</option>
+                                <option value="fr-FR-YvesNeural">Yves (Homme)</option>
+                                <option value="fr-FR-YvetteNeural">Yvette (Femme)</option>
+                                <option value="de-DE-KatjaNeural">Katja (Frau)</option>
+                                <option value="de-DE-ConradNeural">Conrad (Mann)</option>
+                                <option value="de-DE-AmalaNeural">Amala (Frau)</option>
+                                <option value="de-DE-BerndNeural">Bernd (Mann)</option>
+                                <option value="de-DE-ChristophNeural">Christoph (Mann)</option>
+                                <option value="de-DE-ElkeNeural">Elke (Frau)</option>
+                                <option value="de-DE-GiselaNeural">Gisela (Frau)</option>
+                                <option value="de-DE-KasperNeural">Kasper (Mann)</option>
+                                <option value="de-DE-KillianNeural">Killian (Mann)</option>
+                                <option value="de-DE-KlarissaNeural">Klarissa (Frau)</option>
+                                <option value="de-DE-KlausNeural">Klaus (Mann)</option>
+                                <option value="de-DE-LouisaNeural">Louisa (Frau)</option>
+                                <option value="de-DE-MajaNeural">Maja (Frau)</option>
+                                <option value="de-DE-RalfNeural">Ralf (Mann)</option>
+                                <option value="de-DE-TanjaNeural">Tanja (Frau)</option>
+                                <option value="es-ES-ElviraNeural">Elvira (Mujer)</option>
+                                <option value="es-ES-AlvaroNeural">Alvaro (Hombre)</option>
+                                <option value="es-ES-AbrilNeural">Abril (Mujer)</option>
+                                <option value="es-ES-ArnauNeural">Arnau (Hombre)</option>
+                                <option value="es-ES-DarioNeural">Dario (Hombre)</option>
+                                <option value="es-ES-EliasNeural">Elias (Hombre)</option>
+                                <option value="es-ES-EstrellaNeural">Estrella (Mujer)</option>
+                                <option value="es-ES-IreneNeural">Irene (Mujer)</option>
+                                <option value="es-ES-LaiaNeural">Laia (Mujer)</option>
+                                <option value="es-ES-LiaNeural">Lia (Mujer)</option>
+                                <option value="es-ES-NilNeural">Nil (Hombre)</option>
+                                <option value="es-ES-SaulNeural">Saul (Hombre)</option>
+                                <option value="es-ES-TeoNeural">Teo (Hombre)</option>
+                                <option value="es-ES-TrianaNeural">Triana (Mujer)</option>
+                                <option value="es-ES-VeraNeural">Vera (Mujer)</option>
+                                <option value="es-MX-DaliaNeural">Dalia (Mujer, MX)</option>
+                                <option value="es-MX-JorgeNeural">Jorge (Hombre, MX)</option>
+                                <option value="ru-RU-SvetlanaNeural">Svetlana Светлана (Женский)</option>
+                                <option value="ru-RU-DmitryNeural">Dmitry Дмитрий (Мужской)</option>
+                                <option value="ru-RU-DariyaNeural">Dariya Дарья (Женский)</option>
                             </select>
                         </div>
                         
@@ -1269,7 +1362,7 @@ const HTML_PAGE = `
         const translations = {
             en: {
                 'page.title': 'VoiceCraft - AI-Powered Voice Processing Platform',
-                'page.description': 'VoiceCraft is an AI-powered platform that converts text to speech and speech to text with 20+ voice options, lightning fast processing, completely free to use.',
+                'page.description': 'VoiceCraft is an AI-powered platform that converts text to speech and speech to text with 90+ voice options, lightning fast processing, completely free to use.',
                 'page.keywords': 'text to speech,AI voice synthesis,online TTS,voice generator,free voice tools,speech to text,voice transcription',
                 'lang.current': 'English',
                 'lang.en': 'English',
@@ -1282,7 +1375,7 @@ const HTML_PAGE = `
                 'lang.ru': 'Русский',
                 'header.title': 'VoiceCraft',
                 'header.subtitle': 'AI-Powered Voice Processing Platform',
-                'header.feature1': '20+ Voice Options',
+                'header.feature1': '90+ Voice Options',
                 'header.feature2': 'Lightning Fast',
                 'header.feature3': 'Completely Free',
                 'header.feature4': 'Download Support',
@@ -1291,7 +1384,7 @@ const HTML_PAGE = `
             },
             zh: {
                 'page.title': 'VoiceCraft - AI驱动的语音处理平台',
-                'page.description': 'VoiceCraft是一个AI驱动的平台，支持文字转语音和语音转文字，拥有20+种语音选项，闪电般的处理速度，完全免费使用。',
+                'page.description': 'VoiceCraft是一个AI驱动的平台，支持文字转语音和语音转文字，拥有90+种语音选项，闪电般的处理速度，完全免费使用。',
                 'page.keywords': '文字转语音,AI语音合成,在线TTS,语音生成器,免费语音工具,语音转文字,语音转录',
                 'lang.current': '中文',
                 'lang.en': 'English',
@@ -1304,7 +1397,7 @@ const HTML_PAGE = `
                 'lang.ru': 'Русский',
                 'header.title': 'VoiceCraft',
                 'header.subtitle': 'AI驱动的语音处理平台',
-                'header.feature1': '20+种语音选项',
+                'header.feature1': '90+种语音选项',
                 'header.feature2': '闪电般快速',
                 'header.feature3': '完全免费',
                 'header.feature4': '支持下载',
@@ -1313,7 +1406,7 @@ const HTML_PAGE = `
             },
             ja: {
                 'page.title': 'VoiceCraft - AI音声処理プラットフォーム',
-                'page.description': 'VoiceCraftはAI駆動のプラットフォームで、テキスト読み上げと音声テキスト変換に対応。20以上の音声オプション、高速処理、完全無料でご利用いただけます。',
+                'page.description': 'VoiceCraftはAI駆動のプラットフォームで、テキスト読み上げと音声テキスト変換に対応。90以上の音声オプション、高速処理、完全無料でご利用いただけます。',
                 'page.keywords': 'テキスト読み上げ,AI音声合成,オンラインTTS,音声ジェネレーター,無料音声ツール,音声テキスト変換,音声転写',
                 'lang.current': '日本語',
                 'lang.en': 'English',
@@ -1326,7 +1419,7 @@ const HTML_PAGE = `
                 'lang.ru': 'Русский',
                 'header.title': 'VoiceCraft',
                 'header.subtitle': 'AI音声処理プラットフォーム',
-                'header.feature1': '20以上の音声オプション',
+                'header.feature1': '90以上の音声オプション',
                 'header.feature2': '高速処理',
                 'header.feature3': '完全無料',
                 'header.feature4': 'ダウンロード対応',
@@ -1335,7 +1428,7 @@ const HTML_PAGE = `
             },
             ko: {
                 'page.title': 'VoiceCraft - AI 음성 처리 플랫폼',
-                'page.description': 'VoiceCraft는 AI 기반 플랫폼으로 텍스트 음성 변환과 음성 텍스트 변환을 지원합니다. 20개 이상의 음성 옵션, 빠른 처리 속도, 완전 무료로 이용하실 수 있습니다.',
+                'page.description': 'VoiceCraft는 AI 기반 플랫폼으로 텍스트 음성 변환과 음성 텍스트 변환을 지원합니다. 90개 이상의 음성 옵션, 빠른 처리 속도, 완전 무료로 이용하실 수 있습니다.',
                 'page.keywords': '텍스트 음성 변환,AI 음성 합성,온라인 TTS,음성 생성기,무료 음성 도구,음성 텍스트 변환,음성 전사',
                 'lang.current': '한국어',
                 'lang.en': 'English',
@@ -1348,7 +1441,7 @@ const HTML_PAGE = `
                 'lang.ru': 'Русский',
                 'header.title': 'VoiceCraft',
                 'header.subtitle': 'AI 음성 처리 플랫폼',
-                'header.feature1': '20개 이상의 음성 옵션',
+                'header.feature1': '90개 이상의 음성 옵션',
                 'header.feature2': '빠른 처리',
                 'header.feature3': '완전 무료',
                 'header.feature4': '다운로드 지원',
@@ -1357,7 +1450,7 @@ const HTML_PAGE = `
             },
             es: {
                 'page.title': 'VoiceCraft - Plataforma de Procesamiento de Voz con IA',
-                'page.description': 'VoiceCraft es una plataforma impulsada por IA que convierte texto a voz y voz a texto con más de 20 opciones de voz, procesamiento ultrarrápido, completamente gratis.',
+                'page.description': 'VoiceCraft es una plataforma impulsada por IA que convierte texto a voz y voz a texto con más de 90 opciones de voz, procesamiento ultrarrápido, completamente gratis.',
                 'page.keywords': 'texto a voz,síntesis de voz IA,TTS en línea,generador de voz,herramientas de voz gratis,voz a texto,transcripción de voz',
                 'lang.current': 'Español',
                 'lang.en': 'English',
@@ -1370,7 +1463,7 @@ const HTML_PAGE = `
                 'lang.ru': 'Русский',
                 'header.title': 'VoiceCraft',
                 'header.subtitle': 'Plataforma de Procesamiento de Voz con IA',
-                'header.feature1': 'Más de 20 Opciones de Voz',
+                'header.feature1': 'Más de 90 Opciones de Voz',
                 'header.feature2': 'Ultrarrápido',
                 'header.feature3': 'Completamente Gratis',
                 'header.feature4': 'Soporte de Descarga',
@@ -1379,7 +1472,7 @@ const HTML_PAGE = `
             },
             fr: {
                 'page.title': 'VoiceCraft - Plateforme de Traitement Vocal IA',
-                'page.description': 'VoiceCraft est une plateforme alimentée par IA qui convertit le texte en parole et la parole en texte avec plus de 20 options vocales, traitement ultra-rapide, entièrement gratuit.',
+                'page.description': 'VoiceCraft est une plateforme alimentée par IA qui convertit le texte en parole et la parole en texte avec plus de 90 options vocales, traitement ultra-rapide, entièrement gratuit.',
                 'page.keywords': 'texte vers parole,synthèse vocale IA,TTS en ligne,générateur vocal,outils vocaux gratuits,parole vers texte,transcription vocale',
                 'lang.current': 'Français',
                 'lang.en': 'English',
@@ -1392,7 +1485,7 @@ const HTML_PAGE = `
                 'lang.ru': 'Русский',
                 'header.title': 'VoiceCraft',
                 'header.subtitle': 'Plateforme de Traitement Vocal IA',
-                'header.feature1': 'Plus de 20 Options Vocales',
+                'header.feature1': 'Plus de 90 Options Vocales',
                 'header.feature2': 'Ultra-rapide',
                 'header.feature3': 'Entièrement Gratuit',
                 'header.feature4': 'Support de Téléchargement',
@@ -1401,7 +1494,7 @@ const HTML_PAGE = `
             },
             de: {
                 'page.title': 'VoiceCraft - KI-gestützte Sprachverarbeitungsplattform',
-                'page.description': 'VoiceCraft ist eine KI-gestützte Plattform, die Text in Sprache und Sprache in Text umwandelt, mit über 20 Sprachoptionen, blitzschneller Verarbeitung, völlig kostenlos.',
+                'page.description': 'VoiceCraft ist eine KI-gestützte Plattform, die Text in Sprache und Sprache in Text umwandelt, mit über 90 Sprachoptionen, blitzschneller Verarbeitung, völlig kostenlos.',
                 'page.keywords': 'Text zu Sprache,KI-Sprachsynthese,Online-TTS,Sprachgenerator,kostenlose Sprachtools,Sprache zu Text,Sprachtranskription',
                 'lang.current': 'Deutsch',
                 'lang.en': 'English',
@@ -1414,7 +1507,7 @@ const HTML_PAGE = `
                 'lang.ru': 'Русский',
                 'header.title': 'VoiceCraft',
                 'header.subtitle': 'KI-gestützte Sprachverarbeitungsplattform',
-                'header.feature1': 'Über 20 Sprachoptionen',
+                'header.feature1': 'Über 90 Sprachoptionen',
                 'header.feature2': 'Blitzschnell',
                 'header.feature3': 'Völlig Kostenlos',
                 'header.feature4': 'Download-Unterstützung',
@@ -1423,7 +1516,7 @@ const HTML_PAGE = `
             },
             ru: {
                 'page.title': 'VoiceCraft - ИИ-платформа обработки голоса',
-                'page.description': 'VoiceCraft - это платформа на базе ИИ, которая преобразует текст в речь и речь в текст с более чем 20 голосовыми опциями, молниеносной обработкой, совершенно бесплатно.',
+                'page.description': 'VoiceCraft - это платформа на базе ИИ, которая преобразует текст в речь и речь в текст с более чем 90 голосовыми опциями, молниеносной обработкой, совершенно бесплатно.',
                 'page.keywords': 'текст в речь,ИИ синтез речи,онлайн TTS,генератор голоса,бесплатные голосовые инструменты,речь в текст,транскрипция речи',
                 'lang.current': 'Русский',
                 'lang.en': 'English',
@@ -1436,7 +1529,7 @@ const HTML_PAGE = `
                 'lang.ru': 'Русский',
                 'header.title': 'VoiceCraft',
                 'header.subtitle': 'ИИ-платформа обработки голоса',
-                'header.feature1': 'Более 20 голосовых опций',
+                'header.feature1': 'Более 90 голосовых опций',
                 'header.feature2': 'Молниеносно',
                 'header.feature3': 'Совершенно Бесплатно',
                 'header.feature4': 'Поддержка Загрузки',
