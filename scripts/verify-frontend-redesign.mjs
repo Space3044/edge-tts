@@ -200,6 +200,18 @@ assert.ok(
   "voice filters should stay in a compact horizontal row on desktop",
 );
 
+assert.match(
+  source,
+  /\.voice-name\s*\{\s*font-size:\.88rem;\s*display:block;\s*min-width:0;\s*line-height:1\.45;\s*padding-bottom:3px;\s*margin-bottom:-3px;\s*white-space:nowrap;\s*overflow:hidden;\s*text-overflow:ellipsis;\s*\}/,
+  "compact voice names should keep ellipsis without clipping descenders like Jenny",
+);
+
+assert.match(
+  source,
+  /\.voice-meta\s*\{\s*font-size:\.75rem;\s*display:block;\s*min-width:0;\s*line-height:1\.45;\s*padding-bottom:3px;\s*margin-bottom:-3px;\s*white-space:nowrap;\s*overflow:hidden;\s*text-overflow:ellipsis;\s*\}/,
+  "compact voice metadata should keep ellipsis without clipping English text",
+);
+
 assert.ok(
   HTML_PAGE.indexOf('class="voice-panel"') < HTML_PAGE.indexOf('class="tts-production-panel"'),
   "voice library should be placed before the TTS production panel so it sits on the left",
@@ -327,6 +339,30 @@ assert.match(
   source,
   /\.tts-parameter-panel\s*>\s*\.panel-header\s*\{\s*align-items:center;/,
   "TTS parameter header should vertically align both sides",
+);
+
+assert.match(
+  source,
+  /\.controls-grid\s*\{[\s\S]*?padding:12px;[\s\S]*?background:var\(--surface-2\);[\s\S]*?border:1px solid var\(--border\);/,
+  "controls grid should read as one deliberate control strip",
+);
+
+assert.match(
+  source,
+  /\.controls-grid\s*>\s*\.form-group\s*\{[\s\S]*?min-height:104px;[\s\S]*?padding:12px;[\s\S]*?background:var\(--surface\);/,
+  "each control should have a stable inner panel",
+);
+
+assert.match(
+  source,
+  /\.range-value\s*\{[\s\S]*?min-width:60px;[\s\S]*?background:var\(--accent-soft\);[\s\S]*?color:var\(--accent\);/,
+  "range values should be clear compact value badges",
+);
+
+assert.match(
+  source,
+  /\.form-range\s*\{[\s\S]*?height:6px;[\s\S]*?background:linear-gradient\(90deg,var\(--accent-soft\),var\(--surface-3\)\);/,
+  "range inputs should have a custom quiet track",
 );
 
 assert.match(
