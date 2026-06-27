@@ -158,6 +158,17 @@ export const translations = {
       ru: { 'status.fileLabel': 'Файл', 'error.copyFailed': 'Не удалось скопировать' }
     };
     Object.keys(STATUS_AND_ERROR_TRANSLATIONS).forEach(function(lang) { Object.assign(translations[lang], STATUS_AND_ERROR_TRANSLATIONS[lang]); });
+    const TTS_RESULT_TRANSLATIONS = {
+      en: { 'tts.result': 'Generated result' },
+      zh: { 'tts.result': '生成结果' },
+      ja: { 'tts.result': '生成結果' },
+      ko: { 'tts.result': '생성 결과' },
+      es: { 'tts.result': 'Resultado generado' },
+      fr: { 'tts.result': 'Résultat généré' },
+      de: { 'tts.result': 'Erzeugtes Ergebnis' },
+      ru: { 'tts.result': 'Результат' }
+    };
+    Object.keys(TTS_RESULT_TRANSLATIONS).forEach(function(lang) { Object.assign(translations[lang], TTS_RESULT_TRANSLATIONS[lang]); });
     const WHISPER_ENDPOINT_TRANSLATIONS = {
       en: { 'stt.endpoint': 'Whisper ASR URL', 'stt.endpointPlaceholder': 'https://your-whisper-asr.example.com', 'stt.endpointHint': 'Enter the deployed Whisper ASR service base URL.', 'error.endpointRequired': 'Enter the Whisper ASR service URL' },
       zh: { 'stt.endpoint': 'Whisper ASR 地址', 'stt.endpointPlaceholder': 'https://你的-whisper-asr.example.com', 'stt.endpointHint': '填写已部署的 Whisper ASR 服务基础地址。', 'error.endpointRequired': '请输入 Whisper ASR 服务地址' },
