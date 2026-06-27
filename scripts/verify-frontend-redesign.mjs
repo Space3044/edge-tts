@@ -52,6 +52,9 @@ assert.match(source, /export\s+default\s+worker;/);
 const requiredMarkup = [
   'class="app-shell"',
   'rel="icon" href="/favicon.ico?v=voicecraft-20260627"',
+  'href="https://github.com/Space3044/edge-tts"',
+  'class="repo-link"',
+  'target="_blank" rel="noopener noreferrer"',
   'type="module" id="devAnnotationScript"',
   'agent-ui-annotation@0.7.0/dist/adapters/vanilla/index.js',
   'voicecraft-dev-annotation',
@@ -282,6 +285,36 @@ assert.match(
   source,
   /\.app-shell\s*\{[\s\S]*?padding:28px 0 44px;/,
   "desktop shell should avoid page-level scrolling at the annotated viewport height",
+);
+
+assert.match(
+  source,
+  /<a class="repo-link" href="https:\/\/github\.com\/Space3044\/edge-tts"[\s\S]*?<svg[\s\S]*?<\/svg><span class="icon-action-label">GitHub<\/span><\/a>/,
+  "repository link should be an icon action with an accessible text label",
+);
+
+assert.match(
+  source,
+  /\.repo-link\s*\{[\s\S]*?display:inline-flex;[\s\S]*?border:0;[\s\S]*?background:transparent;/,
+  "repository link should be integrated as a compact topbar action",
+);
+
+assert.match(
+  source,
+  /\.repo-link\s+svg\s*\{\s*width:18px;\s*height:18px;/,
+  "repository link should include a stable icon size",
+);
+
+assert.match(
+  source,
+  /\.theme-btn\s*\{[\s\S]*?border:0;[\s\S]*?background:transparent;/,
+  "theme toggle should be a borderless topbar icon action",
+);
+
+assert.match(
+  source,
+  /\.language-btn\s*\{[\s\S]*?border:0;[\s\S]*?background:transparent;/,
+  "language selector should be a borderless topbar action",
 );
 
 assert.match(
