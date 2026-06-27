@@ -8,8 +8,10 @@ const speechSource = read("../src/routes/speech.js");
 const transcriptionSource = read("../src/routes/transcriptions.js");
 const endpointSource = read("../src/edge/endpoint.js");
 const synthesizeSource = read("../src/edge/synthesize.js");
+const pageSource = read("../src/frontend/page.js");
 const clientSource = read("../src/frontend/client.js");
 const i18nSource = read("../src/frontend/i18n.js");
+const transcriptionBundle = [transcriptionSource, pageSource, clientSource, i18nSource].join("\n");
 
 assert.ok(
   existsSync(new URL("../src/utils/response.js", import.meta.url)),
@@ -17,15 +19,56 @@ assert.ok(
 );
 
 assert.doesNotMatch(
+  transcriptionBundle,
+  /siliconflow|SILICONFLOW|api\.siliconflow\.cn|FunAudioLLM|SenseVoiceSmall|sk-[a-z0-9]{20,}/i,
+  "transcription flow must not contain SiliconFlow integration or token defaults",
+);
+
+assert.doesNotMatch(
+  transcriptionBundle,
+  /tokenInput|tokenOption|token\.title|token\.default|token\.custom|token\.placeholder|API Token|Bearer \$\{token\}/,
+  "Whisper ASR transcription flow should not keep token UI or token forwarding",
+);
+
+assert.doesNotMatch(
   transcriptionSource,
-  /sk-[a-z0-9]{20,}/i,
-  "transcription route must not contain a hard-coded API token",
+  /env\.[A-Z0-9_]+|WHISPER_ASR_BASE_URL|SILICONFLOW_API_KEY/,
+  "Whisper ASR endpoint should be supplied by the frontend, not Cloudflare env",
 );
 
 assert.match(
   transcriptionSource,
-  /env\.SILICONFLOW_API_KEY/,
-  "transcription route should read the default token from Cloudflare env",
+  /audio_file/,
+  "Whisper ASR proxy should forward the file as audio_file",
+);
+
+assert.match(
+  transcriptionSource,
+  /\/asr/,
+  "Whisper ASR proxy should call the /asr endpoint",
+);
+
+assert.match(
+  transcriptionSource,
+  /searchParams\.set\("output", "json"\)/,
+  "Whisper ASR proxy should request JSON output",
+);
+
+assert.match(
+  transcriptionSource,
+  /endpoint|whisper/i,
+  "transcription route should accept a frontend-supplied Whisper endpoint",
+);
+
+assert.match(
+  pageSource + clientSource,
+  /whisperEndpoint|WHISPER ASR|Whisper ASR/i,
+  "frontend should expose a Whisper ASR endpoint input",
+);
+assert.match(
+  clientSource,
+  /WHISPER_ENDPOINT_STORAGE_KEY|voicecraft-whisper-endpoint|loadWhisperEndpoint|saveWhisperEndpoint/,
+  "frontend should persist the Whisper ASR endpoint in local browser storage",
 );
 
 assert.doesNotMatch(
@@ -76,8 +119,8 @@ assert.doesNotMatch(
   "frontend should not keep unused currentMode state",
 );
 
-for (const key of ["status.fileLabel", "error.copyFailed"]) {
+for (const key of ["status.fileLabel", "error.copyFailed", "stt.endpoint", "stt.endpointPlaceholder", "stt.endpointHint", "error.endpointRequired"]) {
   assert.ok(i18nSource.includes(`'${key}'`), `translations should include ${key}`);
 }
 
-console.log("Verified code hygiene and fallback cleanup.");
+console.log("Verified code hygiene and Whisper ASR transcription flow.");
