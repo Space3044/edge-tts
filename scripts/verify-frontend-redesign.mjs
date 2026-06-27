@@ -5,6 +5,7 @@ const source = readFileSync(new URL("../index.js", import.meta.url), "utf8");
 
 const requiredMarkup = [
   'class="app-shell"',
+  'rel="icon" href="/favicon.ico?v=voicecraft-20260627"',
   'class="workspace-grid"',
   'class="input-panel"',
   'class="voice-panel"',
@@ -13,6 +14,24 @@ const requiredMarkup = [
   'id="selectedVoiceId"',
   'id="voiceLanguageFilters"',
   'id="voiceGenderFilters"',
+  'id="speedValue"',
+  'id="pitchValue"',
+  'id="ssmlInputTab"',
+  'id="ssmlInputArea"',
+  'id="ssml"',
+  'id="ssmlTextareaShell"',
+  'id="ssmlExampleCode"',
+  'id="useSsmlExampleBtn"',
+  'class="ssml-ghost-example"',
+  'class="field-label-row"',
+  'class="btn-secondary inline-action"',
+  'data-i18n="input.ssml"',
+  'data-i18n="input.useSsmlExample"',
+  'data-i18n="input.ssmlHint"',
+  'type="range" min="0.5" max="2" step="0.05"',
+  'type="range" min="-50" max="50" step="1"',
+  'data-i18n="style.general"',
+  'data-i18n="style.customerservice"',
   'id="ttsForm"',
   'id="transcriptionForm"',
   'id="result"',
@@ -39,9 +58,18 @@ const requiredFunctions = [
   "function initializeVoiceKeyboard(",
   "function initializeTextCounter(",
   "function updateTextCounter(",
+  "function resetRangeControl(",
+  "function initializeRangeControls(",
+  "function initializeSsmlExample(",
+  "function updateRangeValues(",
+  "function formatSpeedValue(",
+  "function formatPitchValue(",
   "function showToast(",
   "function getSelectedVoiceId(",
+  "function getAudioFromSsml(",
   "const CONFIG =",
+  "const FAVICON_ICO_BASE64 =",
+  "const SSML_EXAMPLE =",
   "let voiceSearchTimer",
 ];
 
@@ -63,11 +91,88 @@ assert.match(
   /const voice = getSelectedVoiceId\(\);/,
   "TTS submit should read the selected voice through getSelectedVoiceId()",
 );
+assert.match(
+  source,
+  /path === "\/favicon\.ico"/,
+  "Worker should serve favicon.ico directly",
+);
+
+assert.match(
+  source,
+  /"Content-Type": "image\/x-icon"/,
+  "favicon route should return image/x-icon",
+);
+assert.ok(
+  source.includes("height:clamp(640px,calc(100dvh - 112px),760px)"),
+  "workspace should use a stable desktop height",
+);
+
+assert.ok(
+  source.includes(".voice-panel { display:grid; grid-template-rows:auto auto auto auto auto minmax(0,1fr) auto"),
+  "voice panel should use a fixed internal grid with a scrollable list area",
+);
+
+assert.ok(
+  source.includes(".voice-list { max-height:none; min-height:0; height:100%;"),
+  "voice list should fill the available panel space instead of growing the page",
+);
+
+assert.ok(
+  source.includes(".voice-panel .filter-group { flex-wrap:nowrap; overflow-x:auto"),
+  "voice filters should stay in a compact horizontal row on desktop",
+);
 
 assert.doesNotMatch(
   source,
   /<select class="form-select" id="voice">[\s\S]*?<option value=/,
   "the visible long voice select should be replaced by the new picker",
+);
+
+assert.doesNotMatch(
+  source,
+  /<select class="form-select" id="speed">/,
+  "speed should use a range slider instead of a select",
+);
+
+assert.doesNotMatch(
+  source,
+  /<select class="form-select" id="pitch">/,
+  "pitch should use a range slider instead of a select",
+);
+assert.doesNotMatch(
+  source,
+  /getAudioChunk\(input,[\s\S]*?getSsml\(/,
+  "SSML mode should not route user SSML through getSsml() again",
+);
+
+assert.match(
+  source,
+  /pointer-events:none/,
+  "SSML ghost example should not intercept text input",
+);
+
+assert.match(
+  source,
+  /addEventListener\('dblclick'/,
+  "speed and pitch sliders should reset on double-click",
+);
+
+assert.match(
+  source,
+  /ssmlInput\.value\s*=\s*SSML_EXAMPLE/,
+  "SSML example button should fill the textarea with SSML_EXAMPLE",
+);
+
+assert.match(
+  source,
+  /inputType:\s*'ssml'/,
+  "TTS submit should send inputType='ssml' for SSML mode",
+);
+
+assert.match(
+  source,
+  /requestBody\.inputType\s*===\s*['"]ssml['"]/,
+  "backend should branch on requestBody.inputType === 'ssml'",
 );
 
 assert.ok(
@@ -90,14 +195,34 @@ for (const lang of ["en", "zh", "ja", "ko", "es", "fr", "de", "ru"]) {
 for (const key of [
   "tts.title",
   "input.method",
+  "input.ssml",
+  "input.ssmlText",
+  "input.ssmlPlaceholder",
+  "input.ssmlHint",
+  "input.useSsmlExample",
   "voice.title",
   "voice.search",
   "stt.title",
   "token.title",
   "action.generate",
   "action.transcribe",
+  "control.speedMin",
+  "control.speedMax",
+  "control.pitchMin",
+  "control.pitchMax",
+  "style.general",
+  "style.assistant",
+  "style.chat",
+  "style.customerservice",
+  "style.newscast",
+  "style.affectionate",
+  "style.calm",
+  "style.cheerful",
+  "style.gentle",
+  "style.lyrical",
+  "style.serious",
 ]) {
-  assert.ok(translationsSource.includes(`'${key}'`), `translations should include ${key}`);
+  assert.ok(source.includes(`'${key}'`), `translations should include ${key}`);
 }
 
 console.log("Verified VoiceCraft redesign structure.");
