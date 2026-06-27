@@ -1,6 +1,6 @@
 import { errorResponse, jsonResponse } from "../utils/response.js";
 
-const MAX_AUDIO_FILE_SIZE = 10 * 1024 * 1024;
+const MAX_AUDIO_FILE_SIZE = 50 * 1024 * 1024;
 const AUDIO_EXTENSION_PATTERN = /\.(mp3|wav|m4a|flac|aac|ogg|webm|amr|3gp)$/i;
 const ALLOWED_AUDIO_TYPES = [
     "audio/mpeg",
@@ -169,7 +169,7 @@ export async function handleAudioTranscription(request) {
         }
 
         if (audioFile.size > MAX_AUDIO_FILE_SIZE) {
-            return errorResponse("音频文件大小不能超过10MB", {
+            return errorResponse("音频文件大小不能超过50MB", {
                 status: 400,
                 type: "invalid_request_error",
                 param: "file",

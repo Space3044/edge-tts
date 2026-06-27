@@ -65,6 +65,31 @@ assert.match(
   /whisperEndpoint|WHISPER ASR|Whisper ASR/i,
   "frontend should expose a Whisper ASR endpoint input",
 );
+
+assert.match(
+  transcriptionSource,
+  /MAX_AUDIO_FILE_SIZE\s*=\s*50\s*\*\s*1024\s*\*\s*1024/,
+  "transcription route should enforce a 50MB audio upload limit",
+);
+
+assert.match(
+  clientSource,
+  /file\.size\s*>\s*50\s*\*\s*1024\s*\*\s*1024/,
+  "frontend audio upload guard should match the 50MB backend limit",
+);
+
+assert.match(
+  i18nSource,
+  /50MB|50 MB/,
+  "frontend translations should tell users the 50MB audio upload limit",
+);
+
+assert.doesNotMatch(
+  transcriptionBundle,
+  /10MB|10 MB|10\s*\*\s*1024\s*\*\s*1024/,
+  "transcription flow should not keep the previous 10MB audio upload limit",
+);
+
 assert.match(
   clientSource,
   /WHISPER_ENDPOINT_STORAGE_KEY|voicecraft-whisper-endpoint|loadWhisperEndpoint|saveWhisperEndpoint/,
