@@ -1,9 +1,23 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
+import { CLIENT_SCRIPT } from "../src/frontend/client.js";
 
-const source = readFileSync(new URL("../index.js", import.meta.url), "utf8");
+const sourceFiles = [
+  "../src/frontend/voices.js",
+  "../src/frontend/client.js",
+  "../src/routes/speech.js",
+  "../src/edge/synthesize.js",
+  "../src/edge/ssml.js",
+];
 
-const voiceBlockMatch = source.match(/const VOICES = (?<voices>\[[\s\S]*?\]);/);
+const voiceSource = readFileSync(new URL("../src/frontend/voices.js", import.meta.url), "utf8");
+
+const source = [
+  CLIENT_SCRIPT,
+  ...sourceFiles.map((file) => readFileSync(new URL(file, import.meta.url), "utf8")),
+].join("\n");
+
+const voiceBlockMatch = voiceSource.match(/const VOICES = (?<voices>\[[\s\S]*?\]);/);
 assert.ok(voiceBlockMatch, "VOICES data should exist");
 
 const voiceMatches = [

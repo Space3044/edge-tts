@@ -1,7 +1,53 @@
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
+import { CLIENT_SCRIPT } from "../src/frontend/client.js";
+import { HTML_PAGE } from "../src/frontend/page.js";
 
-const source = readFileSync(new URL("../index.js", import.meta.url), "utf8");
+const sourceFiles = [
+  "../index.js",
+  "../src/worker.js",
+  "../src/routes/speech.js",
+  "../src/routes/transcriptions.js",
+  "../src/edge/synthesize.js",
+  "../src/edge/ssml.js",
+  "../src/frontend/page.js",
+  "../src/frontend/styles.js",
+  "../src/frontend/client.js",
+  "../src/frontend/voices.js",
+  "../src/frontend/i18n.js",
+  "../src/frontend/favicon.js",
+];
+
+const source = [
+  HTML_PAGE,
+  CLIENT_SCRIPT,
+  ...sourceFiles.map((file) => readFileSync(new URL(file, import.meta.url), "utf8")),
+].join("\n");
+
+const expectedModuleFiles = [
+  "../src/worker.js",
+  "../src/routes/speech.js",
+  "../src/routes/transcriptions.js",
+  "../src/edge/endpoint.js",
+  "../src/edge/ssml.js",
+  "../src/edge/synthesize.js",
+  "../src/edge/signing.js",
+  "../src/frontend/page.js",
+  "../src/frontend/styles.js",
+  "../src/frontend/client.js",
+  "../src/frontend/voices.js",
+  "../src/frontend/i18n.js",
+  "../src/frontend/favicon.js",
+  "../src/utils/cors.js",
+  "../src/utils/text.js",
+];
+
+for (const modulePath of expectedModuleFiles) {
+  assert.ok(existsSync(new URL(modulePath, import.meta.url)), `missing module file: ${modulePath}`);
+}
+
+assert.match(source, /import\s+worker\s+from\s+["']\.\/src\/worker\.js["'];/);
+assert.match(source, /export\s+default\s+worker;/);
 
 const requiredMarkup = [
   'class="app-shell"',
@@ -77,7 +123,7 @@ for (const marker of requiredFunctions) {
   assert.ok(source.includes(marker), `missing required function marker: ${marker}`);
 }
 
-const scripts = [...source.matchAll(/<script>([\s\S]*?)<\/script>/g)];
+const scripts = [...HTML_PAGE.matchAll(/<script>([\s\S]*?)<\/script>/g)];
 assert.equal(scripts.length, 2, "page should include the theme script and the main interaction script");
 for (const [index, script] of scripts.entries()) {
   assert.doesNotThrow(
@@ -187,7 +233,7 @@ const translationsSource = translationsMatch.groups.translations;
 for (const lang of ["en", "zh", "ja", "ko", "es", "fr", "de", "ru"]) {
   assert.match(
     translationsSource,
-    new RegExp(`(^|[,{])\\s*${lang}\\s*:`),
+    new RegExp(`(^|[,{])\\s*["']?${lang}["']?\\s*:`),
     `translations should include ${lang}`,
   );
 }
