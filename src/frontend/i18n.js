@@ -169,6 +169,17 @@ export const translations = {
       ru: { 'tts.result': 'Результат' }
     };
     Object.keys(TTS_RESULT_TRANSLATIONS).forEach(function(lang) { Object.assign(translations[lang], TTS_RESULT_TRANSLATIONS[lang]); });
+    const CONTROL_PANEL_TRANSLATIONS = {
+      en: { 'control.title': 'Voice settings' },
+      zh: { 'control.title': '声音设置' },
+      ja: { 'control.title': '音声設定' },
+      ko: { 'control.title': '음성 설정' },
+      es: { 'control.title': 'Ajustes de voz' },
+      fr: { 'control.title': 'Réglages de voix' },
+      de: { 'control.title': 'Stimmeinstellungen' },
+      ru: { 'control.title': 'Настройки голоса' }
+    };
+    Object.keys(CONTROL_PANEL_TRANSLATIONS).forEach(function(lang) { Object.assign(translations[lang], CONTROL_PANEL_TRANSLATIONS[lang]); });
     const WHISPER_ENDPOINT_TRANSLATIONS = {
       en: { 'stt.endpoint': 'Whisper ASR URL', 'stt.endpointPlaceholder': 'https://your-whisper-asr.example.com', 'stt.endpointHint': 'Enter the deployed Whisper ASR service base URL.', 'error.endpointRequired': 'Enter the Whisper ASR service URL' },
       zh: { 'stt.endpoint': 'Whisper ASR 地址', 'stt.endpointPlaceholder': 'https://你的-whisper-asr.example.com', 'stt.endpointHint': '填写已部署的 Whisper ASR 服务基础地址。', 'error.endpointRequired': '请输入 Whisper ASR 服务地址' },

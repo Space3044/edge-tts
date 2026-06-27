@@ -61,6 +61,7 @@ const requiredMarkup = [
   'class="workspace-grid"',
   'class="tts-production-panel"',
   'class="input-panel tts-parameter-panel"',
+  'class="settings-panel"',
   'class="result-panel tts-result-panel"',
   'class="voice-panel"',
   'id="voiceSearch"',
@@ -70,6 +71,8 @@ const requiredMarkup = [
   'id="voiceGenderFilters"',
   'id="speedValue"',
   'id="pitchValue"',
+  'class="style-options"',
+  'class="style-option active"',
   'id="ssmlInputTab"',
   'id="ssmlInputArea"',
   'id="ssml"',
@@ -103,6 +106,7 @@ const requiredMarkup = [
   'data-i18n="tts.title"',
   'data-i18n="tts.result"',
   'data-i18n="input.method"',
+  'data-i18n="control.title"',
   'data-i18n="voice.title"',
   'data-i18n="stt.title"',
   'id="whisperEndpoint"',
@@ -126,6 +130,7 @@ const requiredFunctions = [
   "function updateTextCounter(",
   "function resetRangeControl(",
   "function initializeRangeControls(",
+  "function initializeStyleOptions(",
   "function initializeSsmlExample(",
   "function updateRangeValues(",
   "function formatSpeedValue(",
@@ -218,6 +223,21 @@ assert.ok(
 );
 
 assert.ok(
+  HTML_PAGE.indexOf('class="result-panel tts-result-panel"') < HTML_PAGE.indexOf('class="settings-panel"'),
+  "settings panel should be a top-level column after the TTS production panel",
+);
+
+assert.ok(
+  HTML_PAGE.indexOf('class="settings-panel"') < HTML_PAGE.indexOf('class="transcription-panel"'),
+  "settings panel should remain inside the TTS workspace instead of the transcription view",
+);
+
+assert.ok(
+  HTML_PAGE.includes('</section>\n        <aside class="settings-panel">'),
+  "settings panel should be a direct TTS workspace child like the voice library",
+);
+
+assert.ok(
   HTML_PAGE.indexOf('class="input-panel tts-parameter-panel"') < HTML_PAGE.indexOf('class="result-panel tts-result-panel"'),
   "TTS parameters should be above the generated result panel",
 );
@@ -263,6 +283,23 @@ assert.doesNotMatch(
   "generate action should not remain below the controls grid",
 );
 
+assert.ok(
+  HTML_PAGE.indexOf('<div class="controls-grid">') > HTML_PAGE.indexOf('</form>\n          <aside class="settings-panel">'),
+  "settings controls should not remain inside the text-to-speech input panel",
+);
+
+assert.match(
+  HTML_PAGE,
+  /<aside class="settings-panel">[\s\S]*?<div class="panel-header">[\s\S]*?data-i18n="control\.title"[\s\S]*?<div class="controls-grid">/,
+  "settings controls should live inside an independent panel with its own header",
+);
+
+assert.doesNotMatch(
+  HTML_PAGE,
+  /data-i18n="control\.subtitle"|调整语速、音调和风格。|Adjust speed, pitch, and style\./,
+  "settings panel should not show the redundant subtitle paragraph",
+);
+
 assert.doesNotMatch(
   HTML_PAGE,
   /<div class="text-tool-row"><span id="textCounter"[\s\S]*?<details class="polish-config" id="polishConfig">/,
@@ -295,8 +332,8 @@ assert.match(
 
 assert.match(
   source,
-  /\.app-shell\s*\{[\s\S]*?padding:28px 0 44px;/,
-  "desktop shell should avoid page-level scrolling at the annotated viewport height",
+  /\.app-shell\s*\{\s*width:min\(1440px,calc\(100% - 40px\)\);[\s\S]*?padding:28px 0 44px;/,
+  "desktop shell should be wide enough for the three-block workspace",
 );
 
 assert.match(
@@ -343,14 +380,38 @@ assert.match(
 
 assert.match(
   source,
-  /\.controls-grid\s*\{[\s\S]*?padding:12px;[\s\S]*?background:var\(--surface-2\);[\s\S]*?border:1px solid var\(--border\);/,
-  "controls grid should read as one deliberate control strip",
+  /\.workspace-grid\s*\{[\s\S]*?grid-template-columns:320px minmax\(0,1fr\) 260px;/,
+  "TTS workspace should use three independent columns for voices, input, and settings",
 );
 
 assert.match(
   source,
-  /\.controls-grid\s*>\s*\.form-group\s*\{[\s\S]*?min-height:104px;[\s\S]*?padding:12px;[\s\S]*?background:var\(--surface\);/,
-  "each control should have a stable inner panel",
+  /\.settings-panel\s*\{\s*height:100%;\s*min-height:0;\s*overflow:hidden;\s*display:grid;\s*grid-template-rows:auto minmax\(0,1fr\);/,
+  "settings panel should behave like an independent desktop column",
+);
+
+assert.match(
+  source,
+  /\.controls-grid\s*\{\s*display:grid;\s*grid-template-columns:1fr;[\s\S]*?padding:12px;[\s\S]*?background:var\(--surface-2\);[\s\S]*?border:1px solid var\(--border\);/,
+  "controls grid should read as a vertical settings stack inside the settings panel",
+);
+
+assert.match(
+  source,
+  /\.controls-grid\s*>\s*\.form-group\s*\{[\s\S]*?min-height:84px;[\s\S]*?padding:10px;[\s\S]*?background:var\(--surface\);/,
+  "speed and pitch controls should use a compact stable panel height",
+);
+
+assert.match(
+  source,
+  /\.style-options\s*\{\s*display:grid;\s*grid-template-columns:repeat\(2,minmax\(0,1fr\)\);/,
+  "style options should be directly visible as a two-column option grid",
+);
+
+assert.match(
+  source,
+  /\.style-option\s*\{[\s\S]*?min-height:30px;[\s\S]*?font-size:\.72rem;/,
+  "style option buttons should stay compact enough for the settings column",
 );
 
 assert.match(
@@ -421,6 +482,18 @@ assert.match(
 
 assert.match(
   source,
+  /@media \(max-width:880px\)[\s\S]*?\.tts-parameter-panel\s*\{\s*display:block;/,
+  "mobile layout should collapse the two-column TTS panel back to one column",
+);
+
+assert.match(
+  source,
+  /@media \(max-width:880px\)[\s\S]*?\.settings-panel\s*\{\s*height:auto;\s*overflow:visible;/,
+  "mobile layout should collapse the independent settings panel into the normal flow",
+);
+
+assert.match(
+  source,
   /\[data-i18n-aria-label\]/,
   "icon-only action labels should be localized through data-i18n-aria-label",
 );
@@ -429,6 +502,24 @@ assert.doesNotMatch(
   source,
   /polishBtn\.textContent\s*=/,
   "AI polish busy state should not replace icon button contents",
+);
+
+assert.doesNotMatch(
+  source,
+  /<select class="form-select" id="style">/,
+  "style should be shown directly instead of using a select dropdown",
+);
+
+assert.match(
+  source,
+  /<input type="hidden" id="style" value="general">/,
+  "style option buttons should keep the existing hidden style value for submit compatibility",
+);
+
+assert.match(
+  source,
+  /document\.querySelectorAll\('\.style-option'\)[\s\S]*?classList\.toggle\('active'/,
+  "style option buttons should update their active state and hidden value",
 );
 
 assert.doesNotMatch(
