@@ -52,8 +52,13 @@ assert.match(source, /export\s+default\s+worker;/);
 const requiredMarkup = [
   'class="app-shell"',
   'rel="icon" href="/favicon.ico?v=voicecraft-20260627"',
+  'type="module" id="devAnnotationScript"',
+  'agent-ui-annotation@0.7.0/dist/adapters/vanilla/index.js',
+  'voicecraft-dev-annotation',
   'class="workspace-grid"',
-  'class="input-panel"',
+  'class="tts-production-panel"',
+  'class="input-panel tts-parameter-panel"',
+  'class="result-panel tts-result-panel"',
   'class="voice-panel"',
   'id="voiceSearch"',
   'id="voiceList"',
@@ -70,7 +75,17 @@ const requiredMarkup = [
   'id="useSsmlExampleBtn"',
   'class="ssml-ghost-example"',
   'class="field-label-row"',
-  'class="btn-secondary inline-action"',
+  'class="field-label-main"',
+  'id="textCounter"',
+  'class="panel-header-actions input-method-control"',
+  'class="inline-action-group"',
+  'class="inline-action icon-action icon-action-plain"',
+  'class="btn-primary inline-generate-action" id="generateBtn"',
+  'class="icon-action-label"',
+  'aria-label="AI polish"',
+  'aria-label="AI polish settings"',
+  'data-i18n-aria-label="action.polish"',
+  'data-i18n-aria-label="polish.config"',
   'data-i18n="input.ssml"',
   'data-i18n="input.useSsmlExample"',
   'data-i18n="input.ssmlHint"',
@@ -83,6 +98,7 @@ const requiredMarkup = [
   'id="result"',
   'id="transcriptionResult"',
   'data-i18n="tts.title"',
+  'data-i18n="tts.result"',
   'data-i18n="input.method"',
   'data-i18n="voice.title"',
   'data-i18n="stt.title"',
@@ -124,8 +140,8 @@ for (const marker of requiredFunctions) {
   assert.ok(source.includes(marker), `missing required function marker: ${marker}`);
 }
 
-const scripts = [...HTML_PAGE.matchAll(/<script>([\s\S]*?)<\/script>/g)];
-assert.equal(scripts.length, 2, "page should include the theme script and the main interaction script");
+const scripts = [...HTML_PAGE.matchAll(/<script(?:\s+[^>]*)?>([\s\S]*?)<\/script>/g)];
+assert.equal(scripts.length, 3, "page should include the theme script, dev annotation script, and the main interaction script");
 for (const [index, script] of scripts.entries()) {
   assert.doesNotThrow(
     () => new Function(script[1]),
@@ -137,6 +153,18 @@ assert.match(
   source,
   /const voice = getSelectedVoiceId\(\);/,
   "TTS submit should read the selected voice through getSelectedVoiceId()",
+);
+
+assert.match(
+  source,
+  /localhost[\s\S]*127\.0\.0\.1[\s\S]*annotate[\s\S]*voicecraft-dev-annotation/,
+  "agent-ui-annotation should be guarded to local development or explicit opt-in",
+);
+
+assert.match(
+  source,
+  /import\('https:\/\/unpkg\.com\/agent-ui-annotation@0\.7\.0\/dist\/adapters\/vanilla\/index\.js'\)/,
+  "development annotation toolbar should be loaded from the vanilla adapter CDN entry",
 );
 assert.match(
   source,
@@ -167,6 +195,171 @@ assert.ok(
 assert.ok(
   source.includes(".voice-panel .filter-group { flex-wrap:nowrap; overflow-x:auto"),
   "voice filters should stay in a compact horizontal row on desktop",
+);
+
+assert.ok(
+  HTML_PAGE.indexOf('class="voice-panel"') < HTML_PAGE.indexOf('class="tts-production-panel"'),
+  "voice library should be placed before the TTS production panel so it sits on the left",
+);
+
+assert.ok(
+  HTML_PAGE.indexOf('class="input-panel tts-parameter-panel"') < HTML_PAGE.indexOf('class="result-panel tts-result-panel"'),
+  "TTS parameters should be above the generated result panel",
+);
+
+assert.ok(
+  HTML_PAGE.indexOf('class="panel-header-actions input-method-control"') < HTML_PAGE.indexOf('id="textInputArea"'),
+  "input method controls should live in the TTS panel header before the text input area",
+);
+
+assert.match(
+  HTML_PAGE,
+  /class="panel-header-actions input-method-control"><label class="form-label"[\s\S]*?<\/label><div class="input-method-tabs">/,
+  "input method label should sit directly before the three input method buttons",
+);
+
+assert.match(
+  HTML_PAGE,
+  /class="inline-action-group"><button type="button" class="inline-action icon-action icon-action-plain" id="polishBtn"[\s\S]*?<details class="polish-config" id="polishConfig">/,
+  "AI polish settings should sit next to the AI polish icon action",
+);
+
+assert.match(
+  HTML_PAGE,
+  /<summary class="inline-action icon-action icon-action-plain" aria-label="AI polish settings"/,
+  "AI polish settings should use an icon button summary with an accessible label",
+);
+
+assert.match(
+  HTML_PAGE,
+  /class="field-label-main"><label class="form-label" for="text" data-i18n="input\.text">[\s\S]*?<span id="textCounter" class="char-counter"[\s\S]*?<\/span><\/div><div class="inline-action-group"[\s\S]*?id="generateBtn"[\s\S]*?<\/div><\/div><textarea class="form-textarea" id="text"/,
+  "generate action should live on the input text row before the textarea",
+);
+
+assert.doesNotMatch(
+  HTML_PAGE,
+  /<div class="text-tool-row"><span id="textCounter"/,
+  "text counter should move next to the input text label instead of below the textarea",
+);
+
+assert.doesNotMatch(
+  HTML_PAGE,
+  /<\/div><\/div>\s*<textarea class="form-textarea" id="text"[\s\S]*?<\/div>\s*<div class="controls-grid"[\s\S]*?<\/div><\/div>\s*<button type="submit" class="btn-primary" id="generateBtn"/,
+  "generate action should not remain below the controls grid",
+);
+
+assert.doesNotMatch(
+  HTML_PAGE,
+  /<div class="text-tool-row"><span id="textCounter"[\s\S]*?<details class="polish-config" id="polishConfig">/,
+  "AI polish settings should not remain below the textarea",
+);
+
+assert.match(
+  source,
+  /\.tts-production-panel\s*\{\s*height:100%;\s*min-height:0;\s*display:grid;\s*grid-template-rows:minmax\(0,1fr\) 220px;/,
+  "TTS production panel should split the right side into parameter and result rows",
+);
+
+assert.doesNotMatch(
+  HTML_PAGE,
+  /<p data-i18n="tts\.resultHint">/,
+  "generated result panel should not show the redundant hint paragraph",
+);
+
+assert.doesNotMatch(
+  source,
+  /tts\.resultHint/,
+  "unused generated result hint translation should be removed",
+);
+
+assert.match(
+  source,
+  /\.tts-result-container\s*\{\s*display:flex;\s*align-items:center;\s*min-height:126px;\s*height:auto;\s*margin-top:0;\s*overflow:hidden;/,
+  "generated result container should reserve reasonable height without its own scrollbar",
+);
+
+assert.match(
+  source,
+  /\.app-shell\s*\{[\s\S]*?padding:28px 0 44px;/,
+  "desktop shell should avoid page-level scrolling at the annotated viewport height",
+);
+
+assert.match(
+  source,
+  /\.input-method-control\s*\{\s*display:flex;\s*align-items:center;/,
+  "input method controls should be one horizontal row",
+);
+
+assert.match(
+  source,
+  /\.tts-parameter-panel\s*>\s*\.panel-header\s*\{\s*align-items:center;/,
+  "TTS parameter header should vertically align both sides",
+);
+
+assert.match(
+  source,
+  /\.field-label-row\s*\{[\s\S]*?min-height:38px;/,
+  "text input label row should reserve one stable control height",
+);
+
+assert.match(
+  source,
+  /\.icon-action\s*\{\s*width:38px;\s*height:38px;/,
+  "AI polish actions should use equal-size icon buttons",
+);
+
+assert.match(
+  source,
+  /\.icon-action-plain\s*\{\s*border:0;\s*background:transparent;\s*box-shadow:none;/,
+  "AI polish icon buttons should not have an outer frame",
+);
+
+assert.match(
+  source,
+  /\.field-label-main\s+\.form-label\s*\{[\s\S]*?font-size:1rem;/,
+  "input text label should be sized closer to the icon controls",
+);
+
+assert.match(
+  source,
+  /\.field-label-main\s*\{\s*display:flex;\s*align-items:center;/,
+  "input text label and counter should share the left side of the field label row",
+);
+
+assert.match(
+  source,
+  /\.tts-parameter-panel\s*\{\s*overflow:hidden;/,
+  "TTS parameter panel should not show its own scrollbar on desktop",
+);
+
+assert.match(
+  source,
+  /\.form-textarea\s*\{\s*height:236px;\s*min-height:236px;/,
+  "text input area should use available vertical space while controls fit without panel scrolling",
+);
+
+assert.match(
+  source,
+  /\.file-drop-zone,\.audio-upload-zone\s*\{\s*min-height:236px;/,
+  "upload input areas should keep the same vertical rhythm as the text input area",
+);
+
+assert.match(
+  source,
+  /\.inline-generate-action\s*\{[\s\S]*?width:auto;/,
+  "inline generate action should use compact width on the input text row",
+);
+
+assert.match(
+  source,
+  /\[data-i18n-aria-label\]/,
+  "icon-only action labels should be localized through data-i18n-aria-label",
+);
+
+assert.doesNotMatch(
+  source,
+  /polishBtn\.textContent\s*=/,
+  "AI polish busy state should not replace icon button contents",
 );
 
 assert.doesNotMatch(
