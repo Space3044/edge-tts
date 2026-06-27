@@ -1,8 +1,6 @@
 import { errorResponse, jsonResponse } from "../utils/response.js";
 
 const MAX_AUDIO_FILE_SIZE = 10 * 1024 * 1024;
-const SILICONFLOW_TRANSCRIPTION_URL = "https://api.siliconflow.cn/v1/audio/transcriptions";
-const SILICONFLOW_TRANSCRIPTION_MODEL = "FunAudioLLM/SenseVoiceSmall";
 const AUDIO_EXTENSION_PATTERN = /\.(mp3|wav|m4a|flac|aac|ogg|webm|amr|3gp)$/i;
 const ALLOWED_AUDIO_TYPES = [
     "audio/mpeg",
@@ -23,26 +21,120 @@ function isAudioFile(file) {
     return ALLOWED_AUDIO_TYPES.some(type => fileType.includes(type)) || AUDIO_EXTENSION_PATTERN.test(fileName);
 }
 
-function resolveToken(customToken, env = {}) {
-    const formToken = typeof customToken === "string" ? customToken.trim() : "";
-    const envToken = typeof env.SILICONFLOW_API_KEY === "string" ? env.SILICONFLOW_API_KEY.trim() : "";
-    return formToken || envToken;
+function normalizeBaseUrl(value) {
+    const endpoint = typeof value === "string" ? value.trim() : "";
+    if (!endpoint) {
+        throw new Error("请输入 Whisper ASR 服务地址");
+    }
+
+    let url;
+    try {
+        url = new URL(endpoint);
+    } catch {
+        throw new Error("Whisper ASR 服务地址格式无效");
+    }
+
+    if (url.protocol !== "https:" && url.protocol !== "http:") {
+        throw new Error("Whisper ASR 服务地址必须以 http:// 或 https:// 开头");
+    }
+
+    url.pathname = url.pathname.replace(/\/+$/, "");
+    url.search = "";
+    url.hash = "";
+    return url.toString().replace(/\/$/, "");
 }
 
-function transcriptionApiError(status) {
-    if (status === 401) {
-        return "API Token无效，请检查您的配置";
+function buildAsrUrl(baseUrl) {
+    const url = new URL(`${baseUrl}/asr`);
+    url.searchParams.set("output", "json");
+    url.searchParams.set("task", "transcribe");
+    url.searchParams.set("encode", "true");
+    return url;
+}
+
+function parseWhisperResult(rawResult) {
+    if (typeof rawResult !== "string") {
+        return rawResult;
     }
-    if (status === 429) {
-        return "请求过于频繁，请稍后再试";
+
+    const text = rawResult.trim();
+    if (!text) {
+        return "";
     }
+
+    if ((text.startsWith("{") && text.endsWith("}")) || (text.startsWith("[") && text.endsWith("]"))) {
+        try {
+            return JSON.parse(text);
+        } catch {
+            return text;
+        }
+    }
+
+    return text;
+}
+
+function isUsableSegment(segment) {
+    const text = String(segment?.text || segment?.transcript || "").trim();
+    if (!text) {
+        return false;
+    }
+
+    const compressionRatio = Number(segment?.compression_ratio || 0);
+    if (compressionRatio >= 2.4) {
+        return false;
+    }
+
+    const duration = Number(segment?.end) - Number(segment?.start);
+    if (duration > 0 && duration < 0.5 && text.length > 20) {
+        return false;
+    }
+
+    return true;
+}
+
+function extractText(rawResult) {
+    const result = parseWhisperResult(rawResult);
+    if (typeof result === "string") {
+        return result.trim();
+    }
+
+    if (Array.isArray(result?.segments)) {
+        const segmentText = result.segments
+            .filter(isUsableSegment)
+            .map(segment => segment.text || segment.transcript || "")
+            .map(text => text.trim())
+            .filter(Boolean)
+            .join("\n");
+        if (segmentText) {
+            return segmentText;
+        }
+    }
+
+    if (typeof result?.text === "string") {
+        return result.text.trim();
+    }
+
+    if (typeof result?.transcript === "string") {
+        return result.transcript.trim();
+    }
+
+    return "";
+}
+
+function whisperError(status) {
     if (status === 413) {
         return "音频文件太大，请选择较小的文件";
+    }
+    if (status === 422) {
+        return "Whisper ASR 无法处理该音频，请检查文件格式";
+    }
+    if (status === 503) {
+        return "Whisper ASR 服务暂时不可用";
     }
     return "语音转录服务暂时不可用";
 }
 
-export async function handleAudioTranscription(request, env = {}) {
+export async function handleAudioTranscription(request) {
     try {
         if (request.method !== "POST") {
             return errorResponse("只支持POST方法", {
@@ -65,7 +157,7 @@ export async function handleAudioTranscription(request, env = {}) {
 
         const formData = await request.formData();
         const audioFile = formData.get("file");
-        const token = resolveToken(formData.get("token"), env);
+        const whisperBaseUrl = normalizeBaseUrl(formData.get("endpoint"));
 
         if (!audioFile) {
             return errorResponse("未找到音频文件", {
@@ -94,41 +186,39 @@ export async function handleAudioTranscription(request, env = {}) {
             });
         }
 
-        if (!token) {
-            return errorResponse("未配置语音转文字 API Token，请在 Cloudflare 环境变量 SILICONFLOW_API_KEY 中配置，或在页面中输入自定义 Token", {
-                status: 500,
-                type: "api_error",
-                param: "token",
-                code: "missing_api_token"
-            });
-        }
-
         const apiFormData = new FormData();
-        apiFormData.append("file", audioFile);
-        apiFormData.append("model", SILICONFLOW_TRANSCRIPTION_MODEL);
+        apiFormData.append("audio_file", audioFile, audioFile.name || "audio");
 
-        const apiResponse = await fetch(SILICONFLOW_TRANSCRIPTION_URL, {
+        const apiResponse = await fetch(buildAsrUrl(whisperBaseUrl), {
             method: "POST",
-            headers: {
-                "Authorization": `Bearer ${token}`
-            },
             body: apiFormData
         });
 
         if (!apiResponse.ok) {
             const errorText = await apiResponse.text();
-            console.error("硅基流动API错误:", apiResponse.status, errorText);
-            return errorResponse(transcriptionApiError(apiResponse.status), {
+            console.error("Whisper ASR error:", apiResponse.status, errorText);
+            return errorResponse(whisperError(apiResponse.status), {
                 status: apiResponse.status,
                 type: "api_error",
                 code: "transcription_api_error"
             });
         }
 
-        return jsonResponse(await apiResponse.json());
+        const result = await apiResponse.text();
+        const text = extractText(result);
+
+        if (!text) {
+            return errorResponse("Whisper ASR 未返回可用转录文本", {
+                status: 502,
+                type: "api_error",
+                code: "empty_transcription_result"
+            });
+        }
+
+        return jsonResponse({ text });
     } catch (error) {
         console.error("语音转录处理失败:", error);
-        return errorResponse("语音转录处理失败", {
+        return errorResponse(error.message || "语音转录处理失败", {
             status: 500,
             type: "api_error",
             code: "transcription_processing_error"
