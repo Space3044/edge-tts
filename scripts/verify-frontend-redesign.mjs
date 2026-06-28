@@ -13,6 +13,7 @@ const sourceFiles = [
   "../src/edge/ssml.js",
   "../src/frontend/page.js",
   "../src/frontend/styles.js",
+  "../src/frontend/transcriptionStyles.js",
   "../src/frontend/client.js",
   "../src/frontend/voices.js",
   "../src/frontend/i18n.js",
@@ -36,6 +37,7 @@ const expectedModuleFiles = [
   "../src/edge/signing.js",
   "../src/frontend/page.js",
   "../src/frontend/styles.js",
+  "../src/frontend/transcriptionStyles.js",
   "../src/frontend/client.js",
   "../src/frontend/voices.js",
   "../src/frontend/i18n.js",
@@ -649,8 +651,14 @@ assert.ok(
 );
 
 assert.ok(
-  source.includes("不会生成 SRT 字幕文件"),
-  "Chinese ElevenLabs audio-event hint should clarify that transcription only returns text",
+  source.includes("'stt.tagAudioEventsHint': '转写文本里可能出现 [笑声]、[掌声] 这类提示。'"),
+  "Chinese ElevenLabs audio-event hint should keep the short sound-cue explanation",
+);
+
+assert.doesNotMatch(
+  source,
+  /SRT 字幕文件|No SRT file is generated/,
+  "ElevenLabs audio-event hint should not mention SRT output",
 );
 
 assert.doesNotMatch(
@@ -658,6 +666,34 @@ assert.doesNotMatch(
   /'stt\.tagAudioEvents': '标记音频事件'/,
   "Chinese ElevenLabs audio-event option should not use unclear API wording",
 );
+
+assert.doesNotMatch(
+  HTML_PAGE,
+  /<label><span data-i18n="stt\.language">/,
+  "ElevenLabs language selector should not show a separate language label",
+);
+
+assert.ok(
+  HTML_PAGE.includes('id="elevenlabsLanguage" autocomplete="off" aria-label="Language"'),
+  "ElevenLabs language selector should keep an accessible label without visible text",
+);
+
+[
+  "#transcriptionForm > .form-group:nth-of-type(3)",
+  ".engine-tabs",
+  ".engine-btn.active",
+  "#whisperOptions",
+  "#elevenlabsOptions",
+  ".elevenlabs-grid",
+  "grid-template-columns:repeat(2,minmax(0,1fr))",
+  "grid-template-columns:auto max-content minmax(0,1fr)",
+  "white-space:nowrap",
+].forEach((selector) => {
+  assert.ok(
+    source.includes(selector),
+    `transcription engine controls should include styled selector ${selector}`,
+  );
+});
 
 for (const languageCode of ["eng", "zho", "jpn", "kor", "spa", "fra", "deu", "rus"]) {
   assert.ok(
