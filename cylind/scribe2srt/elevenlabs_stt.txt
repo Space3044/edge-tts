@@ -1,0 +1,168 @@
+"""
+ElevenLabs Speech-to-Text 免鉴权请求客户端。
+
+从 cylind/scribe2srt 项目 api/client.py 提炼而来，剥离了 Qt 信号/线程层，
+保留请求本质：端点常量、反爬头组装、multipart 流式上传。
+
+依赖：
+    pip install requests requests-toolbelt
+"""
+
+import os
+import random
+import ipaddress
+from typing import Callable, Optional
+
+import requests
+from requests_toolbelt.multipart.encoder import MultipartEncoder, MultipartEncoderMonitor
+
+
+# ElevenLabs Speech-to-Text 端点与查询参数
+ELEVENLABS_STT_API_URL = "https://api.elevenlabs.io/v1/speech-to-text"
+ELEVENLABS_STT_PARAMS = {"allow_unauthenticated": "1"}  # 免鉴权模式
+DEFAULT_STT_MODEL_ID = "scribe_v2"
+
+# 反爬规避：UA / Accept-Language 随机轮换
+USER_AGENTS = [
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36",
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:126.0) Gecko/20100101 Firefox/126.0",
+    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.5 Safari/605.1.15",
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/127.0.0.0 Safari/537.36",
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:127.0) Gecko/20100101 Firefox/127.0",
+    "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36",
+]
+ACCEPT_LANGUAGES = [
+    "zh-CN,zh;q=0.9,en;q=0.8",
+    "en-US,en;q=0.9,es;q=0.8",
+    "en-GB,en;q=0.9",
+    "ja-JP,ja;q=0.9,en;q=0.8",
+    "ko-KR,ko;q=0.9,en;q=0.8",
+    "de-DE,de;q=0.9,en;q=0.8",
+    "fr-FR,fr;q=0.9,en;q=0.8",
+    "en-US,en;q=0.5",
+]
+
+BASE_HEADERS = {
+    "accept": "*/*",
+    "accept-encoding": "gzip, deflate, br, zstd",
+    "origin": "https://elevenlabs.io",
+    "referer": "https://elevenlabs.io/",
+    "sec-fetch-dest": "empty",
+    "sec-fetch-mode": "cors",
+    "sec-fetch-site": "same-site",
+}
+
+
+def _random_ip() -> str:
+    """生成合法公网 IPv4，过滤私有/保留地址，用于伪造转发头"""
+    while True:
+        ip_int = random.getrandbits(32)
+        ip_obj = ipaddress.IPv4Address(ip_int)
+        if (
+            ip_obj.is_private
+            or ip_obj.is_loopback
+            or ip_obj.is_multicast
+            or ip_obj.is_link_local
+            or ip_obj.is_reserved
+        ):
+            continue
+        return str(ip_obj)
+
+
+def build_headers() -> dict:
+    """基础头 + 随机 UA/Accept-Language + 伪造 IP 转发头"""
+    headers = BASE_HEADERS.copy()
+    headers["user-agent"] = random.choice(USER_AGENTS)
+    headers["accept-language"] = random.choice(ACCEPT_LANGUAGES)
+    fake_ip = _random_ip()
+    headers.update(
+        {
+            "Forwarded": f"for={fake_ip}",
+            "X-Forwarded-For": fake_ip,
+            "X-Real-IP": fake_ip,
+            "CF-Connecting-IP": fake_ip,
+            "True-Client-IP": fake_ip,
+        }
+    )
+    return headers
+
+
+def build_payload(file_path: str, language_code: str, tag_audio_events: bool) -> dict:
+    """组装 multipart 表单字段，file 占位待发送时填充真实句柄"""
+    ext = os.path.splitext(file_path)[1].lower()
+    if ext in [".mp3", ".mp4", ".m4a", ".wav", ".flac", ".ogg", ".mov", ".aac"]:
+        mime_type = (
+            f"video/{ext.replace('.', '')}"
+            if ext in [".mp4", ".mov"]
+            else f"audio/{ext.replace('.', '')}"
+        )
+    else:
+        mime_type = "application/octet-stream"
+
+    payload = {
+        "model_id": DEFAULT_STT_MODEL_ID,
+        "diarize": "true",
+        "tag_audio_events": str(tag_audio_events).lower(),
+        # 占位：文件对象在 transcribe() 打开后回填
+        "file": (os.path.basename(file_path), None, mime_type),
+    }
+    if language_code and language_code.lower() != "auto":
+        payload["language_code"] = language_code
+    return payload
+
+
+def transcribe(
+    file_path: str,
+    language_code: str = "auto",
+    tag_audio_events: bool = True,
+    timeout: int = 1800,
+    progress_callback: Optional[Callable[[int, int], None]] = None,
+    session: Optional[requests.Session] = None,
+) -> dict:
+    """
+    调用 ElevenLabs STT 免鉴权接口，返回转录 JSON。
+
+    参数：
+        file_path: 音频/视频文件路径
+        language_code: ISO 语言码，"auto" 时不传让服务端自动检测
+        tag_audio_events: 是否标记非语音事件（笑声、掌声等）
+        timeout: 请求超时秒数，默认 1800（照顾长音频）
+        progress_callback: 可选 (bytes_read, total_bytes) 回调
+        session: 可选复用的 requests.Session，便于外部取消时 close()
+
+    返回：
+        ElevenLabs Scribe 转录结果 JSON
+
+    异常：
+        requests.HTTPError - 非 2xx 响应
+        requests.Timeout - 超时
+    """
+    payload = build_payload(file_path, language_code, tag_audio_events)
+    headers = build_headers()
+    owns_session = session is None
+    if owns_session:
+        session = requests.Session()
+
+    try:
+        with open(file_path, "rb") as f_audio:
+            # 回填真实文件句柄，保留 build_payload 算好的 MIME
+            payload["file"] = (
+                os.path.basename(file_path),
+                f_audio,
+                payload["file"][2],
+            )
+            encoder = MultipartEncoder(fields=payload)
+            monitor = MultipartEncoderMonitor(encoder, progress_callback or (lambda m: None))
+            headers["Content-Type"] = monitor.content_type
+            response = session.post(
+                ELEVENLABS_STT_API_URL,
+                params=ELEVENLABS_STT_PARAMS,
+                headers=headers,
+                data=monitor,
+                timeout=timeout,
+            )
+            response.raise_for_status()
+            return response.json()
+    finally:
+        if owns_session:
+            session.close()
