@@ -8,6 +8,7 @@ const sourceFiles = [
   "../src/worker.js",
   "../src/routes/speech.js",
   "../src/routes/transcriptions.js",
+  "../src/elevenlabs/stt.js",
   "../src/edge/synthesize.js",
   "../src/edge/ssml.js",
   "../src/frontend/page.js",
@@ -28,6 +29,7 @@ const expectedModuleFiles = [
   "../src/worker.js",
   "../src/routes/speech.js",
   "../src/routes/transcriptions.js",
+  "../src/elevenlabs/stt.js",
   "../src/edge/endpoint.js",
   "../src/edge/ssml.js",
   "../src/edge/synthesize.js",
@@ -110,7 +112,13 @@ const requiredMarkup = [
   'data-i18n="voice.title"',
   'data-i18n="stt.title"',
   'id="whisperEndpoint"',
+  'id="engineWhisper"',
+  'id="engineElevenLabs"',
+  'id="elevenlabsLanguage"',
+  'id="elevenlabsTagAudioEvents"',
   'data-i18n="stt.endpoint"',
+  'data-i18n="stt.engine"',
+  'data-i18n="stt.engineElevenLabs"',
   'data-i18n="action.generate"',
   'data-i18n="action.transcribe"',
 ];
@@ -606,6 +614,13 @@ for (const key of [
   "stt.endpoint",
   "stt.endpointPlaceholder",
   "stt.endpointHint",
+  "stt.engine",
+  "stt.engineWhisper",
+  "stt.engineElevenLabs",
+  "stt.language",
+  "stt.languageAuto",
+  "stt.tagAudioEvents",
+  "stt.tagAudioEventsHint",
   "error.endpointRequired",
   "action.generate",
   "action.transcribe",
@@ -627,5 +642,34 @@ for (const key of [
 ]) {
   assert.ok(source.includes(`'${key}'`), `translations should include ${key}`);
 }
+
+assert.ok(
+  source.includes("'stt.tagAudioEvents': '保留音效提示'"),
+  "Chinese ElevenLabs audio-event option should use plain product wording",
+);
+
+assert.ok(
+  source.includes("不会生成 SRT 字幕文件"),
+  "Chinese ElevenLabs audio-event hint should clarify that transcription only returns text",
+);
+
+assert.doesNotMatch(
+  source,
+  /'stt\.tagAudioEvents': '标记音频事件'/,
+  "Chinese ElevenLabs audio-event option should not use unclear API wording",
+);
+
+for (const languageCode of ["eng", "zho", "jpn", "kor", "spa", "fra", "deu", "rus"]) {
+  assert.ok(
+    source.includes(`<option value="${languageCode}">`),
+    `ElevenLabs language selector should use official ${languageCode} language code`,
+  );
+}
+
+assert.doesNotMatch(
+  source,
+  /<option value="(?:en|zh|ja|ko|es|fr|de|ru)">/,
+  "ElevenLabs language selector should not use legacy two-letter language codes",
+);
 
 console.log("Verified VoiceCraft redesign structure.");

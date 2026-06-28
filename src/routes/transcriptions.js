@@ -1,4 +1,5 @@
 import { errorResponse, jsonResponse } from "../utils/response.js";
+import { transcribe as transcribeWithElevenLabs } from "../elevenlabs/stt.js";
 
 const MAX_AUDIO_FILE_SIZE = 50 * 1024 * 1024;
 const AUDIO_EXTENSION_PATTERN = /\.(mp3|wav|m4a|flac|aac|ogg|webm|amr|3gp)$/i;
@@ -121,6 +122,25 @@ function extractText(rawResult) {
     return "";
 }
 
+function extractElevenLabsText(result) {
+    if (typeof result === "string") {
+        return result.trim();
+    }
+    if (typeof result?.text === "string") {
+        const text = result.text.trim();
+        if (text) {
+            return text;
+        }
+    }
+    if (Array.isArray(result?.words)) {
+        return result.words
+            .map(item => String(item?.text || item?.word || ""))
+            .join("")
+            .trim();
+    }
+    return "";
+}
+
 function whisperError(status) {
     if (status === 413) {
         return "音频文件太大，请选择较小的文件";
@@ -134,7 +154,109 @@ function whisperError(status) {
     return "语音转录服务暂时不可用";
 }
 
-export async function handleAudioTranscription(request) {
+function validateAudioFile(file) {
+    if (!file) {
+        return errorResponse("未找到音频文件", {
+            status: 400,
+            type: "invalid_request_error",
+            param: "file",
+            code: "missing_file"
+        });
+    }
+    if (file.size > MAX_AUDIO_FILE_SIZE) {
+        return errorResponse("音频文件大小不能超过50MB", {
+            status: 400,
+            type: "invalid_request_error",
+            param: "file",
+            code: "file_too_large"
+        });
+    }
+    if (!isAudioFile(file)) {
+        return errorResponse("不支持的音频文件格式，请上传mp3、wav、m4a、flac、aac、ogg、webm、amr或3gp格式的文件", {
+            status: 400,
+            type: "invalid_request_error",
+            param: "file",
+            code: "invalid_file_type"
+        });
+    }
+    return null;
+}
+
+async function handleWhisperTranscription(formData) {
+    const audioFile = formData.get("file");
+    const whisperBaseUrl = normalizeBaseUrl(formData.get("endpoint"));
+
+    const invalid = validateAudioFile(audioFile);
+    if (invalid) return invalid;
+
+    const apiFormData = new FormData();
+    apiFormData.append("audio_file", audioFile, audioFile.name || "audio");
+
+    const apiResponse = await fetch(buildAsrUrl(whisperBaseUrl), {
+        method: "POST",
+        body: apiFormData
+    });
+
+    if (!apiResponse.ok) {
+        const errorText = await apiResponse.text();
+        console.error("Whisper ASR error:", apiResponse.status, errorText);
+        return errorResponse(whisperError(apiResponse.status), {
+            status: apiResponse.status,
+            type: "api_error",
+            code: "transcription_api_error"
+        });
+    }
+
+    const result = await apiResponse.text();
+    const text = extractText(result);
+
+    if (!text) {
+        return errorResponse("Whisper ASR 未返回可用转录文本", {
+            status: 502,
+            type: "api_error",
+            code: "empty_transcription_result"
+        });
+    }
+
+    return jsonResponse({ text });
+}
+
+async function handleElevenLabsTranscription(formData) {
+    const audioFile = formData.get("file");
+
+    const invalid = validateAudioFile(audioFile);
+    if (invalid) return invalid;
+
+    const languageCode = String(formData.get("language") || "auto").trim().toLowerCase() || "auto";
+    const tagAudioEvents = formData.get("tagAudioEvents") === "true";
+
+    try {
+        const result = await transcribeWithElevenLabs({
+            data: audioFile,
+            filename: audioFile.name || "audio",
+            languageCode,
+            tagAudioEvents
+        });
+        const text = extractElevenLabsText(result);
+        if (!text) {
+            return errorResponse("ElevenLabs 未返回可用转录文本", {
+                status: 502,
+                type: "api_error",
+                code: "empty_transcription_result"
+            });
+        }
+        return jsonResponse({ text });
+    } catch (error) {
+        console.error("ElevenLabs STT error:", error);
+        return errorResponse(error.message || "ElevenLabs 转录失败", {
+            status: 502,
+            type: "api_error",
+            code: "transcription_api_error"
+        });
+    }
+}
+
+export async function handleAudioTranscription(request, env) {
     try {
         if (request.method !== "POST") {
             return errorResponse("只支持POST方法", {
@@ -156,66 +278,12 @@ export async function handleAudioTranscription(request) {
         }
 
         const formData = await request.formData();
-        const audioFile = formData.get("file");
-        const whisperBaseUrl = normalizeBaseUrl(formData.get("endpoint"));
+        const engine = String(formData.get("engine") || "whisper").toLowerCase();
 
-        if (!audioFile) {
-            return errorResponse("未找到音频文件", {
-                status: 400,
-                type: "invalid_request_error",
-                param: "file",
-                code: "missing_file"
-            });
+        if (engine === "elevenlabs") {
+            return handleElevenLabsTranscription(formData);
         }
-
-        if (audioFile.size > MAX_AUDIO_FILE_SIZE) {
-            return errorResponse("音频文件大小不能超过50MB", {
-                status: 400,
-                type: "invalid_request_error",
-                param: "file",
-                code: "file_too_large"
-            });
-        }
-
-        if (!isAudioFile(audioFile)) {
-            return errorResponse("不支持的音频文件格式，请上传mp3、wav、m4a、flac、aac、ogg、webm、amr或3gp格式的文件", {
-                status: 400,
-                type: "invalid_request_error",
-                param: "file",
-                code: "invalid_file_type"
-            });
-        }
-
-        const apiFormData = new FormData();
-        apiFormData.append("audio_file", audioFile, audioFile.name || "audio");
-
-        const apiResponse = await fetch(buildAsrUrl(whisperBaseUrl), {
-            method: "POST",
-            body: apiFormData
-        });
-
-        if (!apiResponse.ok) {
-            const errorText = await apiResponse.text();
-            console.error("Whisper ASR error:", apiResponse.status, errorText);
-            return errorResponse(whisperError(apiResponse.status), {
-                status: apiResponse.status,
-                type: "api_error",
-                code: "transcription_api_error"
-            });
-        }
-
-        const result = await apiResponse.text();
-        const text = extractText(result);
-
-        if (!text) {
-            return errorResponse("Whisper ASR 未返回可用转录文本", {
-                status: 502,
-                type: "api_error",
-                code: "empty_transcription_result"
-            });
-        }
-
-        return jsonResponse({ text });
+        return handleWhisperTranscription(formData);
     } catch (error) {
         console.error("语音转录处理失败:", error);
         return errorResponse(error.message || "语音转录处理失败", {

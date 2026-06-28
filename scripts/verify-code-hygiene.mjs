@@ -6,6 +6,7 @@ const read = (path) => readFileSync(new URL(path, import.meta.url), "utf8");
 const workerSource = read("../src/worker.js");
 const speechSource = read("../src/routes/speech.js");
 const transcriptionSource = read("../src/routes/transcriptions.js");
+const elevenLabsSttSource = read("../src/elevenlabs/stt.js");
 const endpointSource = read("../src/edge/endpoint.js");
 const synthesizeSource = read("../src/edge/synthesize.js");
 const pageSource = read("../src/frontend/page.js");
@@ -94,6 +95,30 @@ assert.match(
   clientSource,
   /WHISPER_ENDPOINT_STORAGE_KEY|voicecraft-whisper-endpoint|loadWhisperEndpoint|saveWhisperEndpoint/,
   "frontend should persist the Whisper ASR endpoint in local browser storage",
+);
+
+assert.match(
+  transcriptionSource,
+  /engine === "elevenlabs"/,
+  "transcription route should dispatch ElevenLabs requests by engine",
+);
+
+assert.match(
+  elevenLabsSttSource,
+  /api\.elevenlabs\.io\/v1\/speech-to-text/,
+  "ElevenLabs STT client should target the speech-to-text API",
+);
+
+assert.match(
+  elevenLabsSttSource,
+  /allow_unauthenticated/,
+  "ElevenLabs STT client should preserve the unauthenticated Scribe request parameter",
+);
+
+assert.doesNotMatch(
+  transcriptionSource,
+  /ELEVENLABS_LANGUAGE_CODE_MAP|normalizeElevenLabsLanguageCode|en:\s*"eng"|zh:\s*"zho"/,
+  "ElevenLabs language handling should not keep legacy two-letter compatibility mapping",
 );
 
 assert.doesNotMatch(

@@ -20,7 +20,7 @@ https://github.com/Space3044/edge-tts
 - 声音库：内置 114 个 Microsoft Edge TTS 声音，支持按语言、性别、名称、地区和 voice ID 搜索。
 - 参数调节：支持语速、音调和语音风格，语速和音调可双击恢复默认值。
 - 生成结果：生成后的 MP3 可在线播放和下载。
-- 语音转文字：上传音频，并调用你部署的 Whisper ASR Webservice。
+- 语音转文字：上传音频，可调用你部署的 Whisper ASR Webservice，也可使用 ElevenLabs Scribe 接口。
 - AI 润色：调用 OpenAI 兼容接口润色输入文本。
 - 浏览器本地保存：Whisper ASR 地址、AI 润色 Base URL、API Key、模型和润色指令只保存在当前浏览器本地。
 - 多语言界面：支持中文、英文、日文、韩文、西班牙文、法文、德文、俄文。
@@ -165,14 +165,25 @@ zh-CN-YunyangNeural
 POST /v1/audio/transcriptions
 ```
 
-当前实现调用 Whisper ASR Webservice。前端会让用户填写 Whisper ASR 地址，后端再把音频转发到该地址。
+当前实现支持两种转录引擎。默认调用 Whisper ASR Webservice，前端会让用户填写 Whisper ASR 地址，后端再把音频转发到该地址。选择 ElevenLabs 时，后端会调用 ElevenLabs Scribe Speech-to-Text 接口。
 
-请求示例：
+Whisper ASR 请求示例：
 
 ```bash
 curl -X POST "https://your-worker.example.com/v1/audio/transcriptions" \
   -F "file=@audio.mp3" \
+  -F "engine=whisper" \
   -F "endpoint=https://your-whisper-asr.example.com"
+```
+
+ElevenLabs 请求示例：
+
+```bash
+curl -X POST "https://your-worker.example.com/v1/audio/transcriptions" \
+  -F "file=@audio.mp3" \
+  -F "engine=elevenlabs" \
+  -F "language=auto" \
+  -F "tagAudioEvents=false"
 ```
 
 响应示例：
@@ -188,7 +199,10 @@ curl -X POST "https://your-worker.example.com/v1/audio/transcriptions" \
 | 参数 | 类型 | 必填 | 说明 |
 | --- | --- | --- | --- |
 | `file` | File | 是 | 音频文件，最大 50MB |
-| `endpoint` | string | 是 | Whisper ASR Webservice 基础地址 |
+| `engine` | string | 否 | `whisper` 或 `elevenlabs`，默认 `whisper` |
+| `endpoint` | string | Whisper 必填 | Whisper ASR Webservice 基础地址 |
+| `language` | string | ElevenLabs 可选 | ElevenLabs 官方语言代码，默认 `auto` 自动检测。常用值：`eng`、`zho`、`jpn`、`kor`、`spa`、`fra`、`deu`、`rus` |
+| `tagAudioEvents` | string | ElevenLabs 可选 | 是否标记笑声、掌声等音频事件，传 `true` 或 `false` |
 
 支持格式：
 
@@ -242,7 +256,7 @@ curl -X POST "https://your-worker.example.com/v1/text/polish" \
 
 1. 切换到 Speech to Text。
 2. 上传音频文件。
-3. 填写已部署的 Whisper ASR 地址。
+3. 选择 Whisper 时填写已部署的 Whisper ASR 地址；选择 ElevenLabs 时可设置语言和音频事件标记。
 4. 点击转录。
 5. 复制、编辑转录结果，或把文本送回 TTS。
 
