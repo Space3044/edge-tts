@@ -23,7 +23,7 @@ async function handleRequest(request, env = {}) {
         });
     }
 
-    if (path === "/" || path === "/index.html") {
+    if (path === "/" || path === "/index.html" || path === "/tts" || path === "/transcription") {
         return new Response(HTML_PAGE, {
             headers: {
                 "Content-Type": "text/html; charset=utf-8",

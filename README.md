@@ -55,6 +55,8 @@ npx wrangler dev index.js --local --port 8787
 
 ```text
 http://127.0.0.1:8787
+http://127.0.0.1:8787/tts
+http://127.0.0.1:8787/transcription
 ```
 
 Windows 上如果 Wrangler 写入 npm 或配置目录遇到权限问题，可以临时指定缓存目录：
@@ -81,6 +83,17 @@ npx --yes wrangler dev index.js --local --port 8787
 ```text
 index.js
 ```
+
+## Cloudflare Access
+
+如果需要只保护语音转文字功能，可以在 Cloudflare Zero Trust 里为同一个 Worker 域名添加 Access Application，并把策略路径限制到：
+
+```text
+/transcription*
+/v1/audio/transcriptions*
+```
+
+这样文字转语音页面 `/tts` 可以公开访问，语音转文字页面和转录接口会先经过 Cloudflare Access 登录。若整个工具只给自己使用，也可以直接保护 `/*`。
 
 ## API
 
@@ -243,6 +256,13 @@ curl -X POST "https://your-worker.example.com/v1/text/polish" \
 | `instruction` | string | 否 | 润色指令 |
 
 ## 前端使用
+
+页面路径：
+
+```text
+/tts              文字转语音
+/transcription    语音转文字
+```
 
 文字转语音流程：
 

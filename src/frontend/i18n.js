@@ -158,6 +158,17 @@ export const translations = {
       ru: { 'status.fileLabel': 'Файл', 'error.copyFailed': 'Не удалось скопировать' }
     };
     Object.keys(STATUS_AND_ERROR_TRANSLATIONS).forEach(function(lang) { Object.assign(translations[lang], STATUS_AND_ERROR_TRANSLATIONS[lang]); });
+    const ACCESS_AUTH_TRANSLATIONS = {
+      en: { 'access.login': 'Sign in with Access', 'access.logout': 'Sign out' },
+      zh: { 'access.login': '登录 Access', 'access.logout': '注销 Access' },
+      ja: { 'access.login': 'Accessでログイン', 'access.logout': 'ログアウト' },
+      ko: { 'access.login': 'Access 로그인', 'access.logout': '로그아웃' },
+      es: { 'access.login': 'Iniciar con Access', 'access.logout': 'Cerrar sesión' },
+      fr: { 'access.login': 'Connexion Access', 'access.logout': 'Déconnexion' },
+      de: { 'access.login': 'Mit Access anmelden', 'access.logout': 'Abmelden' },
+      ru: { 'access.login': 'Войти через Access', 'access.logout': 'Выйти' }
+    };
+    Object.keys(ACCESS_AUTH_TRANSLATIONS).forEach(function(lang) { Object.assign(translations[lang], ACCESS_AUTH_TRANSLATIONS[lang]); });
     const TTS_RESULT_TRANSLATIONS = {
       en: { 'tts.result': 'Generated result' },
       zh: { 'tts.result': '生成结果' },

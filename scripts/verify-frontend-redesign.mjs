@@ -12,6 +12,8 @@ const sourceFiles = [
   "../src/edge/synthesize.js",
   "../src/edge/ssml.js",
   "../src/frontend/page.js",
+  "../src/frontend/accessAuth.js",
+  "../src/frontend/routeMode.js",
   "../src/frontend/styles.js",
   "../src/frontend/transcriptionStyles.js",
   "../src/frontend/client.js",
@@ -23,7 +25,9 @@ const sourceFiles = [
 const source = [
   HTML_PAGE,
   CLIENT_SCRIPT,
-  ...sourceFiles.map((file) => readFileSync(new URL(file, import.meta.url), "utf8")),
+  ...sourceFiles
+    .filter((file) => existsSync(new URL(file, import.meta.url)))
+    .map((file) => readFileSync(new URL(file, import.meta.url), "utf8")),
 ].join("\n");
 
 const expectedModuleFiles = [
@@ -36,6 +40,8 @@ const expectedModuleFiles = [
   "../src/edge/synthesize.js",
   "../src/edge/signing.js",
   "../src/frontend/page.js",
+  "../src/frontend/accessAuth.js",
+  "../src/frontend/routeMode.js",
   "../src/frontend/styles.js",
   "../src/frontend/transcriptionStyles.js",
   "../src/frontend/client.js",
@@ -59,6 +65,11 @@ const requiredMarkup = [
   'href="https://github.com/Space3044/edge-tts"',
   'class="repo-link"',
   'target="_blank" rel="noopener noreferrer"',
+  'id="accessAuthBtn"',
+  'class="access-auth-btn"',
+  'data-i18n-aria-label="access.login"',
+  'data-access-login-icon',
+  'data-access-logout-icon',
   'type="module" id="devAnnotationScript"',
   'agent-ui-annotation@0.7.0/dist/adapters/vanilla/index.js',
   'voicecraft-dev-annotation',
@@ -188,6 +199,72 @@ assert.match(
   source,
   /path === "\/favicon\.ico"/,
   "Worker should serve favicon.ico directly",
+);
+
+for (const appPath of ['path === "/"', 'path === "/index.html"', 'path === "/tts"', 'path === "/transcription"']) {
+  assert.ok(
+    source.includes(appPath),
+    `Worker should serve the app shell for ${appPath}`,
+  );
+}
+
+assert.match(
+  source,
+  /function getModeFromPath\(\)[\s\S]*?\/transcription[\s\S]*?return 'transcription'/,
+  "frontend should infer transcription mode from the /transcription path",
+);
+
+assert.match(
+  source,
+  /window\.location\.assign\('\/tts'\)[\s\S]*?window\.location\.assign\('\/transcription'\)/,
+  "mode switcher should navigate to real TTS and transcription paths so Cloudflare Access can protect page loads",
+);
+
+assert.match(
+  source,
+  /import\s+\{\s*ACCESS_AUTH_SCRIPT[\s\S]*?ACCESS_AUTH_STYLES\s*\}\s+from\s+["']\.\/accessAuth\.js["'];|import\s+\{\s*ACCESS_AUTH_STYLES[\s\S]*?ACCESS_AUTH_SCRIPT\s*\}\s+from\s+["']\.\/accessAuth\.js["'];/,
+  "page should import the Cloudflare Access auth interaction script",
+);
+
+assert.match(
+  source,
+  /CLIENT_SCRIPT\s+\+\s+ROUTE_MODE_SCRIPT\s+\+\s+ACCESS_AUTH_SCRIPT/,
+  "main interaction script should append Access auth behavior after the route mode behavior",
+);
+
+assert.ok(
+  HTML_PAGE.indexOf('class="language-switcher"') < HTML_PAGE.indexOf('id="accessAuthBtn"'),
+  "Access auth button should sit at the far right after the language switcher",
+);
+
+assert.match(
+  source,
+  /\/cdn-cgi\/access\/get-identity/,
+  "Access auth button should check Cloudflare Access identity when the page loads",
+);
+
+assert.match(
+  source,
+  /\/cdn-cgi\/access\/logout\?returnTo=/,
+  "Access auth button should use the Cloudflare Access logout endpoint",
+);
+
+assert.match(
+  source,
+  /const ACCESS_LOGIN_PATH = '\/transcription'/,
+  "Access auth login should navigate to the protected transcription path",
+);
+
+assert.match(
+  source,
+  /classList\.toggle\('authenticated'/,
+  "Access auth button should visibly switch into an authenticated logout state",
+);
+
+assert.match(
+  source,
+  /addEventListener\('click'[\s\S]*?true\)/,
+  "mode switcher should intercept mode clicks before the SPA toggle when navigation is required",
 );
 
 assert.match(
@@ -356,6 +433,18 @@ assert.match(
   source,
   /\.repo-link\s*\{[\s\S]*?display:inline-flex;[\s\S]*?border:0;[\s\S]*?background:transparent;/,
   "repository link should be integrated as a compact topbar action",
+);
+
+assert.match(
+  source,
+  /\.access-auth-btn\s*\{[\s\S]*?display:inline-flex;[\s\S]*?border:0;[\s\S]*?background:transparent;/,
+  "Access auth button should be integrated as a compact topbar icon action",
+);
+
+assert.match(
+  source,
+  /\.access-auth-btn\.authenticated\s*\{[\s\S]*?background:var\(--accent-soft\);/,
+  "Access auth button should use a restrained active state after login",
 );
 
 assert.match(
@@ -623,6 +712,8 @@ for (const key of [
   "stt.languageAuto",
   "stt.tagAudioEvents",
   "stt.tagAudioEventsHint",
+  "access.login",
+  "access.logout",
   "error.endpointRequired",
   "action.generate",
   "action.transcribe",
