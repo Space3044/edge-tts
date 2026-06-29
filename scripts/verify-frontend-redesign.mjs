@@ -15,6 +15,7 @@ const sourceFiles = [
   "../src/frontend/accessAuth.js",
   "../src/frontend/routeMode.js",
   "../src/frontend/audioPreview.js",
+  "../src/frontend/polishUndo.js",
   "../src/frontend/styles.js",
   "../src/frontend/transcriptionStyles.js",
   "../src/frontend/client.js",
@@ -44,6 +45,7 @@ const expectedModuleFiles = [
   "../src/frontend/accessAuth.js",
   "../src/frontend/routeMode.js",
   "../src/frontend/audioPreview.js",
+  "../src/frontend/polishUndo.js",
   "../src/frontend/styles.js",
   "../src/frontend/transcriptionStyles.js",
   "../src/frontend/client.js",
@@ -109,6 +111,9 @@ const requiredMarkup = [
   'aria-label="AI polish settings"',
   'data-i18n-aria-label="action.polish"',
   'data-i18n-aria-label="polish.config"',
+  'id="polishUndoBtn"',
+  'data-i18n-aria-label="action.undoPolish"',
+  'data-i18n-title="action.undoPolish"',
   'data-i18n="input.ssml"',
   'data-i18n="input.useSsmlExample"',
   'data-i18n="input.ssmlHint"',
@@ -348,6 +353,12 @@ assert.match(
   HTML_PAGE,
   /class="inline-action-group"><button type="button" class="inline-action icon-action icon-action-plain" id="polishBtn"[\s\S]*?<details class="polish-config" id="polishConfig">/,
   "AI polish settings should sit next to the AI polish icon action",
+);
+
+assert.match(
+  HTML_PAGE,
+  /id="polishBtn"[\s\S]*?<button type="button" class="inline-action icon-action icon-action-plain polish-undo-btn" id="polishUndoBtn"[\s\S]*?style="display:none"[\s\S]*?<details class="polish-config" id="polishConfig">/,
+  "AI polish should expose a hidden undo button next to the polish action after a successful polish",
 );
 
 assert.match(
@@ -605,6 +616,30 @@ assert.doesNotMatch(
   source,
   /polishBtn\.textContent\s*=/,
   "AI polish busy state should not replace icon button contents",
+);
+
+assert.match(
+  source,
+  /polishUndoSnapshot\s*=\s*textInput\.value/,
+  "AI polish undo should capture the original text before the polish request mutates the textarea",
+);
+
+assert.match(
+  source,
+  /if\s*\(polishUndoSnapshot !== null && textInput\.value !== polishUndoSnapshot\)/,
+  "AI polish undo should only appear after the textarea changes from the captured original",
+);
+
+assert.match(
+  source,
+  /textInput\.value\s*=\s*polishUndoSnapshot/,
+  "AI polish undo should restore the captured original text",
+);
+
+assert.match(
+  source,
+  /textInput\.dispatchEvent\(new Event\('input', \{ bubbles: true \}\)\)/,
+  "AI polish undo should refresh dependent text input state after restore",
 );
 
 assert.doesNotMatch(
