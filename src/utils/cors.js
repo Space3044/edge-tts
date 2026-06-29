@@ -13,7 +13,7 @@ export async function handleOptions(request) {
         headers: {
             ...makeCORSHeaders(),
             "Access-Control-Allow-Methods": "GET,HEAD,POST,OPTIONS",
-            "Access-Control-Allow-Headers": request.headers.get("Access-Control-Request-Headers") || "Authorization"
+            "Access-Control-Allow-Headers": request.headers.get("Access-Control-Request-Headers") || "Content-Type, x-api-key"
         }
     });
 }

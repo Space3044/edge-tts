@@ -39,6 +39,24 @@ assert.doesNotMatch(
 
 assert.match(
   transcriptionSource,
+  /TRANSCRIPTION_API_KEY/,
+  "transcription route should support an optional Worker API key from env",
+);
+
+assert.match(
+  transcriptionSource,
+  /headers\.get\("x-api-key"\)/,
+  "transcription route should read external app authentication from the x-api-key header",
+);
+
+assert.match(
+  transcriptionSource,
+  /Cf-Access-Authenticated-User-Email|Cf-Access-Jwt-Assertion/,
+  "transcription route should preserve Cloudflare Access authenticated page requests",
+);
+
+assert.match(
+  transcriptionSource,
   /audio_file/,
   "Whisper ASR proxy should forward the file as audio_file",
 );
