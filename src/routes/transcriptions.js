@@ -2,7 +2,6 @@ import { errorResponse, jsonResponse } from "../utils/response.js";
 import { transcribe as transcribeWithElevenLabs } from "../elevenlabs/stt.js";
 
 const MAX_AUDIO_FILE_SIZE = 50 * 1024 * 1024;
-const TRANSCRIPTION_API_KEY_ENV = "TRANSCRIPTION_API_KEY";
 const AUDIO_EXTENSION_PATTERN = /\.(mp3|wav|m4a|flac|aac|ogg|webm|amr|3gp)$/i;
 const ALLOWED_AUDIO_TYPES = [
     "audio/mpeg",
@@ -183,49 +182,6 @@ function validateAudioFile(file) {
     return null;
 }
 
-function getTranscriptionApiKey(env = {}) {
-    const value = env?.[TRANSCRIPTION_API_KEY_ENV];
-    return typeof value === "string" ? value.trim() : "";
-}
-
-function timingSafeEqualText(left, right) {
-    if (left.length !== right.length) {
-        return false;
-    }
-
-    let diff = 0;
-    for (let index = 0; index < left.length; index += 1) {
-        diff |= left.charCodeAt(index) ^ right.charCodeAt(index);
-    }
-    return diff === 0;
-}
-
-function hasCloudflareAccessIdentity(request) {
-    return Boolean(
-        request.headers.get("Cf-Access-Authenticated-User-Email") ||
-        request.headers.get("Cf-Access-Jwt-Assertion")
-    );
-}
-
-function authorizeTranscriptionRequest(request, env) {
-    const configuredKey = getTranscriptionApiKey(env);
-    if (!configuredKey || hasCloudflareAccessIdentity(request)) {
-        return null;
-    }
-
-    const requestKey = (request.headers.get("x-api-key") || "").trim();
-    if (requestKey && timingSafeEqualText(requestKey, configuredKey)) {
-        return null;
-    }
-
-    return errorResponse("无效的转录 API Key", {
-        status: 401,
-        type: "authentication_error",
-        param: "x-api-key",
-        code: "invalid_api_key"
-    });
-}
-
 async function handleWhisperTranscription(formData) {
     const audioFile = formData.get("file");
     const whisperBaseUrl = normalizeBaseUrl(formData.get("endpoint"));
@@ -310,9 +266,6 @@ export async function handleAudioTranscription(request, env) {
                 code: "method_not_allowed"
             });
         }
-
-        const authError = authorizeTranscriptionRequest(request, env);
-        if (authError) return authError;
 
         const contentType = request.headers.get("content-type") || "";
         if (!contentType.includes("multipart/form-data")) {

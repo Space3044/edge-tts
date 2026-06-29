@@ -95,20 +95,6 @@ index.js
 
 这样文字转语音页面 `/tts` 可以公开访问，语音转文字页面和转录接口会先经过 Cloudflare Access 登录。若整个工具只给自己使用，也可以直接保护 `/*`。
 
-如果后续其他应用需要调用转录接口，可以在 Worker 环境变量或 Secret 中配置：
-
-```text
-TRANSCRIPTION_API_KEY
-```
-
-调用方在请求头带：
-
-```text
-x-api-key: your-worker-secret
-```
-
-注意：Cloudflare Access 在 Worker 之前执行。如果 `/v1/audio/transcriptions*` 仍被 Access 保护，外部应用还需要通过 Access 的 Service Auth 或 Bypass 策略，或者把这个 API 路径从 Access 保护范围移出，只保留 Worker 内的 `x-api-key` 校验。
-
 ## API
 
 ### 文字转语音
@@ -198,7 +184,6 @@ Whisper ASR 请求示例：
 
 ```bash
 curl -X POST "https://your-worker.example.com/v1/audio/transcriptions" \
-  -H "x-api-key: your-worker-secret" \
   -F "file=@audio.mp3" \
   -F "engine=whisper" \
   -F "endpoint=https://your-whisper-asr.example.com"
@@ -208,7 +193,6 @@ ElevenLabs 请求示例：
 
 ```bash
 curl -X POST "https://your-worker.example.com/v1/audio/transcriptions" \
-  -H "x-api-key: your-worker-secret" \
   -F "file=@audio.mp3" \
   -F "engine=elevenlabs" \
   -F "language=auto" \
@@ -227,7 +211,6 @@ curl -X POST "https://your-worker.example.com/v1/audio/transcriptions" \
 
 | 参数 | 类型 | 必填 | 说明 |
 | --- | --- | --- | --- |
-| `x-api-key` | Header | 配置 `TRANSCRIPTION_API_KEY` 时必填 | 外部应用调用转录接口时使用的 Worker API Key；Cloudflare Access 已认证的网页请求不需要带这个头 |
 | `file` | File | 是 | 音频文件，最大 50MB |
 | `engine` | string | 否 | `whisper` 或 `elevenlabs`，默认 `whisper` |
 | `endpoint` | string | Whisper 必填 | Whisper ASR Webservice 基础地址 |
@@ -316,7 +299,6 @@ node scripts/verify-ai-polish.mjs
 node scripts/verify-code-hygiene.mjs
 node scripts/verify-voices.mjs
 node scripts/verify-transcription-format.mjs
-node scripts/verify-transcription-api-key.mjs
 node -e "import('./index.js').then((m) => { if (!m.default || typeof m.default.fetch !== 'function') throw new Error('Worker fetch export missing'); console.log('Worker entry import ok'); })"
 git diff --check
 ```
