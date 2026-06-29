@@ -62,6 +62,17 @@ export const TRANSCRIPTION_STYLES = `
     #elevenlabsOptions .form-input {
       background:var(--surface);
     }
+    .audio-preview-shell {
+      margin-top:10px;
+      padding:10px 12px;
+      border:1px solid var(--border);
+      background:var(--surface-2);
+    }
+    .audio-preview-player {
+      display:block;
+      width:100%;
+      height:38px;
+    }
     .elevenlabs-grid {
       display:grid;
       grid-template-columns:repeat(2,minmax(0,1fr));

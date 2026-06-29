@@ -1,6 +1,7 @@
 import { CLIENT_SCRIPT, THEME_BOOTSTRAP } from "./client.js";
 import { ACCESS_AUTH_SCRIPT, ACCESS_AUTH_STYLES } from "./accessAuth.js";
 import { ROUTE_MODE_SCRIPT } from "./routeMode.js";
+import { AUDIO_PREVIEW_SCRIPT } from "./audioPreview.js";
 import { PAGE_STYLES } from "./styles.js";
 import { TRANSCRIPTION_STYLES } from "./transcriptionStyles.js";
 
@@ -15,5 +16,9 @@ export const HTML_PAGE = HTML_SHELL
         '<label><span data-i18n="stt.language">Language</span><select class="form-input" id="elevenlabsLanguage" autocomplete="off">',
         '<label><select class="form-input" id="elevenlabsLanguage" autocomplete="off" aria-label="Language">'
     )
+    .replace(
+        '<div class="file-info" id="audioFileInfo" style="display:none"><div class="file-details"><span class="file-name" id="audioFileName"></span><span class="file-size" id="audioFileSize"></span></div><button type="button" class="file-remove-btn" id="audioFileRemoveBtn">×</button></div></div><div class="form-group"><span class="form-label" data-i18n="stt.engine">Transcription engine</span>',
+        '<div class="file-info" id="audioFileInfo" style="display:none"><div class="file-details"><span class="file-name" id="audioFileName"></span><span class="file-size" id="audioFileSize"></span></div><button type="button" class="file-remove-btn" id="audioFileRemoveBtn">×</button></div><div class="audio-preview-shell" id="audioPreviewShell" style="display:none"><audio id="audioPreviewPlayer" class="audio-preview-player" controls></audio></div></div><div class="form-group"><span class="form-label" data-i18n="stt.engine">Transcription engine</span>'
+    )
     .replace("__VOICECRAFT_THEME_BOOTSTRAP__", () => THEME_BOOTSTRAP)
-    .replace("__VOICECRAFT_CLIENT_SCRIPT__", () => CLIENT_SCRIPT + ROUTE_MODE_SCRIPT + ACCESS_AUTH_SCRIPT);
+    .replace("__VOICECRAFT_CLIENT_SCRIPT__", () => CLIENT_SCRIPT + ROUTE_MODE_SCRIPT + ACCESS_AUTH_SCRIPT + AUDIO_PREVIEW_SCRIPT);

@@ -14,6 +14,7 @@ const sourceFiles = [
   "../src/frontend/page.js",
   "../src/frontend/accessAuth.js",
   "../src/frontend/routeMode.js",
+  "../src/frontend/audioPreview.js",
   "../src/frontend/styles.js",
   "../src/frontend/transcriptionStyles.js",
   "../src/frontend/client.js",
@@ -42,6 +43,7 @@ const expectedModuleFiles = [
   "../src/frontend/page.js",
   "../src/frontend/accessAuth.js",
   "../src/frontend/routeMode.js",
+  "../src/frontend/audioPreview.js",
   "../src/frontend/styles.js",
   "../src/frontend/transcriptionStyles.js",
   "../src/frontend/client.js",
@@ -129,6 +131,8 @@ const requiredMarkup = [
   'id="engineElevenLabs"',
   'id="elevenlabsLanguage"',
   'id="elevenlabsTagAudioEvents"',
+  'id="audioPreviewShell"',
+  'id="audioPreviewPlayer"',
   'data-i18n="stt.endpoint"',
   'data-i18n="stt.engine"',
   'data-i18n="stt.engineElevenLabs"',
@@ -654,6 +658,36 @@ assert.match(
   source,
   /addEventListener\('dblclick'/,
   "speed and pitch sliders should reset on double-click",
+);
+
+assert.match(
+  HTML_PAGE,
+  /id="audioFileInfo"[\s\S]*?<div class="audio-preview-shell" id="audioPreviewShell" style="display:none">[\s\S]*?<audio id="audioPreviewPlayer" class="audio-preview-player" controls><\/audio>/,
+  "speech-to-text uploads should expose a browser audio preview after file selection",
+);
+
+assert.match(
+  source,
+  /URL\.createObjectURL\(file\)/,
+  "audio preview should use a local object URL for the selected upload",
+);
+
+assert.match(
+  source,
+  /URL\.revokeObjectURL\(audioPreviewUrl\)/,
+  "audio preview should revoke the previous object URL when clearing or replacing uploads",
+);
+
+assert.match(
+  source,
+  /new CustomEvent\('voicecraft:audio-file-selected',\s*\{\s*detail:\s*\{\s*file:\s*file\s*\}\s*\}\)/,
+  "validated audio uploads should notify the preview module after click or drag selection",
+);
+
+assert.match(
+  source,
+  /new CustomEvent\('voicecraft:audio-file-cleared'\)/,
+  "removing an uploaded audio file should notify the preview module to clear playback",
 );
 
 assert.match(
