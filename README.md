@@ -20,7 +20,7 @@ https://github.com/Space3044/edge-tts
 - 声音库：内置 114 个 Microsoft Edge TTS 声音，支持按语言、性别、名称、地区和 voice ID 搜索。
 - 参数调节：支持语速、音调和语音风格，语速和音调可双击恢复默认值。
 - 生成结果：生成后的 MP3 可在线播放和下载。
-- 语音转文字：上传音频，可调用你部署的 Whisper ASR Webservice，也可使用 ElevenLabs Scribe 接口。
+- 语音转文字：上传音频，可调用你部署的 Whisper ASR Webservice，也可使用 ElevenLabs Scribe 接口；ElevenLabs 支持纯文本、句子时间戳和词级时间戳查看。
 - AI 润色：调用 OpenAI 兼容接口润色输入文本。
 - 浏览器本地保存：Whisper ASR 地址、AI 润色 Base URL、API Key、模型和润色指令只保存在当前浏览器本地。
 - 多语言界面：支持中文、英文、日文、韩文、西班牙文、法文、德文、俄文。
@@ -178,7 +178,13 @@ zh-CN-YunyangNeural
 POST /v1/audio/transcriptions
 ```
 
-当前实现支持两种转录引擎。默认调用 Whisper ASR Webservice，前端会让用户填写 Whisper ASR 地址，后端再把音频转发到该地址。选择 ElevenLabs 时，后端会调用 ElevenLabs Scribe Speech-to-Text 接口。
+当前实现支持两种转录引擎。默认调用 Whisper ASR Webservice，前端会让用户填写 Whisper ASR 地址，后端再把音频转发到该地址。选择 ElevenLabs 时，后端会调用 ElevenLabs Scribe Speech-to-Text 接口：
+
+```text
+https://api.elevenlabs.io/v1/speech-to-text
+```
+
+ElevenLabs 使用 `scribe_v2` 模型。词级时间戳来自 ElevenLabs 返回的 `words[]`；句子时间戳由后端按词级结果和句末标点聚合生成。
 
 Whisper ASR 请求示例：
 
@@ -199,13 +205,70 @@ curl -X POST "https://your-worker.example.com/v1/audio/transcriptions" \
   -F "tagAudioEvents=false"
 ```
 
-响应示例：
+Whisper ASR 响应示例：
 
 ```json
 {
   "text": "转录后的文本内容"
 }
 ```
+
+ElevenLabs 响应示例：
+
+```json
+{
+  "text": "Hello world.",
+  "sentences": [
+    {
+      "text": "Hello world.",
+      "start": 0,
+      "end": 0.75,
+      "duration": 0.75
+    }
+  ],
+  "words": [
+    {
+      "text": "Hello",
+      "start": 0,
+      "end": 0.3,
+      "duration": 0.3,
+      "type": "word"
+    },
+    {
+      "text": " ",
+      "start": null,
+      "end": null,
+      "duration": null,
+      "type": "spacing"
+    },
+    {
+      "text": "world",
+      "start": 0.35,
+      "end": 0.7,
+      "duration": 0.35,
+      "type": "word"
+    },
+    {
+      "text": ".",
+      "start": 0.7,
+      "end": 0.75,
+      "duration": 0.05,
+      "type": "punctuation"
+    }
+  ]
+}
+```
+
+时间字段说明：
+
+| 字段 | 说明 |
+| --- | --- |
+| `start` | 片段开始时间，单位为秒。后端保留 ElevenLabs 返回的原始数值，不主动截断精度 |
+| `end` | 片段结束时间，单位为秒。后端保留 ElevenLabs 返回的原始数值，不主动截断精度 |
+| `duration` | `end - start`，单位为秒。后端四舍五入到 3 位小数；缺少有效时间时为 `null` |
+| `type` | ElevenLabs 词项类型，例如 `word`、`spacing`、`punctuation` |
+
+前端显示时间戳时使用 `mm:ss.SSS`，也就是毫秒级显示。JSON 里的 `start` 和 `end` 仍保留后端收到的数字精度。
 
 参数说明：
 
@@ -278,7 +341,9 @@ curl -X POST "https://your-worker.example.com/v1/text/polish" \
 2. 上传音频文件。
 3. 选择 Whisper 时填写已部署的 Whisper ASR 地址；选择 ElevenLabs 时可设置语言和音频事件标记。
 4. 点击转录。
-5. 复制、编辑转录结果，或把文本送回 TTS。
+5. ElevenLabs 结果可在纯文本、句子时间戳和词级时间戳之间切换。
+6. 点击句子或词的时间戳会播放上传音频的对应片段。
+7. 复制、编辑转录结果，或把文本送回 TTS。
 
 AI 润色流程：
 
@@ -299,6 +364,7 @@ node scripts/verify-ai-polish.mjs
 node scripts/verify-code-hygiene.mjs
 node scripts/verify-voices.mjs
 node scripts/verify-transcription-format.mjs
+node scripts/verify-elevenlabs-stt.mjs
 node -e "import('./index.js').then((m) => { if (!m.default || typeof m.default.fetch !== 'function') throw new Error('Worker fetch export missing'); console.log('Worker entry import ok'); })"
 git diff --check
 ```

@@ -14,9 +14,14 @@ globalThis.fetch = async (url, init) => {
   return new Response(JSON.stringify({
     text: "",
     words: [
-      { text: "Hello" },
-      { text: " " },
-      { text: "world" },
+      { text: "Hello", start: 0, end: 0.3, type: "word" },
+      { text: " ", type: "spacing" },
+      { text: "world", start: 0.35, end: 0.7, type: "word" },
+      { text: ".", start: 0.7, end: 0.75, type: "punctuation" },
+      { text: " ", type: "spacing" },
+      { text: "Next", start: 1.2, end: 1.5, type: "word" },
+      { text: " line", start: 1.55, end: 1.9, type: "word" },
+      { text: ".", start: 1.9, end: 1.95, type: "punctuation" },
     ],
   }), {
     status: 200,
@@ -40,7 +45,21 @@ try {
   const body = await response.json();
 
   assert.equal(response.status, 200);
-  assert.equal(body.text, "Hello world");
+  assert.equal(body.text, "Hello world. Next line.");
+  assert.deepEqual(body.sentences, [
+    { text: "Hello world.", start: 0, end: 0.75, duration: 0.75 },
+    { text: "Next line.", start: 1.2, end: 1.95, duration: 0.75 },
+  ]);
+  assert.deepEqual(body.words, [
+    { text: "Hello", start: 0, end: 0.3, duration: 0.3, type: "word" },
+    { text: " ", start: null, end: null, duration: null, type: "spacing" },
+    { text: "world", start: 0.35, end: 0.7, duration: 0.35, type: "word" },
+    { text: ".", start: 0.7, end: 0.75, duration: 0.05, type: "punctuation" },
+    { text: " ", start: null, end: null, duration: null, type: "spacing" },
+    { text: "Next", start: 1.2, end: 1.5, duration: 0.3, type: "word" },
+    { text: " line", start: 1.55, end: 1.9, duration: 0.35, type: "word" },
+    { text: ".", start: 1.9, end: 1.95, duration: 0.05, type: "punctuation" },
+  ]);
   assert.equal(capturedUrl, "https://api.elevenlabs.io/v1/speech-to-text?allow_unauthenticated=1");
   assert.equal(capturedBody.get("model_id"), "scribe_v2");
   assert.equal(capturedBody.get("diarize"), "true");

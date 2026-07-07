@@ -148,14 +148,14 @@ export const translations = {
     };
     Object.keys(SSML_EXAMPLE_TRANSLATIONS).forEach(function(lang) { Object.assign(translations[lang], SSML_EXAMPLE_TRANSLATIONS[lang]); });
     const STATUS_AND_ERROR_TRANSLATIONS = {
-      en: { 'status.fileLabel': 'File', 'error.copyFailed': 'Copy failed' },
-      zh: { 'status.fileLabel': '文件', 'error.copyFailed': '复制失败' },
-      ja: { 'status.fileLabel': 'ファイル', 'error.copyFailed': 'コピーに失敗しました' },
-      ko: { 'status.fileLabel': '파일', 'error.copyFailed': '복사 실패' },
-      es: { 'status.fileLabel': 'Archivo', 'error.copyFailed': 'Error al copiar' },
-      fr: { 'status.fileLabel': 'Fichier', 'error.copyFailed': 'Échec de la copie' },
-      de: { 'status.fileLabel': 'Datei', 'error.copyFailed': 'Kopieren fehlgeschlagen' },
-      ru: { 'status.fileLabel': 'Файл', 'error.copyFailed': 'Не удалось скопировать' }
+      en: { 'status.fileLabel': 'File', 'error.copyFailed': 'Copy failed', 'error.audioPreviewRequired': 'Upload an audio file before playing a timestamp', 'error.timestampUnavailable': 'This timestamp cannot be played', 'error.audioPlaybackFailed': 'Audio playback failed' },
+      zh: { 'status.fileLabel': '文件', 'error.copyFailed': '复制失败', 'error.audioPreviewRequired': '请先上传音频文件再播放时间戳', 'error.timestampUnavailable': '这个时间戳无法播放', 'error.audioPlaybackFailed': '音频播放失败' },
+      ja: { 'status.fileLabel': 'ファイル', 'error.copyFailed': 'コピーに失敗しました', 'error.audioPreviewRequired': 'タイムスタンプ再生の前に音声をアップロードしてください', 'error.timestampUnavailable': 'このタイムスタンプは再生できません', 'error.audioPlaybackFailed': '音声の再生に失敗しました' },
+      ko: { 'status.fileLabel': '파일', 'error.copyFailed': '복사 실패', 'error.audioPreviewRequired': '타임스탬프를 재생하기 전에 오디오를 업로드하세요', 'error.timestampUnavailable': '이 타임스탬프는 재생할 수 없습니다', 'error.audioPlaybackFailed': '오디오 재생 실패' },
+      es: { 'status.fileLabel': 'Archivo', 'error.copyFailed': 'Error al copiar', 'error.audioPreviewRequired': 'Sube un audio antes de reproducir una marca de tiempo', 'error.timestampUnavailable': 'Esta marca de tiempo no se puede reproducir', 'error.audioPlaybackFailed': 'No se pudo reproducir el audio' },
+      fr: { 'status.fileLabel': 'Fichier', 'error.copyFailed': 'Échec de la copie', 'error.audioPreviewRequired': 'Importez un audio avant de lire un repère temporel', 'error.timestampUnavailable': 'Ce repère temporel ne peut pas être lu', 'error.audioPlaybackFailed': 'Échec de la lecture audio' },
+      de: { 'status.fileLabel': 'Datei', 'error.copyFailed': 'Kopieren fehlgeschlagen', 'error.audioPreviewRequired': 'Vor dem Abspielen eines Zeitstempels Audio hochladen', 'error.timestampUnavailable': 'Dieser Zeitstempel kann nicht abgespielt werden', 'error.audioPlaybackFailed': 'Audiowiedergabe fehlgeschlagen' },
+      ru: { 'status.fileLabel': 'Файл', 'error.copyFailed': 'Не удалось скопировать', 'error.audioPreviewRequired': 'Загрузите аудио перед воспроизведением метки времени', 'error.timestampUnavailable': 'Эту временную метку нельзя воспроизвести', 'error.audioPlaybackFailed': 'Не удалось воспроизвести аудио' }
     };
     Object.keys(STATUS_AND_ERROR_TRANSLATIONS).forEach(function(lang) { Object.assign(translations[lang], STATUS_AND_ERROR_TRANSLATIONS[lang]); });
     const ACCESS_AUTH_TRANSLATIONS = {
@@ -214,6 +214,18 @@ export const translations = {
       ru: { 'stt.subtitle': 'Загрузите аудио и распознайте его через Whisper ASR или ElevenLabs.', 'stt.engine': 'Сервис распознавания', 'stt.engineWhisper': 'Whisper', 'stt.engineElevenLabs': 'ElevenLabs', 'stt.language': 'Язык', 'stt.languageAuto': 'Автоопределение', 'stt.tagAudioEvents': 'Отмечать аудиособытия', 'stt.tagAudioEventsHint': 'Отмечает неречевые события, например смех или аплодисменты.' }
     };
     Object.keys(STT_ENGINE_TRANSLATIONS).forEach(function(lang) { Object.assign(translations[lang], STT_ENGINE_TRANSLATIONS[lang]); });
+
+    const STT_RESULT_VIEW_TRANSLATIONS = {
+      en: { 'stt.viewPlain': 'Text', 'stt.viewSentences': 'Sentences', 'stt.viewWords': 'Words', 'stt.noTimestamps': 'No timestamp data for this result.' },
+      zh: { 'stt.viewPlain': '纯文本', 'stt.viewSentences': '句子时间戳', 'stt.viewWords': '词级时间戳', 'stt.noTimestamps': '当前结果没有时间戳数据。' },
+      ja: { 'stt.viewPlain': 'テキスト', 'stt.viewSentences': '文タイムスタンプ', 'stt.viewWords': '単語タイムスタンプ', 'stt.noTimestamps': 'この結果にはタイムスタンプがありません。' },
+      ko: { 'stt.viewPlain': '텍스트', 'stt.viewSentences': '문장 타임스탬프', 'stt.viewWords': '단어 타임스탬프', 'stt.noTimestamps': '이 결과에는 타임스탬프 데이터가 없습니다.' },
+      es: { 'stt.viewPlain': 'Texto', 'stt.viewSentences': 'Frases', 'stt.viewWords': 'Palabras', 'stt.noTimestamps': 'Este resultado no tiene marcas de tiempo.' },
+      fr: { 'stt.viewPlain': 'Texte', 'stt.viewSentences': 'Phrases', 'stt.viewWords': 'Mots', 'stt.noTimestamps': 'Ce résultat ne contient pas de repères temporels.' },
+      de: { 'stt.viewPlain': 'Text', 'stt.viewSentences': 'Sätze', 'stt.viewWords': 'Wörter', 'stt.noTimestamps': 'Dieses Ergebnis enthält keine Zeitstempel.' },
+      ru: { 'stt.viewPlain': 'Текст', 'stt.viewSentences': 'Фразы', 'stt.viewWords': 'Слова', 'stt.noTimestamps': 'В этом результате нет временных меток.' }
+    };
+    Object.keys(STT_RESULT_VIEW_TRANSLATIONS).forEach(function(lang) { Object.assign(translations[lang], STT_RESULT_VIEW_TRANSLATIONS[lang]); });
 
     const AI_POLISH_TRANSLATIONS = {
       en: { 'action.polish': 'AI polish', 'action.undoPolish': 'Undo AI polish', 'polish.config': 'AI polish settings', 'polish.baseUrl': 'API Base URL', 'polish.baseUrlPlaceholder': 'https://api.openai.com/v1', 'polish.apiKey': 'API Key', 'polish.model': 'Model', 'polish.instruction': 'Polish instruction', 'polish.instructionPlaceholder': 'Polish text for natural speech. Return only the final text.', 'status.polishing': 'Polishing...', 'error.polishInputRequired': 'Enter text before polishing', 'error.polishConfigRequired': 'Enter Base URL, API Key, and model', 'error.polishFailed': 'Polish failed', 'error.polishEmpty': 'AI returned empty text', 'error.prefix': 'Error: ' },

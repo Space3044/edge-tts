@@ -138,6 +138,8 @@ const requiredMarkup = [
   'id="elevenlabsTagAudioEvents"',
   'id="audioPreviewShell"',
   'id="audioPreviewPlayer"',
+  'id="sentenceTimestampView"',
+  'id="wordTimestampView"',
   'data-i18n="stt.endpoint"',
   'data-i18n="stt.engine"',
   'data-i18n="stt.engineElevenLabs"',
@@ -166,6 +168,7 @@ const requiredFunctions = [
   "function formatSpeedValue(",
   "function formatPitchValue(",
   "function showToast(",
+  "function playTranscriptionSegment(",
   "function getSelectedVoiceId(",
   "function getAudioFromSsml(",
   "const CONFIG =",
@@ -204,6 +207,31 @@ assert.match(
   /import\('https:\/\/unpkg\.com\/agent-ui-annotation@0\.7\.0\/dist\/adapters\/vanilla\/index\.js'\)/,
   "development annotation toolbar should be loaded from the vanilla adapter CDN entry",
 );
+
+assert.match(
+  source,
+  /grid-template-columns:200px minmax\(0,1fr\)/,
+  "sentence timestamp rows should reserve enough width for mm:ss.mmm ranges",
+);
+
+assert.match(
+  source,
+  /playTranscriptionSegment\(sentence\.start, sentence\.end\)/,
+  "sentence timestamp rows should play the matching audio segment",
+);
+
+assert.match(
+  source,
+  /playTranscriptionSegment\(word\.start, word\.end\)/,
+  "word timestamp chips should play the matching audio segment",
+);
+
+assert.match(
+  source,
+  /audioPreviewPlayer[\s\S]*currentTime[\s\S]*timeupdate/,
+  "timestamp playback should seek and stop the existing audio preview player",
+);
+
 assert.match(
   source,
   /path === "\/favicon\.ico"/,

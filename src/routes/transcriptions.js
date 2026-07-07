@@ -141,6 +141,73 @@ function extractElevenLabsText(result) {
     return "";
 }
 
+const ELEVENLABS_SENTENCE_END_PATTERN = /[.!?。！？…]+["')\]}”’]*$/u;
+
+function normalizeTimestamp(value) {
+    const number = Number(value);
+    return Number.isFinite(number) ? number : null;
+}
+
+function calculateDuration(start, end) {
+    if (start === null || end === null || end < start) {
+        return null;
+    }
+    return Math.round((end - start) * 1000) / 1000;
+}
+
+function normalizeElevenLabsWords(result) {
+    if (!Array.isArray(result?.words)) {
+        return [];
+    }
+
+    return result.words
+        .map(item => {
+            const start = normalizeTimestamp(item?.start);
+            const end = normalizeTimestamp(item?.end);
+            return {
+                text: String(item?.text ?? item?.word ?? ""),
+                start,
+                end,
+                duration: calculateDuration(start, end),
+                type: String(item?.type || "word")
+            };
+        })
+        .filter(item => item.text);
+}
+
+function buildElevenLabsSentences(words) {
+    const sentences = [];
+    let text = "";
+    let start = null;
+    let end = null;
+
+    const pushSentence = () => {
+        const normalizedText = text.trim();
+        if (normalizedText) {
+            sentences.push({ text: normalizedText, start, end, duration: calculateDuration(start, end) });
+        }
+        text = "";
+        start = null;
+        end = null;
+    };
+
+    for (const word of words) {
+        text += word.text;
+        if (word.start !== null && start === null) {
+            start = word.start;
+        }
+        if (word.end !== null) {
+            end = word.end;
+        }
+        if (ELEVENLABS_SENTENCE_END_PATTERN.test(text.trim())) {
+            pushSentence();
+        }
+    }
+
+    pushSentence();
+    return sentences;
+}
+
 function whisperError(status) {
     if (status === 413) {
         return "音频文件太大，请选择较小的文件";
@@ -237,7 +304,8 @@ async function handleElevenLabsTranscription(formData) {
             languageCode,
             tagAudioEvents
         });
-        const text = extractElevenLabsText(result);
+        const words = normalizeElevenLabsWords(result);
+        const text = extractElevenLabsText(result) || words.map(word => word.text).join("").trim();
         if (!text) {
             return errorResponse("ElevenLabs 未返回可用转录文本", {
                 status: 502,
@@ -245,7 +313,11 @@ async function handleElevenLabsTranscription(formData) {
                 code: "empty_transcription_result"
             });
         }
-        return jsonResponse({ text });
+        return jsonResponse({
+            text,
+            sentences: buildElevenLabsSentences(words),
+            words
+        });
     } catch (error) {
         console.error("ElevenLabs STT error:", error);
         return errorResponse(error.message || "ElevenLabs 转录失败", {
