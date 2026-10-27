@@ -1,5 +1,6 @@
 import { errorResponse, jsonResponse } from "../utils/response.js";
 import { transcribe as transcribeWithElevenLabs } from "../elevenlabs/stt.js";
+import { transcribeWithGoogle } from "../google/stt.js";
 
 const MAX_AUDIO_FILE_SIZE = 50 * 1024 * 1024;
 const MAX_SOURCE_REDIRECTS = 5;
@@ -333,6 +334,33 @@ function normalizeElevenLabsWords(result) {
         .filter(item => item.text);
 }
 
+/**
+ * Sentences for Gemini words.
+ *
+ * Gemini returns word annotations without the spacing entries ElevenLabs
+ * includes, so concatenating them directly would produce "Helloworld". Keep the
+ * word list untouched for the extension (it joins words itself) and add spaces
+ * only for the sentence view.
+ */
+function buildGoogleSentences(words) {
+    const spaced = [];
+    for (const word of words) {
+        const previous = spaced[spaced.length - 1];
+        let text = word.text;
+        if (
+            previous &&
+            text &&
+            !text.startsWith(" ") &&
+            !/^[.,!?;:%)}\]]/.test(text) &&
+            !/[([{]\s*$/.test(previous.text)
+        ) {
+            text = ` ${text}`;
+        }
+        spaced.push({ ...word, text });
+    }
+    return buildElevenLabsSentences(spaced);
+}
+
 function buildElevenLabsSentences(words) {
     const sentences = [];
     let text = "";
@@ -471,6 +499,74 @@ async function handleWhisperTranscription(formData) {
     return jsonResponse({ text });
 }
 
+async function handleGoogleTranscription(formData, env) {
+    const apiKey = String(env?.GEMINI_API_KEY || env?.GOOGLE_API_KEY || "").trim();
+    if (!apiKey) {
+        return errorResponse("Google transcription is not configured: set GEMINI_API_KEY on the Worker.", {
+            status: 500,
+            type: "api_error",
+            code: "google_not_configured"
+        });
+    }
+
+    const audioFile = formData.get("file");
+    const sourceUrl = readSourceUrl(formData);
+    let data = audioFile;
+    let filename = audioFile && audioFile.name ? audioFile.name : "audio";
+    let mimeType = audioFile && audioFile.type ? audioFile.type : "audio/mpeg";
+
+    if (!data && sourceUrl) {
+        const checked = normalizeSourceUrl(sourceUrl);
+        if (checked.error) return sourceUrlError(checked.error);
+        try {
+            const remote = await fetchSourceAudio(checked.url, MAX_AUDIO_FILE_SIZE);
+            data = remote.blob;
+            filename = sourceFilename(remote.url, remote.contentType);
+            mimeType = remote.contentType || remote.blob.type || "audio/mpeg";
+        } catch (error) {
+            const message = error instanceof Error ? error.message : "音频下载失败";
+            const tooLarge = message.includes("50MB");
+            return errorResponse(message, {
+                status: tooLarge ? 400 : 502,
+                type: tooLarge ? "invalid_request_error" : "api_error",
+                param: tooLarge ? "source_url" : null,
+                code: tooLarge ? "source_too_large" : "source_download_failed"
+            });
+        }
+    }
+    if (!data) return missingAudioResponse();
+
+    if (audioFile) {
+        const invalid = validateAudioFile(audioFile);
+        if (invalid) return invalid;
+    }
+
+    try {
+        const result = await transcribeWithGoogle({ apiKey, data, filename, mimeType });
+        const words = normalizeElevenLabsWords(result);
+        const text = extractElevenLabsText(result) || words.map(word => word.text).join("").trim();
+        if (!text) {
+            return errorResponse("Google Transcribe 未返回可用转录文本", {
+                status: 502,
+                type: "api_error",
+                code: "empty_transcription_result"
+            });
+        }
+        return jsonResponse({
+            text,
+            sentences: buildGoogleSentences(words),
+            words
+        });
+    } catch (error) {
+        console.error("Google STT error:", error);
+        return errorResponse(error.message || "Google 转录失败", {
+            status: 502,
+            type: "api_error",
+            code: "transcription_api_error"
+        });
+    }
+}
+
 function elevenLabsResultResponse(result) {
     const words = normalizeElevenLabsWords(result);
     const text = extractElevenLabsText(result) || words.map(word => word.text).join("").trim();
@@ -554,6 +650,9 @@ export async function handleAudioTranscription(request, env) {
 
         if (engine === "elevenlabs") {
             return handleElevenLabsTranscription(formData);
+        }
+        if (engine === "google") {
+            return handleGoogleTranscription(formData, env);
         }
         return handleWhisperTranscription(formData);
     } catch (error) {

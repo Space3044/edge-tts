@@ -9,6 +9,9 @@ assert.match(readme, /https:\/\/github\.com\/Space3044\/edge-tts/, "README shoul
 assert.match(readme, /Whisper ASR/, "README should describe the current Whisper ASR transcription flow");
 assert.match(readme, /ElevenLabs/, "README should describe the ElevenLabs transcription flow");
 assert.match(readme, /engine=elevenlabs/, "README should include an ElevenLabs transcription request example");
+assert.match(readme, /Google Gemini 3\.5 Transcribe/, "README should describe the Google transcription flow");
+assert.match(readme, /engine=google/, "README should include a Google transcription request example");
+assert.match(readme, /GEMINI_API_KEY/, "README should document the Google Worker secret");
 assert.match(readme, /\/tts\b/, "README should document the dedicated text-to-speech page path");
 assert.match(readme, /\/transcription\b/, "README should document the dedicated speech-to-text page path");
 assert.match(readme, /Cloudflare Access[\s\S]*\/transcription\*[\s\S]*\/v1\/audio\/transcriptions\*/, "README should document protecting transcription with Cloudflare Access");

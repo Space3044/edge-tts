@@ -7,6 +7,7 @@ const workerSource = read("../src/worker.js");
 const speechSource = read("../src/routes/speech.js");
 const transcriptionSource = read("../src/routes/transcriptions.js");
 const elevenLabsSttSource = read("../src/elevenlabs/stt.js");
+const googleSttSource = read("../src/google/stt.js");
 const endpointSource = read("../src/edge/endpoint.js");
 const synthesizeSource = read("../src/edge/synthesize.js");
 const pageSource = read("../src/frontend/page.js");
@@ -169,7 +170,7 @@ assert.doesNotMatch(
   "frontend should not keep unused currentMode state",
 );
 
-for (const key of ["status.fileLabel", "error.copyFailed", "stt.endpoint", "stt.endpointPlaceholder", "stt.endpointHint", "error.endpointRequired", "stt.sourceUrl", "stt.sourceUrlPlaceholder", "stt.sourceUrlHint", "error.audioSourceRequired"]) {
+for (const key of ["status.fileLabel", "error.copyFailed", "stt.endpoint", "stt.endpointPlaceholder", "stt.endpointHint", "error.endpointRequired", "stt.sourceUrl", "stt.sourceUrlPlaceholder", "stt.sourceUrlHint", "error.audioSourceRequired", "stt.engineGoogle", "stt.googleHint"]) {
   assert.ok(i18nSource.includes(`'${key}'`), `translations should include ${key}`);
 }
 
@@ -195,6 +196,30 @@ assert.match(
   clientSource,
   /audioSourceUrl/,
   "frontend should send the audio URL as source_url",
+);
+
+assert.match(
+  transcriptionSource,
+  /engine === "google"/,
+  "transcription route should dispatch Google requests by engine",
+);
+
+assert.match(
+  transcriptionSource,
+  /GEMINI_API_KEY/,
+  "transcription route should read the Google key from the Worker environment",
+);
+
+assert.match(
+  googleSttSource,
+  /gemini-3\.5-transcribe/,
+  "Google STT client should target Gemini 3.5 Transcribe",
+);
+
+assert.match(
+  pageSource,
+  /engineGoogle/,
+  "frontend should expose the Google transcription engine",
 );
 
 console.log("Verified code hygiene and Whisper ASR transcription flow.");

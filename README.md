@@ -20,7 +20,7 @@ https://github.com/Space3044/edge-tts
 - 声音库：内置 114 个 Microsoft Edge TTS 声音，支持按语言、性别、名称、地区和 voice ID 搜索。
 - 参数调节：支持语速、音调和语音风格，语速和音调可双击恢复默认值。
 - 生成结果：生成后的 MP3 可在线播放和下载。
-- 语音转文字：上传音频或粘贴公开音频 URL，可调用你部署的 Whisper ASR Webservice，也可使用 ElevenLabs Scribe 接口；ElevenLabs 支持纯文本、句子时间戳和词级时间戳查看。
+- 语音转文字：上传音频或粘贴公开音频 URL，可使用 Whisper ASR、ElevenLabs Scribe 或 Google Gemini 3.5 Transcribe；ElevenLabs 和 Gemini 都支持纯文本、句子时间戳和词级时间戳查看。
 - AI 润色：调用 OpenAI 兼容接口润色输入文本。
 - 浏览器本地保存：Whisper ASR 地址、AI 润色 Base URL、API Key、模型和润色指令只保存在当前浏览器本地。
 - 多语言界面：支持中文、英文、日文、韩文、西班牙文、法文、德文、俄文。
@@ -178,13 +178,21 @@ zh-CN-YunyangNeural
 POST /v1/audio/transcriptions
 ```
 
-当前实现支持两种转录引擎。默认调用 Whisper ASR Webservice，前端会让用户填写 Whisper ASR 地址，后端再把音频转发到该地址。选择 ElevenLabs 时，后端会调用 ElevenLabs Scribe Speech-to-Text 接口：
+当前实现支持三种转录引擎。默认调用 Whisper ASR Webservice，前端会让用户填写 Whisper ASR 地址，后端再把音频转发到该地址。选择 ElevenLabs 时，后端会调用 ElevenLabs Scribe Speech-to-Text 接口；选择 Google 时，后端使用 Gemini 3.5 Transcribe，并通过环境变量 `GEMINI_API_KEY` 认证：
 
 ```text
 https://api.elevenlabs.io/v1/speech-to-text
 ```
 
 ElevenLabs 使用 `scribe_v2` 模型。词级时间戳来自 ElevenLabs 返回的 `words[]`；句子时间戳由后端按词级结果和句末标点聚合生成。
+
+Google 使用 `gemini-3.5-transcribe`。音频由 Worker 下载（或接收上传）后传到 Gemini Files API，再调用 Interactions API；词级时间戳来自返回的 `word_info` 注解，句子时间戳同样在本地聚合。Google 的密钥从 Worker 环境变量读取，不写入仓库：
+
+```bash
+npx wrangler secret put GEMINI_API_KEY
+```
+
+也可以使用 `GOOGLE_API_KEY` 作为备用变量名。没有配置密钥时，Google 引擎会返回明确的 `google_not_configured` 错误。
 
 Whisper ASR 请求示例：
 
@@ -220,10 +228,17 @@ curl -X POST "https://your-worker.example.com/v1/audio/transcriptions" \
   -F "endpoint=https://your-whisper-asr.example.com"
 ```
 
+```bash
+curl -X POST "https://your-worker.example.com/v1/audio/transcriptions" \
+  -F "source_url=https://example.com/audio.mp3" \
+  -F "engine=google"
+```
+
 URL 模式的行为：
 
 - `engine=elevenlabs`：Worker 把 URL 原样交给 ElevenLabs 的 `source_url`，不在 Worker 端下载，ElevenLabs 的 2GB URL 上限生效。
 - `engine=whisper`：Worker 自己下载音频（跟随最多 5 次重定向，每一跳都重新校验），再按 `audio_file` 转发给 Whisper ASR；沿用 50MB 上限。
+- `engine=google`：Worker 自己下载音频后上传到 Gemini Files API，再调用 `gemini-3.5-transcribe`；使用 Worker 的 `GEMINI_API_KEY`，不需要在扩展里填写 Google 密钥。
 - 只允许 `http://` / `https://` 的公开地址；本机、内网、云元数据地址会被拒绝。URL 里不能带用户名或密码。
 - 文件上传仍是 50MB 上限；粘贴 URL 时前端不再要求先选文件。
 
@@ -387,6 +402,7 @@ node scripts/verify-code-hygiene.mjs
 node scripts/verify-voices.mjs
 node scripts/verify-transcription-format.mjs
 node scripts/verify-elevenlabs-stt.mjs
+node scripts/verify-google-stt.mjs
 node scripts/verify-transcription-url.mjs
 node -e "import('./index.js').then((m) => { if (!m.default || typeof m.default.fetch !== 'function') throw new Error('Worker fetch export missing'); console.log('Worker entry import ok'); })"
 git diff --check
@@ -396,7 +412,8 @@ git diff --check
 
 - Edge TTS 依赖 Microsoft 服务可用性，网络环境会影响生成成功率。
 - 长文本会自动拆分再合成，内容越长，生成时间越久。
-- STT 文件上传限制为 50MB；Whisper 的 URL 模式同样限制 50MB，ElevenLabs 的 URL 模式由 ElevenLabs 自己限制（2GB）。
+- STT 文件上传限制为 50MB；Whisper 的 URL 模式同样限制 50MB，ElevenLabs 的 URL 模式由 ElevenLabs 自己限制（2GB），Google 的 URL 模式也受 Worker 50MB 上限约束。
+- Google Transcribe 需要 Worker 环境变量 `GEMINI_API_KEY`（或 `GOOGLE_API_KEY`）；没有密钥时请切到 Whisper 或 ElevenLabs。
 - 文本文件上传限制为 500KB。
 - URL 模式会跟随最多 5 次重定向，并拒绝本机/内网地址；Worker 不会把任意 URL 当作内网代理。
 - Whisper ASR 如果部署在非标准 HTTPS 端口，Cloudflare Workers 发布环境可能忽略自定义端口，建议使用标准 443 端口或反向代理到标准端口。
