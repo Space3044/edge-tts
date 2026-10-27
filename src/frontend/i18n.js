@@ -203,6 +203,18 @@ export const translations = {
     };
     Object.keys(WHISPER_ENDPOINT_TRANSLATIONS).forEach(function(lang) { Object.assign(translations[lang], WHISPER_ENDPOINT_TRANSLATIONS[lang]); });
 
+    const STT_SOURCE_URL_TRANSLATIONS = {
+      en: { 'stt.sourceUrl': 'Audio URL', 'stt.sourceUrlPlaceholder': 'https://example.com/audio.mp3', 'stt.sourceUrlHint': 'Or paste a public audio URL; Whisper downloads it and ElevenLabs reads it directly.', 'error.audioSourceRequired': 'Choose an audio file or paste an audio URL.' },
+      zh: { 'stt.sourceUrl': '音频 URL', 'stt.sourceUrlPlaceholder': 'https://example.com/audio.mp3', 'stt.sourceUrlHint': '或粘贴一个公开的音频 URL；Whisper 由 Worker 下载，ElevenLabs 直接读取。', 'error.audioSourceRequired': '请选择音频文件或粘贴音频 URL。' },
+      ja: { 'stt.sourceUrl': '音声URL', 'stt.sourceUrlPlaceholder': 'https://example.com/audio.mp3', 'stt.sourceUrlHint': '公開音声URLを貼り付けることもできます。Whisper は Worker が取得し、ElevenLabs は直接読み取ります。', 'error.audioSourceRequired': '音声ファイルを選択するか、音声URLを貼り付けてください。' },
+      ko: { 'stt.sourceUrl': '오디오 URL', 'stt.sourceUrlPlaceholder': 'https://example.com/audio.mp3', 'stt.sourceUrlHint': '공개 오디오 URL을 붙여넣을 수도 있습니다. Whisper는 Worker가 내려받고 ElevenLabs는 직접 읽습니다.', 'error.audioSourceRequired': '오디오 파일을 선택하거나 오디오 URL을 붙여넣으세요.' },
+      es: { 'stt.sourceUrl': 'URL de audio', 'stt.sourceUrlPlaceholder': 'https://example.com/audio.mp3', 'stt.sourceUrlHint': 'También puedes pegar una URL de audio pública; Whisper la descarga y ElevenLabs la lee directamente.', 'error.audioSourceRequired': 'Elige un archivo de audio o pega una URL de audio.' },
+      fr: { 'stt.sourceUrl': 'URL audio', 'stt.sourceUrlPlaceholder': 'https://example.com/audio.mp3', 'stt.sourceUrlHint': 'Vous pouvez aussi coller une URL audio publique ; Whisper la télécharge et ElevenLabs la lit directement.', 'error.audioSourceRequired': 'Choisissez un fichier audio ou collez une URL audio.' },
+      de: { 'stt.sourceUrl': 'Audio-URL', 'stt.sourceUrlPlaceholder': 'https://example.com/audio.mp3', 'stt.sourceUrlHint': 'Alternativ eine öffentliche Audio-URL einfügen; Whisper lädt sie herunter, ElevenLabs liest sie direkt.', 'error.audioSourceRequired': 'Audiodatei wählen oder Audio-URL einfügen.' },
+      ru: { 'stt.sourceUrl': 'URL аудио', 'stt.sourceUrlPlaceholder': 'https://example.com/audio.mp3', 'stt.sourceUrlHint': 'Можно вставить публичный URL аудио; Whisper скачает его, а ElevenLabs прочитает напрямую.', 'error.audioSourceRequired': 'Выберите аудиофайл или вставьте URL аудио.' }
+    };
+    Object.keys(STT_SOURCE_URL_TRANSLATIONS).forEach(function(lang) { Object.assign(translations[lang], STT_SOURCE_URL_TRANSLATIONS[lang]); });
+
     const STT_ENGINE_TRANSLATIONS = {
       en: { 'stt.subtitle': 'Upload audio and transcribe it with Whisper ASR or ElevenLabs.', 'stt.engine': 'Transcription engine', 'stt.engineWhisper': 'Whisper', 'stt.engineElevenLabs': 'ElevenLabs', 'stt.language': 'Language', 'stt.languageAuto': 'Auto detect', 'stt.tagAudioEvents': 'Keep sound cues', 'stt.tagAudioEventsHint': 'Text may include cues like [laughter] or [applause].' },
       zh: { 'stt.subtitle': '上传音频，使用 Whisper ASR 或 ElevenLabs 转录。', 'stt.engine': '转录引擎', 'stt.engineWhisper': 'Whisper', 'stt.engineElevenLabs': 'ElevenLabs', 'stt.language': '语言', 'stt.languageAuto': '自动检测', 'stt.tagAudioEvents': '保留音效提示', 'stt.tagAudioEventsHint': '转写文本里可能出现 [笑声]、[掌声] 这类提示。' },

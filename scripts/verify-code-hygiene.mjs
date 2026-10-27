@@ -169,8 +169,32 @@ assert.doesNotMatch(
   "frontend should not keep unused currentMode state",
 );
 
-for (const key of ["status.fileLabel", "error.copyFailed", "stt.endpoint", "stt.endpointPlaceholder", "stt.endpointHint", "error.endpointRequired"]) {
+for (const key of ["status.fileLabel", "error.copyFailed", "stt.endpoint", "stt.endpointPlaceholder", "stt.endpointHint", "error.endpointRequired", "stt.sourceUrl", "stt.sourceUrlPlaceholder", "stt.sourceUrlHint", "error.audioSourceRequired"]) {
   assert.ok(i18nSource.includes(`'${key}'`), `translations should include ${key}`);
 }
+
+assert.match(
+  transcriptionSource,
+  /source_url|readSourceUrl/,
+  "transcription route should accept a source_url for URL-based transcription",
+);
+
+assert.match(
+  transcriptionSource,
+  /missing_audio/,
+  "transcription route should distinguish a missing file/URL from an empty upload",
+);
+
+assert.match(
+  pageSource,
+  /audioSourceUrl/,
+  "frontend should expose an audio URL input",
+);
+
+assert.match(
+  clientSource,
+  /audioSourceUrl/,
+  "frontend should send the audio URL as source_url",
+);
 
 console.log("Verified code hygiene and Whisper ASR transcription flow.");

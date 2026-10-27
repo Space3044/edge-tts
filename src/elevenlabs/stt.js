@@ -94,6 +94,7 @@ function combineSignals(timeoutMs, externalSignal) {
 
 export async function transcribe({
     data,
+    sourceUrl,
     filename,
     languageCode = "auto",
     tagAudioEvents = true,
@@ -105,10 +106,14 @@ export async function transcribe({
     formData.append("diarize", "true");
     formData.append("tag_audio_events", String(tagAudioEvents).toLowerCase());
 
-    const existingType = data && typeof data === "object" && "type" in data ? data.type : undefined;
-    const mimeType = inferMimeType(filename, existingType);
-    const blob = data instanceof Blob ? data : new Blob([data], { type: mimeType });
-    formData.append("file", blob, filename || "audio");
+    if (sourceUrl) {
+        formData.append("source_url", String(sourceUrl).trim());
+    } else {
+        const existingType = data && typeof data === "object" && "type" in data ? data.type : undefined;
+        const mimeType = inferMimeType(filename, existingType);
+        const blob = data instanceof Blob ? data : new Blob([data], { type: mimeType });
+        formData.append("file", blob, filename || "audio");
+    }
 
     if (languageCode && languageCode.toLowerCase() !== "auto") {
         formData.append("language_code", languageCode);
