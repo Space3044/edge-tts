@@ -2,6 +2,10 @@
 
 Status: implemented
 
+> 第 1、5 条（结果缓存、并发占位锁）已被
+> [删掉字幕缓存](../../simplification/2026-11-02-drop-caption-cache.md) 取代：
+> 网关只做额度调度，不保存字幕。
+
 ## Problem
 
 多账号网关真正要服务的接口只有一个：

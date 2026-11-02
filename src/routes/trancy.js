@@ -7,7 +7,6 @@
  * POST   /api/trancy/accounts/refresh      — probe every account now
  * POST   /api/trancy/accounts/:id/refresh  — probe one account
  * POST   /api/trancy/captions             — generate YouTube AI subtitles within the daily quota
- * GET    /api/trancy/captions/:videoId    — cached subtitles only, never spends quota
  *
  * Authentication is Cloudflare Access' job: the whole `/api/*` surface is meant
  * to sit behind an Access application, so the Worker checks no token of its own.
@@ -17,9 +16,7 @@
 
 import {
     normalizeCaptionRequest,
-    readCachedCaptions,
     requestYoutubeCaptions,
-    PENDING_RETRY_MS,
     TRANCY_DEFAULT_DAILY_LIMIT
 } from "../trancy/captions.js";
 import {
@@ -273,52 +270,21 @@ async function handleAccounts(request, env, segments) {
 }
 
 /**
- * `POST /api/trancy/captions {videoId?}` spends quota. `GET /captions/:videoId`
- * only reads the cache, so retrying a finished video costs nothing.
+ * `POST /api/trancy/captions {videoId, target?}` - one entry, nothing stored.
  *
- * `target` is optional and defaults to `en`: downstream only has to know the
- * video id.
+ * `target` is optional (defaults to `en`), so downstream only needs the video
+ * id. The transcript is returned in the response; the gateway keeps no copy,
+ * which means repeating a video spends quota again.
  */
-async function handleCaptions(request, env, segments) {
-    if (request.method === "GET") {
-        const videoId = String(segments[3] || "");
-        const target = new URL(request.url).searchParams.get("target") || "en";
-        const normalized = normalizeCaptionRequest({ videoId, target });
-        if (normalized.error) {
-            return errorResponse(normalized.error, {
-                status: 400,
-                type: "invalid_request_error",
-                param: "videoId",
-                code: "invalid_caption_request"
-            });
-        }
-        const cached = await readCachedCaptions(env, normalized);
-        if (cached && cached.pending) {
-            return jsonResponse(cached, {
-                status: 202,
-                headers: { "Retry-After": String(Math.ceil(PENDING_RETRY_MS / 1000)) }
-            });
-        }
-        if (!cached) {
-            return errorResponse("这个视频还没有缓存，需要先 POST 生成", {
-                status: 404,
-                type: "invalid_request_error",
-                param: "videoId",
-                code: "caption_not_cached"
-            });
-        }
-        return jsonResponse(cached);
-    }
-
+async function handleCaptions(request, env) {
     if (request.method !== "POST") {
-        return errorResponse("只支持 POST /api/trancy/captions 和 GET /api/trancy/captions/:videoId", {
+        return errorResponse("只支持 POST /api/trancy/captions", {
             status: 405,
             type: "invalid_request_error",
             param: "method",
             code: "method_not_allowed"
         });
     }
-
 
     const body = await readJsonBody(request);
     if (!body) {
@@ -341,12 +307,6 @@ async function handleCaptions(request, env, segments) {
     }
 
     const result = await requestYoutubeCaptions(env, normalized);
-    if (result.pending) {
-        return jsonResponse(result, {
-            status: 202,
-            headers: { "Retry-After": String(Math.ceil(PENDING_RETRY_MS / 1000)) }
-        });
-    }
     if (!result.ok) {
         const status = result.reason === "no_account" || result.reason === "no_caption_quota" ? 503 : 502;
         return jsonResponse({
@@ -364,10 +324,9 @@ async function handleCaptions(request, env, segments) {
     return jsonResponse(result, {
         headers: {
             "X-Trancy-Account": result.account.id,
-            "X-Trancy-Cached": result.cached ? "1" : "0",
             "X-Quota-Limit": String(result.quota.limit),
             "X-Quota-Remaining": String(result.quota.remaining),
-            "Access-Control-Expose-Headers": "X-Trancy-Account, X-Trancy-Cached, X-Quota-Limit, X-Quota-Remaining"
+            "Access-Control-Expose-Headers": "X-Trancy-Account, X-Quota-Limit, X-Quota-Remaining"
         }
     });
 }
@@ -383,8 +342,8 @@ export async function handleTrancy(request, env = {}) {
         if (segments.length >= 3 && segments[2] === "accounts") {
             return await handleAccounts(request, env, segments);
         }
-        if (segments[2] === "captions" && segments.length >= 3 && segments.length <= 4) {
-            return await handleCaptions(request, env, segments);
+        if (segments.length === 3 && segments[2] === "captions") {
+            return await handleCaptions(request, env);
         }
         return errorResponse("未知的 Trancy 接口", {
             status: 404,

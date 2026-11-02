@@ -4,15 +4,18 @@
  * Every free Trancy account may generate only a handful of AI subtitles per day
  * (`x-quota-limit`, five by default) and the refusal is an HTTP 200 whose body
  * says `{"code":403,"message":"You've reached the daily limit..."}`. So the
- * gateway is not a round-robin proxy here; it is a quota allocator with three
- * rules, in order of importance:
+ * gateway is not a round-robin proxy here; it is a quota allocator:
  *
- *   1. **Never pay twice for the same video.** Results are cached by
- *      (video, target) and served from D1 without touching Trancy.
- *   2. **Never ask an account that just said no.** A refusal parks the account
+ *   1. **Never ask an account that just said no.** A refusal parks the account
  *      in `exhausted_until` until the next UTC day; the token itself is fine.
- *   3. **Spend the emptiest account first.** Our own daily counter leads, the
+ *   2. **Spend the emptiest account first.** Our own daily counter leads, the
  *      last observed `x-quota-remaining` breaks ties, LRU finishes.
+ *   3. **Report the outcome.** The caller gets the transcript plus which account
+ *      paid for it and what is left today.
+ *
+ * Nothing is cached: the transcript comes back in the response and belongs to
+ * the caller. Asking for the same video twice spends the quota twice (unless
+ * Trancy happens to serve it from its own cache).
  *
  * If every account is exhausted the caller gets `503 no_caption_quota` with the
  * reset time instead of a fake success.
@@ -20,28 +23,19 @@
 
 import { fetchYoutubeCaptions } from "./api.js";
 import {
-    claimCaptionSlot,
     listTrancyAccounts,
     markCaptionExhausted,
     nextUtcMidnight,
     pickCaptionAccounts,
-    readCaptionCache,
     recordCaptionUsage,
     recordTrancyUsage,
     refreshTrancyAccount,
-    releaseCaptionClaim,
-    stealStaleCaptionClaim,
-    utcDay,
-    writeCaptionCache
+    utcDay
 } from "./store.js";
 
 const VIDEO_ID_PATTERN = /^[A-Za-z0-9_-]{6,20}$/;
 const TARGET_PATTERN = /^[A-Za-z]{2,3}(-[A-Za-z0-9]{2,8})*$/;
 const MAX_ACCOUNTS_PER_REQUEST = 3;
-/** How long a caller should wait before re-reading when someone else holds the claim. */
-export const PENDING_RETRY_MS = 1500;
-/** A claim older than this is assumed dead and may be taken over. */
-const CLAIM_TTL_MS = 90000;
 
 /**
  * What a free account gets per day, as documented by Trancy ("5 AI subtitles
@@ -52,6 +46,10 @@ const CLAIM_TTL_MS = 90000;
  */
 export const TRANCY_DEFAULT_DAILY_LIMIT = 5;
 
+/**
+ * `target` is optional on purpose: downstream only has to know the video id, and
+ * the common case is English subtitles.
+ */
 export function normalizeCaptionRequest({ videoId, target } = {}) {
     const video = String(videoId ?? "").trim();
     const language = String(target ?? "en").trim() || "en";
@@ -68,86 +66,14 @@ export function normalizeCaptionRequest({ videoId, target } = {}) {
     return { videoId: video, target: language, error: null };
 }
 
-function cacheView(row, { videoId, target }) {
-    let data = [];
-    try {
-        data = JSON.parse(String(row.payload || "[]"));
-    } catch {
-        data = [];
-    }
-    return {
-        ok: true,
-        cached: true,
-        videoId,
-        target,
-        account: { id: String(row.account_id || ""), email: "" },
-        quota: { limit: -1, remaining: -1 },
-        sentenceCount: Number(row.sentence_count || data.length || 0),
-        createdAt: String(row.created_at || ""),
-        data
-    };
-}
-
-export async function readCachedCaptions(env, { videoId, target }) {
-    const row = await readCaptionCache(env, videoId, target);
-    if (!row) {
-        return null;
-    }
-    // An empty payload is a claim in flight, not a cache entry.
-    if (String(row.payload || "") === "") {
-        return {
-            ok: false,
-            pending: true,
-            cached: false,
-            videoId,
-            target,
-            message: "这个视频正在生成中，稍后用 GET 取结果",
-            retryAfterMs: PENDING_RETRY_MS
-        };
-    }
-    return cacheView(row, { videoId, target });
-}
-
 /**
- * Serve a caption request, from cache when possible and from the pool otherwise.
+ * Serve one caption request from the pool.
  *
  * `tried` carries the accounts that were consulted so a failure explains itself
- * ("acc-a: daily_limit, acc-b: network") instead of returning a bare 503.
+ * ("a@example.com: daily_limit, b@example.com: network") instead of returning a
+ * bare 503.
  */
 export async function requestYoutubeCaptions(env, { videoId, target = "en", fetchImpl = fetch } = {}) {
-    const cached = await readCachedCaptions(env, { videoId, target });
-    if (cached && !cached.pending) {
-        return cached;
-    }
-
-    if (cached && cached.pending) {
-        // Someone owns the claim. Only take it over if its owner looks dead,
-        // otherwise hand the caller the same "wait" answer.
-        if (!(await stealStaleCaptionClaim(env, { videoId, target, olderThanMs: CLAIM_TTL_MS }))) {
-            return cached;
-        }
-    }
-
-    if (!cached) {
-        // One generation per (video, target) at a time, enforced in D1.
-        const claim = await claimCaptionSlot(env, { videoId, target });
-        if (!claim.claimed) {
-            const row = claim.row;
-            if (row && String(row.payload || "") !== "") {
-                return cacheView(row, { videoId, target });
-            }
-            return {
-                ok: false,
-                pending: true,
-                cached: false,
-                videoId,
-                target,
-                message: "同一个视频已经有请求在生成，稍后重试",
-                retryAfterMs: PENDING_RETRY_MS
-            };
-        }
-    }
-
     const accounts = await pickCaptionAccounts(env, { limit: MAX_ACCOUNTS_PER_REQUEST });
     if (!accounts.length) {
         // "The pool is empty" and "the pool is spent" are different answers for
@@ -158,11 +84,9 @@ export async function requestYoutubeCaptions(env, { videoId, target = "en", fetc
             .map(account => account.exhaustedUntil)
             .filter(value => value && Date.parse(value) > now)
             .sort();
-        await releaseCaptionClaim(env, { videoId, target }).catch(() => null);
         if (parked.length) {
             return {
                 ok: false,
-                cached: false,
                 reason: "no_caption_quota",
                 message: "所有账号今天的 AI 字幕额度都用完了",
                 resetAt: parked[0],
@@ -171,8 +95,6 @@ export async function requestYoutubeCaptions(env, { videoId, target = "en", fetc
         }
         return {
             ok: false,
-            cached: false,
-            pending: false,
             reason: "no_account",
             message: "没有可用账号：账号池为空、token 过期或正在冷却",
             resetAt: nextUtcMidnight(),
@@ -194,29 +116,14 @@ export async function requestYoutubeCaptions(env, { videoId, target = "en", fetc
                 quotaLimit: result.quota.limit,
                 quotaRemaining: result.quota.remaining
             });
-            const sentenceCount = result.sentences.length;
-            try {
-                await writeCaptionCache(env, {
-                    videoId,
-                    target,
-                    accountId: account.id,
-                    payload: JSON.stringify(result.sentences),
-                    sentenceCount
-                });
-            } catch (error) {
-                // A cache miss that cannot be written is not worth failing the
-                // request over: the caller already has the captions.
-                console.error("trancy caption cache write failed:", error);
-            }
             return {
                 ok: true,
-                cached: false,
                 videoId,
                 target,
                 account: { id: account.id, email: account.email },
                 quota: { limit: result.quota.limit, remaining: result.quota.remaining },
                 usedToday,
-                sentenceCount,
+                sentenceCount: result.sentences.length,
                 data: result.sentences
             };
         }
@@ -239,12 +146,9 @@ export async function requestYoutubeCaptions(env, { videoId, target = "en", fetc
         await recordTrancyUsage(env, account.id, { ok: false, cooldownMinutes: 2 }).catch(() => null);
     }
 
-    await releaseCaptionClaim(env, { videoId, target }).catch(() => null);
     const exhaustedAll = tried.every(entry => entry.endsWith("daily_limit"));
     return {
         ok: false,
-        cached: false,
-        pending: false,
         reason: exhaustedAll ? "no_caption_quota" : "caption_failed",
         message: exhaustedAll
             ? "所有账号今天的 AI 字幕额度都用完了"

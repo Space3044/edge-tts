@@ -25,7 +25,7 @@ https://github.com/Space3044/edge-tts
 - 服务配置：转录服务的 endpoint、模型和 API Key 在页面里设置，API Key 用 `SECRETS_ENCRYPTION_KEY` 加密后存进 D1；页面只显示掩码尾巴，不回传明文。
 - 浏览器本地保存：AI 润色的 Base URL、API Key、模型和润色指令只保存在当前浏览器本地。
 - Trancy 多账号网关：单独一个 Gateway 标签页管理多个 Trancy 账号，支持**邮箱密码登录 / 注册 / 粘贴 token** 三种添加方式；token 加密存进 D1、密码明文保存（为了一键重新登录），Cloudflare cron 每天调 `/1/user/profile` 自动续期，转发接口按最近最少使用轮换账号并自动摘掉失效 token。
-- YouTube 字幕调度：`POST /api/trancy/captions` 按账号的每日 AI 字幕额度（免费号 5 个视频/天）挑账号生成字幕，同视频同语言走 D1 缓存不再花额度，额度耗尽的账号停泊到次日 UTC 零点。
+- YouTube 字幕调度：`POST /api/trancy/captions` 按账号的每日 AI 字幕额度（免费号 5 个视频/天）挑账号生成字幕并直接返回，额度耗尽的账号停泊到次日 UTC 零点；网关不保存结果。
 - 多语言界面：支持中文、英文、日文、韩文、西班牙文、法文、德文、俄文。
 
 ## 项目结构
@@ -38,7 +38,7 @@ https://github.com/Space3044/edge-tts
 │   ├── routes/                      # speech、transcriptions、polish、providers、trancy、favicon
 │   ├── edge/                        # Edge TTS 端点、签名、SSML、合成逻辑
 │   ├── secrets/                     # API Key 加解密（AES-GCM）与 D1 配置读写
-│   ├── trancy/                      # Trancy token 解析、账号存取与轮换、字幕调度、上游调用
+│   ├── trancy/                      # Trancy token 解析、账号存取、字幕额度调度、上游调用
 │   ├── frontend/                    # 页面、样式、客户端脚本、声音库、多语言、favicon
 │   └── utils/                       # CORS、文本切分等工具
 ├── migrations/                      # D1 迁移（provider_config、trancy_account 两张表）
@@ -465,20 +465,19 @@ Authorization: Bearer {token}
 - **同步**：一次请求直接返回整段字幕（`data` 是句子数组，带词级时间戳），没有 job id、不需要轮询。
 - **额度**：免费号每个账号每天只能生成少量 AI 字幕（页面上写 5 个/天）。响应头带 `x-quota-limit` / `x-quota-remaining`。
 - **额度用完不返回 429**：`200 {"code":403,"message":"You've reached the daily limit of 5 AI subtitles for free users..."}`，和鉴权失败一样靠 body 判定。
-- 同一视频重复请求会被上游缓存，实测不扣额度——但仍然不该依赖它，所以网关自己也会缓存。
+- 网关**不保存**生成结果：字幕直接回给调用方，同一个视频再请求就再生成一次（上游自己有缓存时不会重复扣额度，但那是对方的行为，不作保证）。
 
-接口：
+接口（只有一个）：
 
 ```text
-POST /api/trancy/captions            # {"videoId":"npka43vhwNo"}，花额度；target 可省略，默认 en
-GET  /api/trancy/captions/:videoId   # ?target=en，只读本地缓存，永远不花额度
+POST /api/trancy/captions   # {"videoId":"npka43vhwNo"}，花额度；target 可省略，默认 en
 ```
 
-`POST` 的返回体是 `{data:[...], cached, account, quota:{limit,remaining}, usedToday, sentenceCount}`，同时把 `X-Trancy-Account` / `X-Trancy-Cached` / `X-Quota-*` 放进响应头。调度规则按优先级：
+`POST` 的返回体是 `{data:[...], account, quota:{limit,remaining}, usedToday, sentenceCount}`，同时把 `X-Trancy-Account` / `X-Quota-*` 放进响应头。调度规则：
 
-1. **同视频不花第二次额度**：`trancy_caption` 按 `(video_id, target)` 缓存，命中直接返回 `cached: true`。
-2. **刚说过「没额度」的账号不再问**：`exhausted_until` 停在下一个 UTC 零点，token 和 `status=ok` 保持不变（cron 照常续期）。
-3. **先花最空的账号**：本地 `day_used`（按 UTC 日）优先，其次上游 `x-quota-remaining`，最后 LRU。
+1. **刚说过「没额度」的账号不再问**：`exhausted_until` 停在下一个 UTC 零点，token 和 `status=ok` 保持不变（cron 照常续期）。
+2. **先花最空的账号**：本地 `day_used`（按 UTC 日）优先，其次上游 `x-quota-remaining`，最后 LRU。
+3. **不存结果**：`trancy_caption` 表和「同视频只生成一次」的占位锁都已删除——重复请求会重复花额度，缓存在调用方那边做。
 
 没有一个账号能用时返回 `503`：
 
@@ -492,31 +491,25 @@ GET  /api/trancy/captions/:videoId   # ?target=en，只读本地缓存，永远�
 
 给下游程序调用：
 
-- 入口就是上面两个：`POST /api/trancy/captions` 生成/取结果，`GET /api/trancy/captions/:videoId` 只读缓存。
+- 入口只有一个：`POST /api/trancy/captions`（生成并直接返回字幕）。
 - 鉴权只有一层：Cloudflare Access。下游程序要么用 Access 的 Service Token
   （请求头 `CF-Access-Client-Id` / `CF-Access-Client-Secret`），要么把 Worker 放在自用域名后面。
   Worker 里不再有任何自己的 token 逻辑。
 - **`target` 可以省略**，默认 `en`；下游只要知道 videoId。
-- **同一个视频并发只会生成一次**：生成权是 D1 里的一行占位记录（`ON CONFLICT DO NOTHING`），
-  抢不到的那个立刻拿到 `202 {"pending":true,"retryAfterMs":1500}` + `Retry-After`，
-  拿到后轮询 `GET`（或重发 `POST`）即可，**不会多花一次额度**。占位记录 90 秒没人完成会被下一个请求接管。
-- 生成失败（额度用完、网络错误）会释放占位，同一个视频可以重试。
+- **同一视频并发会各花一次额度**：没有缓存也没有锁，两个并发请求就是两次生成。
+  需要去重请在调用方做（这也是它「不需要缓存」的前提）。
 
 下游调用示例：
 
 ```bash
-# 1) 发起（或者直接命中缓存）
 curl -s -X POST "$GW/api/trancy/captions" \
   -H "CF-Access-Client-Id: $ACCESS_CLIENT_ID" \
   -H "CF-Access-Client-Secret: $ACCESS_CLIENT_SECRET" \
   -H "Content-Type: application/json" \
   -d '{"videoId":"npka43vhwNo"}'
-# 200 → {"data":[...],"cached":false,...}
-# 202 → 别的请求正在生成，等 1~2 秒重试
+# 200 → {"data":[...],"account":{...},"quota":{...},"sentenceCount":108}
+# 400 → {"error":{"code":"invalid_caption_request"}}
 # 503 → {"error":{"code":"no_caption_quota"},"resetAt":"...","tried":[...]}
-
-# 2) 只读缓存（不花额度，可以随便重试）
-curl -s "$GW/api/trancy/captions/npka43vhwNo?target=en"
 ```
 
 面板上的额度显示：
