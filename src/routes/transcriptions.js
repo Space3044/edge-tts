@@ -3,6 +3,7 @@ import { transcribe as transcribeWithElevenLabs } from "../elevenlabs/stt.js";
 import { transcribeWithGoogle } from "../google/stt.js";
 import { getMicrosoftAccount, saveMicrosoftTokens, resolveProvider } from "../secrets/store.js";
 import { accessTokenAudienceProblem, canRefreshMicrosoftToken, refreshAccessToken } from "../microsoft/oauth.js";
+import { refreshPlaygroundCookies, transcribeWithPlayground } from "../microsoft/playground.js";
 import { buildMicrosoftEndpoint, transcribeWithMicrosoft } from "../microsoft/stt.js";
 
 const MAX_AUDIO_FILE_SIZE = 50 * 1024 * 1024;
@@ -727,6 +728,78 @@ async function handleElevenLabsTranscription(formData, env) {
     }
 }
 
+async function transcribeWithPlaygroundEngine(formData, { account, cookies, env }) {
+    const audioFile = formData.get("file");
+    const sourceUrl = readSourceUrl(formData);
+    let data = audioFile;
+    let filename = audioFile && audioFile.name ? audioFile.name : "audio";
+    let mimeType = audioFile && audioFile.type ? audioFile.type : "audio/mpeg";
+
+    if (!data && sourceUrl) {
+        const checked = normalizeSourceUrl(sourceUrl);
+        if (checked.error) return sourceUrlError(checked.error);
+        try {
+            const remote = await fetchSourceAudio(checked.url, MAX_AUDIO_FILE_SIZE);
+            data = remote.blob;
+            filename = sourceFilename(remote.url, remote.contentType);
+            mimeType = remote.contentType || remote.blob.type || "audio/mpeg";
+        } catch (error) {
+            const message = error instanceof Error ? error.message : "音频下载失败";
+            const tooLarge = message.includes("50MB");
+            return errorResponse(message, {
+                status: tooLarge ? 400 : 502,
+                type: tooLarge ? "invalid_request_error" : "api_error",
+                param: tooLarge ? "source_url" : null,
+                code: tooLarge ? "source_too_large" : "source_download_failed"
+            });
+        }
+    }
+    if (!data) return missingAudioResponse();
+
+    if (audioFile) {
+        const invalid = validateAudioFile(audioFile);
+        if (invalid) return invalid;
+    }
+
+    try {
+        const result = await transcribeWithPlayground({ cookies, data, filename, mimeType });
+        return jsonResponse(result);
+    } catch (error) {
+        const message = error instanceof Error ? error.message : "Playground 转录失败";
+        if (message.includes("cookie 已失效")) {
+            // The short-lived session cookie can be renewed from the persisted
+            // Microsoft identity cookie without bothering the user; only when
+            // that fails do we ask for a new paste.
+            const renewed = await refreshPlaygroundCookies(cookies).catch(() => ({ cookies, renewed: false }));
+            if (renewed.renewed && renewed.cookies !== cookies) {
+                try {
+                    const retried = await transcribeWithPlayground({
+                        cookies: renewed.cookies,
+                        data,
+                        filename,
+                        mimeType
+                    });
+                    await saveMicrosoftTokens(env, { cookies: renewed.cookies });
+                    return jsonResponse(retried);
+                } catch (retryError) {
+                    console.error("Playground retry after silent SSO failed:", retryError);
+                }
+            }
+            return errorResponse("Playground cookie 已失效，请重新复制", {
+                status: 401,
+                type: "authentication_error",
+                code: "microsoft_cookie_expired"
+            });
+        }
+        console.error("Microsoft playground STT error:", error);
+        return errorResponse(message, {
+            status: 502,
+            type: "api_error",
+            code: "transcription_api_error"
+        });
+    }
+}
+
 async function handleMicrosoftTranscription(formData, env) {
     const account = await getMicrosoftAccount(env);
 
@@ -736,6 +809,13 @@ async function handleMicrosoftTranscription(formData, env) {
             type: "api_error",
             code: "microsoft_token_unreadable"
         });
+    }
+
+    // A pasted playground cookie jar takes precedence: it is the free path and
+    // does not need an Azure subscription.
+    const playgroundCookies = String(account.playgroundCookies || "").trim();
+    if (playgroundCookies) {
+        return transcribeWithPlaygroundEngine(formData, { account, cookies: playgroundCookies, env });
     }
 
     // A subscription key never expires, so it short-circuits the token dance.

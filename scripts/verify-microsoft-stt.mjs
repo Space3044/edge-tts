@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { accessTokenAudienceProblem, accessTokenExpiry, isAccessTokenExpired, refreshAccessToken, decodeAccessToken } from "../src/microsoft/oauth.js";
 import { buildMicrosoftEndpoint, transcribeWithMicrosoft } from "../src/microsoft/stt.js";
+import { PLAYGROUND_MAX_BYTES, extractRichTranscription, normalizeRichTranscription, parseCookieString, refreshPlaygroundCookies, transcribeWithPlayground } from "../src/microsoft/playground.js";
 import { getMicrosoftAccount, listProviderStatus, saveMicrosoftTokens } from "../src/secrets/store.js";
 import { handleAudioTranscription } from "../src/routes/transcriptions.js";
 import { handleProviders } from "../src/routes/providers.js";
@@ -39,7 +40,8 @@ function createFakeD1() {
           if (statement.includes("INSERT INTO provider_config")) {
             const [
               provider, endpoint, model, apiKeyCipher, updatedAt,
-              region, refreshCipher, tokenUpdatedAt, accessCipher, accessExpiresAt
+              region, refreshCipher, tokenUpdatedAt, accessCipher, accessExpiresAt,
+              cookieCipher = ""
             ] = this._params;
             rows.set(provider, {
               provider,
@@ -51,7 +53,8 @@ function createFakeD1() {
               refresh_token_cipher: refreshCipher,
               token_updated_at: tokenUpdatedAt,
               access_token_cipher: accessCipher,
-              access_token_expires_at: accessExpiresAt
+              access_token_expires_at: accessExpiresAt,
+              cookie_cipher: cookieCipher
             });
             return { success: true };
           }
@@ -63,7 +66,8 @@ function createFakeD1() {
                 refresh_token_cipher: "",
                 token_updated_at: "",
                 access_token_cipher: "",
-                access_token_expires_at: ""
+                access_token_expires_at: "",
+                cookie_cipher: ""
               });
             }
             return { success: true };
@@ -433,6 +437,196 @@ const expiredExp = Math.floor(Date.now() / 1000) - 60;
 
   const status = (await listProviderStatus(env)).find(entry => entry.provider === "microsoft");
   assert.ok(!JSON.stringify(status).includes("speech-key-1234"), "status must only expose the masked tail");
+}
+
+// 13. Playground: cookie parsing, SSE extraction, normalization.
+{
+  assert.equal(parseCookieString("a=1; b=2"), "a=1; b=2");
+  assert.equal(parseCookieString("Cookie: a=1; b=2"), "a=1; b=2");
+  assert.equal(
+    parseCookieString(JSON.stringify([{ name: "a", value: "1" }, { name: "b", value: "2" }])),
+    "a=1; b=2"
+  );
+  assert.equal(parseCookieString(""), "");
+
+  const sse = [
+    'data: {"type":"start"}',
+    "",
+    'data: {"queue":[{"payload":{"rich_transcription":{"durationSec":1.5,"utterances":[{"speaker":1,"start":0.1,"end":1.4,"text":"你好。","words":[{"text":"你好","start":0.1,"end":0.9}]},{"speaker":2,"start":1.0,"end":1.4,"text":"世界。","words":[]}]}}}]}',
+    "",
+    'data: [DONE]',
+    ""
+  ].join("\n");
+
+  const rich = extractRichTranscription(sse);
+  assert.ok(rich, "the SSE scan should find rich_transcription");
+
+  const normalized = normalizeRichTranscription(rich);
+  assert.equal(normalized.text, "你好。\n世界。");
+  assert.deepEqual(normalized.words.map(word => [word.text, word.start, word.end, word.speaker]), [
+    ["你好", 0.1, 0.9, 1]
+  ]);
+  assert.deepEqual(normalized.sentences.map(s => [s.text, s.start, s.end, s.speaker]), [
+    ["你好。", 0.1, 1.4, 1],
+    ["世界。", 1.0, 1.4, 2]
+  ]);
+}
+
+// 14. Playground request chain, with 25MB guard and silent SSO.
+{
+  const originalFetch = globalThis.fetch;
+  const calls = [];
+  let ssoCount = 0;
+
+  globalThis.fetch = async (url, init = {}) => {
+    const href = String(url);
+    calls.push({ url: href, init });
+
+    if (href.endsWith("/.auth/me")) {
+      const hasFresh = String(init.headers?.Cookie || "").includes("fresh-session=1");
+      return new Response("{}", { status: hasFresh ? 200 : 401 });
+    }
+    if (href.includes("/.auth/login/aad")) {
+      ssoCount += 1;
+      return new Response(null, {
+        status: 302,
+        headers: {
+          location: "/chat",
+          "set-cookie": "fresh-session=1; Path=/; HttpOnly"
+        }
+      });
+    }
+    if (href.includes("conversations.create")) {
+      return new Response(JSON.stringify({ 0: { result: { data: { id: "conv-1", title: "t" } } } }), {
+        status: 200, headers: { "Content-Type": "application/json" }
+      });
+    }
+    if (href.includes("addAudioPromptAndInitResponse")) {
+      return new Response(JSON.stringify({ 0: { result: { data: { userMessage: { id: "u1" }, modelMessage: { id: "m1" } } } } }), {
+        status: 200, headers: { "Content-Type": "application/json" }
+      });
+    }
+    if (href.endsWith("/api/chat/stream")) {
+      return new Response(
+        'data: {"payload":{"rich_transcription":{"durationSec":1,"utterances":[{"speaker":1,"start":0,"end":1,"text":"hi","words":[{"text":"hi","start":0,"end":1}]}]}}}\n\ndata: [DONE]\n',
+        { status: 200, headers: { "Content-Type": "text/event-stream" } }
+      );
+    }
+    if (href.includes("conversations.delete")) {
+      return new Response("{}", { status: 200 });
+    }
+    throw new Error(`unexpected fetch: ${href}`);
+  };
+
+  try {
+    const result = await transcribeWithPlayground({
+      cookies: "a=1; b=2",
+      data: new Blob(["audio"], { type: "audio/mpeg" }),
+      filename: "sample.mp3",
+      mimeType: "audio/mpeg"
+    });
+
+    assert.equal(result.text, "hi");
+    const create = calls.find(call => call.url.includes("conversations.create"));
+    assert.ok(create, "create should be called");
+    assert.match(String(create.init.headers.Cookie), /a=1/);
+    const add = calls.find(call => call.url.includes("addAudioPromptAndInitResponse"));
+    assert.equal(JSON.parse(add.init.body)["0"].conversationId, "conv-1");
+    assert.equal(JSON.parse(add.init.body)["0"].modelId, "mai-transcribe-2");
+    assert.match(JSON.parse(add.init.body)["0"].audioBase64, /^YXVkaW8=/, "audio should travel as base64");
+    const stream = calls.find(call => call.url.endsWith("/api/chat/stream"));
+    assert.equal(JSON.parse(stream.init.body).transcribeOptions.diarize, true);
+
+    await assert.rejects(
+      () => transcribeWithPlayground({ cookies: "", data: new Blob(["x"]), filename: "a.mp3" }),
+      /cookie/
+    );
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+}
+
+// 15. Silent SSO: a dead session cookie is renewed from the identity cookie.
+{
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = async (url, init = {}) => {
+    const href = String(url);
+    if (href.endsWith("/.auth/me")) {
+      const fresh = String(init.headers?.Cookie || "").includes("fresh-session=1");
+      return new Response("{}", { status: fresh ? 200 : 401 });
+    }
+    if (href.includes("/.auth/login/aad")) {
+      return new Response(null, {
+        status: 302,
+        headers: { location: "/chat", "set-cookie": "fresh-session=1; Path=/; HttpOnly" }
+      });
+    }
+    throw new Error(`unexpected fetch: ${href}`);
+  };
+
+  try {
+    const renewed = await refreshPlaygroundCookies("old-session=0; ESTSAUTHPERSISTENT=x");
+    assert.equal(renewed.renewed, true);
+    assert.match(renewed.cookies, /fresh-session=1/);
+    assert.match(renewed.cookies, /ESTSAUTHPERSISTENT=x/, "existing identity cookies must survive the merge");
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+}
+
+// 16. Route: playground cookies take precedence over Azure credentials.
+{
+  const env = { DB: createFakeD1(), SECRETS_ENCRYPTION_KEY: encryptionKey, CF_ACCESS_TRUSTED: "1" };
+  const saved = await handleProviders(
+    new Request("https://voicecraft.example.com/api/providers/microsoft", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ cookies: "pg=1", apiKey: "azure-key-1234" })
+    }),
+    env
+  );
+  assert.equal(saved.status, 200);
+  assert.equal((await saved.json()).provider.mode, "playground");
+
+  const account = await getMicrosoftAccount(env);
+  assert.equal(account.playgroundCookies, "pg=1");
+
+  const originalFetch = globalThis.fetch;
+  const urls = [];
+  globalThis.fetch = async (url) => {
+    urls.push(String(url));
+    if (String(url).includes("conversations.create")) {
+      return new Response(JSON.stringify({ id: "conv-9", title: "t" }), { status: 200, headers: { "Content-Type": "application/json" } });
+    }
+    if (String(url).includes("addAudioPromptAndInitResponse")) {
+      return new Response(JSON.stringify({ userMessage: { id: "u" }, modelMessage: { id: "m" } }), { status: 200, headers: { "Content-Type": "application/json" } });
+    }
+    if (String(url).endsWith("/api/chat/stream")) {
+      return new Response('data: {"rich_transcription":{"utterances":[{"start":0,"end":1,"text":"ok","words":[]}]}}\n\n', { status: 200 });
+    }
+    if (String(url).includes("conversations.delete")) {
+      return new Response("{}", { status: 200 });
+    }
+    throw new Error(`unexpected fetch: ${url}`);
+  };
+
+  try {
+    const formData = new FormData();
+    formData.append("file", new File(["audio"], "sample.mp3", { type: "audio/mpeg" }));
+    formData.append("engine", "microsoft");
+
+    const response = await handleAudioTranscription(
+      new Request("https://voicecraft.example.com/v1/audio/transcriptions", { method: "POST", body: formData }),
+      env
+    );
+    const body = await response.json();
+    assert.equal(response.status, 200, JSON.stringify(body));
+    assert.equal(body.text, "ok");
+    assert.ok(urls.some(url => url.includes("playground.microsoft.ai")), "playground should be used");
+    assert.ok(!urls.some(url => url.includes("api.cognitive.microsoft.com")), "Azure must be skipped when cookies exist");
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
 }
 
 console.log("Verified Microsoft pasted-token storage and Azure fast transcription flow.");

@@ -60,7 +60,7 @@ async function readRows(env) {
         return new Map();
     }
     const { results } = await env.DB
-        .prepare("SELECT provider, endpoint, model, api_key_cipher, updated_at, region, refresh_token_cipher, token_updated_at, access_token_cipher, access_token_expires_at FROM provider_config")
+        .prepare("SELECT provider, endpoint, model, api_key_cipher, updated_at, region, refresh_token_cipher, token_updated_at, access_token_cipher, access_token_expires_at, cookie_cipher FROM provider_config")
         .all();
     const rows = new Map();
     for (const row of results || []) {
@@ -70,6 +70,22 @@ async function readRows(env) {
 }
 
 const REFRESH_TOKEN_AAD = "microsoft:refresh_token";
+
+async function decryptCookieJar(row, env) {
+    const cipher = String(row?.cookie_cipher || "");
+    if (!cipher) {
+        return { cookies: "", tokenError: null };
+    }
+    try {
+        const key = await importEncryptionKey(env?.SECRETS_ENCRYPTION_KEY);
+        return {
+            cookies: await decryptSecret(cipher, { key, aad: REFRESH_TOKEN_AAD }),
+            tokenError: null
+        };
+    } catch (error) {
+        return { cookies: "", tokenError: error instanceof Error ? error.message : String(error) };
+    }
+}
 
 async function decryptAccessToken(row, env) {
     const cipher = String(row?.access_token_cipher || "");
@@ -169,7 +185,12 @@ export async function listProviderStatus(env) {
         const apiKey = stored.apiKey || fromEnv.apiKey;
 
         const region = String(row?.region || "").trim();
-        const connected = Boolean(String(row?.refresh_token_cipher || "") || String(row?.access_token_cipher || ""));
+        const connected = Boolean(
+            String(row?.refresh_token_cipher || "")
+            || String(row?.access_token_cipher || "")
+            || String(row?.api_key_cipher || "")
+            || String(row?.cookie_cipher || "")
+        );
 
         statuses.push({
             provider,
@@ -183,6 +204,13 @@ export async function listProviderStatus(env) {
             connected,
             tokenUpdatedAt: row?.token_updated_at || null,
             accessTokenExpiresAt: row?.access_token_expires_at || "",
+            mode: row?.cookie_cipher
+                ? "playground"
+                : row?.api_key_cipher
+                    ? "azure-key"
+                    : row?.access_token_cipher || row?.refresh_token_cipher
+                        ? "azure-token"
+                        : "none",
             updatedAt: row?.updated_at || null,
             keyError: provider === "microsoft" ? null : stored.keyError
         });
@@ -220,8 +248,8 @@ export async function saveProviderConfig(env, provider, input = {}) {
     await db
         .prepare(
             `INSERT INTO provider_config
-                 (provider, endpoint, model, api_key_cipher, updated_at, region, refresh_token_cipher, token_updated_at, access_token_cipher, access_token_expires_at)
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                 (provider, endpoint, model, api_key_cipher, updated_at, region, refresh_token_cipher, token_updated_at, access_token_cipher, access_token_expires_at, cookie_cipher)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
              ON CONFLICT(provider) DO UPDATE SET
                  endpoint = excluded.endpoint,
                  model = excluded.model,
@@ -231,7 +259,8 @@ export async function saveProviderConfig(env, provider, input = {}) {
                  refresh_token_cipher = excluded.refresh_token_cipher,
                  token_updated_at = excluded.token_updated_at,
                  access_token_cipher = excluded.access_token_cipher,
-                 access_token_expires_at = excluded.access_token_expires_at`
+                 access_token_expires_at = excluded.access_token_expires_at,
+                 cookie_cipher = excluded.cookie_cipher`
         )
         .bind(
             name,
@@ -261,11 +290,13 @@ export async function getMicrosoftAccount(env) {
     const row = (await readRows(env)).get("microsoft");
     const stored = await decryptRowKey("microsoft", row, env);
     const access = await decryptAccessToken(row, env);
+    const cookieJar = await decryptCookieJar(row, env);
     const refresh = await decryptRefreshToken(row, env);
-    const tokenError = access.tokenError || refresh.tokenError;
+    const tokenError = access.tokenError || refresh.tokenError || cookieJar.tokenError;
     const expiresAt = String(row?.access_token_expires_at || "");
 
     return {
+        playgroundCookies: cookieJar.cookies,
         subscriptionKey: stored.apiKey,
         accessToken: access.accessToken,
         accessTokenExpiresAt: expiresAt,
@@ -284,7 +315,7 @@ export async function getMicrosoftAccount(env) {
  * Persist whichever tokens the operator pasted. `undefined` keeps the stored
  * value, an empty string clears it.
  */
-export async function saveMicrosoftTokens(env, { accessToken, refreshToken } = {}) {
+export async function saveMicrosoftTokens(env, { accessToken, refreshToken, cookies } = {}) {
     const db = requireDatabase(env);
     const rows = await readRows(env);
     const existing = rows.get("microsoft");
@@ -314,21 +345,34 @@ export async function saveMicrosoftTokens(env, { accessToken, refreshToken } = {
         }
     }
 
+    let cookieCipher = String(existing?.cookie_cipher || "");
+    if (typeof cookies === "string") {
+        const value = cookies.trim();
+        if (value) {
+            const key = await importEncryptionKey(env?.SECRETS_ENCRYPTION_KEY);
+            cookieCipher = await encryptSecret(value, { key, aad: REFRESH_TOKEN_AAD });
+        } else {
+            cookieCipher = "";
+        }
+    }
+
     const now = new Date().toISOString();
     const tokensChanged = accessCipher !== String(existing?.access_token_cipher || "")
-        || refreshCipher !== String(existing?.refresh_token_cipher || "");
+        || refreshCipher !== String(existing?.refresh_token_cipher || "")
+        || cookieCipher !== String(existing?.cookie_cipher || "");
     const tokenUpdatedAt = tokensChanged ? now : String(existing?.token_updated_at || "");
 
     await db
         .prepare(
             `INSERT INTO provider_config
-                 (provider, endpoint, model, api_key_cipher, updated_at, region, refresh_token_cipher, token_updated_at, access_token_cipher, access_token_expires_at)
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                 (provider, endpoint, model, api_key_cipher, updated_at, region, refresh_token_cipher, token_updated_at, access_token_cipher, access_token_expires_at, cookie_cipher)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
              ON CONFLICT(provider) DO UPDATE SET
                  refresh_token_cipher = excluded.refresh_token_cipher,
                  token_updated_at = excluded.token_updated_at,
                  access_token_cipher = excluded.access_token_cipher,
-                 access_token_expires_at = excluded.access_token_expires_at`
+                 access_token_expires_at = excluded.access_token_expires_at,
+                 cookie_cipher = excluded.cookie_cipher`
         )
         .bind(
             "microsoft",
@@ -340,7 +384,8 @@ export async function saveMicrosoftTokens(env, { accessToken, refreshToken } = {
             refreshCipher,
             tokenUpdatedAt,
             accessCipher,
-            expiresAt
+            expiresAt,
+            cookieCipher
         )
         .run();
 
@@ -353,7 +398,8 @@ export async function clearMicrosoftTokens(env) {
         .prepare(
             `UPDATE provider_config
              SET refresh_token_cipher = '', token_updated_at = '',
-                 access_token_cipher = '', access_token_expires_at = ''
+                 access_token_cipher = '', access_token_expires_at = '',
+                 cookie_cipher = ''
              WHERE provider = 'microsoft'`
         )
         .run();

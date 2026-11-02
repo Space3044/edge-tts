@@ -226,14 +226,24 @@ Google 的 endpoint、模型和密钥同样在 Provider settings 里配置：end
 npx wrangler secret put GEMINI_API_KEY   # 可选，D1 里保存过密钥就不需要
 ```
 
-Microsoft 用的是 **access token**（不是 API Key，也没有登录回调）：在 Provider settings 里把令牌粘进来，Worker 用 `SECRETS_ENCRYPTION_KEY` 加密后存进 D1。转录走 Azure 的 Fast transcription 接口：
+Microsoft 有两条路，按你在 Provider settings 里填的东西自动选择：
+
+**① Playground cookie（免费，不需要 Azure 订阅）**
+登录 [playground.microsoft.ai](https://playground.microsoft.ai/chat)，从开发者工具复制请求头里的 `Cookie` 值，粘到 Microsoft 卡片的「Playground cookie」里。Worker 用这个 cookie 走 Playground 的内部接口（`conversations.create` → `addAudioPromptAndInitResponse` → `/api/chat/stream` 的 SSE），完成后自动删除会话。
+
+- 限制：**只吃 mp3/wav，单次 ≤ 25MB、≤ 3615 秒**；音频以 base64 塞进 JSON（Playground 唯一的上传方式）
+- 续期：会话 cookie 失效时，Worker 会用同一批 cookie 里的微软身份 cookie 走 `/.auth/login/aad?prompt=none` 静默续期，成功后把新 cookie 写回 D1；只有身份 cookie 也过期（通常几十天不用）才会返回 `microsoft_cookie_expired`，需要重新粘贴
+- 首次使用前要在网页上同意生物特征（音频）授权，否则返回 451 并提示
+
+**② Azure 凭据（需要 Azure 订阅）**
+转录走 Azure 的 Fast transcription 接口：
 
 ```text
 POST https://{region}.api.cognitive.microsoft.com
      /speechtotext/transcriptions:transcribe?api-version=2024-11-15
 ```
 
-需要的凭据（二选一，**推荐订阅密钥**）：
+Azure 路线的凭据：
 
 | 字段 | 说明 |
 | --- | --- |
@@ -242,7 +252,7 @@ POST https://{region}.api.cognitive.microsoft.com
 | `Access token` | 可选。订阅密钥的替代品，audience 必须是 `https://cognitiveservices.azure.com`；Worker 读 JWT 的 `exp` 判断过期，audience 不对直接拒绝 |
 | `Refresh token` | 可选，配合 access token 自动续期；轮换后的新值会存回 D1 |
 
-填了订阅密钥就完全不走 token/续期逻辑；两者都填时订阅密钥优先。
+填了订阅密钥就完全不走 token/续期逻辑；两者都填时订阅密钥优先。**只要填了 Playground cookie，就会优先走 Playground 路线，忽略 Azure 凭据。**
 
 只有走 access token + 自动续期时，才需要发起续期的应用 id：
 

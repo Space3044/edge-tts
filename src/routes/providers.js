@@ -268,7 +268,8 @@ export async function handleProviders(request, env = {}) {
 
         const accessToken = typeof body?.accessToken === "string" ? body.accessToken.trim() : undefined;
         const refreshToken = typeof body?.refreshToken === "string" ? body.refreshToken.trim() : undefined;
-        if ((accessToken || "").length > 8000 || (refreshToken || "").length > 8000) {
+        const cookies = typeof body?.cookies === "string" ? body.cookies.trim() : undefined;
+        if ((accessToken || "").length > 8000 || (refreshToken || "").length > 8000 || (cookies || "").length > 16000) {
             return errorResponse("Token 太长", {
                 status: 400,
                 type: "invalid_request_error",
@@ -285,8 +286,8 @@ export async function handleProviders(request, env = {}) {
                 apiKey,
                 clearApiKey: body?.clearApiKey === true
             });
-            if (provider === "microsoft" && (accessToken !== undefined || refreshToken !== undefined)) {
-                await saveMicrosoftTokens(env, { accessToken, refreshToken });
+            if (provider === "microsoft" && (accessToken !== undefined || refreshToken !== undefined || cookies !== undefined)) {
+                await saveMicrosoftTokens(env, { accessToken, refreshToken, cookies });
             }
             const statuses = await listProviderStatus(env);
             return jsonResponse({ provider: statuses.find(entry => entry.provider === provider) || updated });
