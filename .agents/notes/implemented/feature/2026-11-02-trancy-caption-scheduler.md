@@ -11,7 +11,7 @@ Status: implemented
 多账号网关真正要服务的接口只有一个：
 
 ```text
-GET https://api.trancy.org/3/youtube/captions/{videoId}?target=en&source=audio
+GET https://api.trancy.org/3/youtube/captions/{videoId}?target=en&source=audio|json3
 ```
 
 而免费号每个账号每天只能生成少量 AI 字幕（页面上写 5 个视频/天）。通用转发
@@ -90,8 +90,8 @@ GET https://api.trancy.org/3/youtube/captions/{videoId}?target=en&source=audio
 ### 8. 接口收口
 
 只有两个入口：`POST /api/trancy/captions`（花额度）与 `GET /api/trancy/captions/:videoId`
-（只读缓存）。`target` 可省略、默认 `en`，下游只要知道 videoId；
-`videoId` / `target` 仍然做白名单校验。
+（只读缓存）。`target` 可省略、默认 `en`；`source` 也可省略、默认 `audio`，只允许 `audio` 或 `json3`，并原样传给上游；下游只要知道 videoId。
+`videoId` / `target` / `source` 仍然做白名单校验。
 
 ## Alternatives considered
 
@@ -113,7 +113,7 @@ GET https://api.trancy.org/3/youtube/captions/{videoId}?target=en&source=audio
   `exhausted_until` 至少保证不会重复试探。
 - 缓存没有淘汰策略：视频多了表会长大。目前没有 TTL，因为删了就要重新花额度；
   如果将来要清，按 `created_at` 保留最近 N 天最合理。
-- 同一个视频换语言算新的条目、也要花一次额度（上游是否这样计费未验证）。
+- 同一个视频换语言算新的条目、也要花一次额度（上游是否这样计费未验证）。`source` 默认是 `audio`，调用方也可以显式选择 `json3`；两种 source 共用同一账号额度账本。
 - `503` 语义变成「今天没额度了，`resetAt` 再来」，调用方需要按这个语义重试而不是快速重试。
 - 新增 `trancy_caption` 表与 6 个账号列（`quota_*`、`exhausted_until`、`day_used*`），
   迁移 `0007` 已包含。
@@ -124,7 +124,7 @@ GET https://api.trancy.org/3/youtube/captions/{videoId}?target=en&source=audio
 写入 `quota_*`）、同视频第二次 `cached: true` 且上游调用数不增加、换语言换账号（本地计数少的优先）、
 第一个账号回 `daily limit` 时换号成功且只停泊一个账号（`exhausted_until` 落在 UTC 零点）、
 全部停泊时 `503 no_caption_quota` 且**不再发起上游请求**，以及 HTTP 层：
-`POST` 无写权限 401、非法 `videoId` 400、`GET` 未缓存 404。
+非法 `videoId` 400、非法 `source` 400、默认 `audio` 和显式 `json3` 都会传给上游、`GET` 未缓存 404。
 
 真机验证（同一天额度已耗尽的账号）：`POST` 首次返回 108 句、`X-Quota-Limit: 2`、
 `X-Quota-Remaining: 0`、`usedToday: 1`；同视频第二次 `X-Trancy-Cached: 1`；

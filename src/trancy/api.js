@@ -19,6 +19,8 @@ export const TRANCY_PROFILE_PATH = "/1/user/profile";
 export const TRANCY_LOGIN_PATH = "/1/login";
 export const TRANCY_SIGNUP_PATH = "/1/signup";
 export const TRANCY_CAPTION_VERSION = "3";
+export const TRANCY_CAPTION_SOURCES = Object.freeze(["audio", "json3"]);
+export const TRANCY_DEFAULT_CAPTION_SOURCE = "audio";
 const REQUEST_TIMEOUT_MS = 15000;
 
 function timeoutSignal() {
@@ -166,7 +168,7 @@ export async function fetchTrancyProfile(token, { fetchImpl = fetch } = {}) {
 }
 
 /**
- * `GET /3/youtube/captions/{videoId}?target=en&source=audio`
+ * `GET /3/youtube/captions/{videoId}?target=en&source=audio|json3`
  *
  * Synchronous: the whole transcript (sentences plus word timings) comes back in
  * one response, no job id, no polling. What makes it interesting is that each
@@ -176,9 +178,9 @@ export async function fetchTrancyProfile(token, { fetchImpl = fetch } = {}) {
  * headers `x-quota-limit` / `x-quota-remaining` are the only structured signal,
  * so both are read and handed back for the scheduler to persist.
  */
-export async function fetchYoutubeCaptions({ token, videoId, target = "en", fetchImpl = fetch } = {}) {
+export async function fetchYoutubeCaptions({ token, videoId, target = "en", source = TRANCY_DEFAULT_CAPTION_SOURCE, fetchImpl = fetch } = {}) {
     const url = `${TRANCY_API_ORIGIN}/${TRANCY_CAPTION_VERSION}/youtube/captions/${encodeURIComponent(videoId)}`
-        + `?target=${encodeURIComponent(target)}&source=audio`;
+        + `?target=${encodeURIComponent(target)}&source=${encodeURIComponent(source)}`;
 
     let response;
     try {

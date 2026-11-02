@@ -541,7 +541,10 @@ const env = { DB: createFakeD1(), SECRETS_ENCRYPTION_KEY: encryptionKey };
     assert.ok(normalizeCaptionRequest({ videoId: "abc" }).error, "short ids are rejected");
     assert.ok(normalizeCaptionRequest({ videoId: "npka43vhwNo", target: "not a lang" }).error);
     assert.equal(normalizeCaptionRequest({ videoId: "npka43vhwNo" }).target, "en", "target defaults to en");
+    assert.equal(normalizeCaptionRequest({ videoId: "npka43vhwNo" }).source, "audio", "source defaults to audio");
     assert.equal(normalizeCaptionRequest({ videoId: "npka43vhwNo", target: "zh-CN" }).error, null);
+    assert.equal(normalizeCaptionRequest({ videoId: "npka43vhwNo", source: "json3" }).source, "json3");
+    assert.equal(normalizeCaptionRequest({ videoId: "npka43vhwNo", source: "webvtt" }).error, "source 只支持 audio 或 json3");
 
     const captionCalls = [];
     const captionFetch = fakeFetch(async (url) => {
@@ -564,14 +567,25 @@ const env = { DB: createFakeD1(), SECRETS_ENCRYPTION_KEY: encryptionKey };
     assert.equal(first.quota.remaining, 3, "quota headers are persisted for the scheduler");
     assert.ok(!("cached" in first) && !("pending" in first), "the gateway stores nothing and asks nobody to poll");
     assert.equal(captionCalls.length, 1);
+    assert.equal(new URL(captionCalls[0]).searchParams.get("source"), "audio", "the default source is forwarded");
     const charged = Array.from(env.DB.rows.values()).find(row => row.id === first.account.id);
     assert.equal(charged.day_used, 1, "the call is booked against the day");
     assert.equal(charged.quota_remaining, 3);
 
+    const json3 = await requestYoutubeCaptions(env, {
+        videoId: "json3Video",
+        target: "en",
+        source: "json3",
+        fetchImpl: captionFetch
+    });
+    assert.equal(json3.ok, true);
+    assert.equal(json3.source, "json3");
+    assert.equal(new URL(captionCalls[1]).searchParams.get("source"), "json3", "json3 is forwarded to Trancy");
+
     // Same video again: a second generation, because no transcript is kept.
     const again = await requestYoutubeCaptions(env, { videoId: "npka43vhwNo", target: "en", fetchImpl: captionFetch });
     assert.equal(again.ok, true);
-    assert.equal(captionCalls.length, 2, "a repeat goes upstream again");
+    assert.equal(captionCalls.length, 3, "a repeat goes upstream again");
 
     // A third account, so the failover below has to walk past two refusals.
     await addTrancyAccount(env, { token: makeToken({ id: "acct-three", name: "three", iat: 1793620002 }), fetchImpl: profileOk });
@@ -630,6 +644,14 @@ const env = { DB: createFakeD1(), SECRETS_ENCRYPTION_KEY: encryptionKey };
     assert.equal(badVideo.status, 400);
     assert.equal((await badVideo.json()).error.code, "invalid_caption_request");
 
+    const badSource = await call("/api/trancy/captions", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ videoId: "npka43vhwNo", source: "webvtt" })
+    });
+    assert.equal(badSource.status, 400);
+    assert.equal((await badSource.json()).error.code, "invalid_caption_request");
+
     const okFetch = fakeFetch(async () => new Response(JSON.stringify({ data: [{ start: 0, end: 400, text: "hi" }] }), {
         status: 200,
         headers: { "Content-Type": "application/json", "x-quota-limit": "5", "x-quota-remaining": "4" }
@@ -640,12 +662,14 @@ const env = { DB: createFakeD1(), SECRETS_ENCRYPTION_KEY: encryptionKey };
         const response = await call("/api/trancy/captions", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ videoId: "npka43vhwNo" })
+            body: JSON.stringify({ videoId: "npka43vhwNo", source: "json3" })
         });
-        assert.equal(response.status, 200, "videoId alone is a valid request");
+        assert.equal(response.status, 200, "videoId plus a supported source is a valid request");
         const payload = await response.json();
         assert.equal(payload.target, "en", "target defaults to en");
+        assert.equal(payload.source, "json3");
         assert.equal(payload.sentenceCount, 1);
+        assert.equal(new URL(okFetch.calls[0].url).searchParams.get("source"), "json3", "HTTP source reaches Trancy");
         assert.equal(response.headers.get("X-Quota-Remaining"), "4");
         assert.ok(!("cached" in payload) && !("pending" in payload), "no cache, no polling");
 

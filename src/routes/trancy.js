@@ -310,10 +310,11 @@ async function handleAccounts(request, env, segments) {
 }
 
 /**
- * `POST /api/trancy/captions {videoId, target?}` - one entry, nothing stored.
+ * `POST /api/trancy/captions {videoId, target?, source?}` - one entry, nothing stored.
  *
- * `target` is optional (defaults to `en`), so downstream only needs the video
- * id. The transcript is returned in the response; the gateway keeps no copy,
+ * `target` is optional (defaults to `en`) and `source` is optional (defaults to
+ * `audio`, with `json3` also supported), so downstream only needs the video id.
+ * The transcript is returned in the response; the gateway keeps no copy,
  * which means repeating a video spends quota again.
  */
 async function handleCaptions(request, env) {
@@ -336,12 +337,18 @@ async function handleCaptions(request, env) {
         });
     }
 
-    const normalized = normalizeCaptionRequest({ videoId: body.videoId, target: body.target });
+    const normalized = normalizeCaptionRequest({
+        videoId: body.videoId,
+        target: body.target,
+        source: body.source
+    });
     if (normalized.error) {
         return errorResponse(normalized.error, {
             status: 400,
             type: "invalid_request_error",
-            param: "videoId",
+            param: body.source !== undefined && !["audio", "json3"].includes(String(body.source).trim())
+                ? "source"
+                : "videoId",
             code: "invalid_caption_request"
         });
     }

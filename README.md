@@ -495,6 +495,7 @@ curl "http://127.0.0.1:8787/__scheduled?cron=17+3+*+*+*"
 
 ```text
 GET https://api.trancy.org/3/youtube/captions/{videoId}?target=en&source=audio
+# source 也可以是 json3
 Authorization: Bearer {token}
 ```
 
@@ -508,7 +509,7 @@ Authorization: Bearer {token}
 接口（只有一个）：
 
 ```text
-POST /api/trancy/captions   # {"videoId":"npka43vhwNo"}，花额度；target 可省略，默认 en
+POST /api/trancy/captions   # {"videoId":"npka43vhwNo","source":"json3"}，花额度；target/source 可省略，默认 en/audio
 ```
 
 `POST` 的返回体是 `{data:[...], account, quota:{limit,remaining}, usedToday, sentenceCount}`，同时把 `X-Trancy-Account` / `X-Quota-*` 放进响应头。调度规则：
@@ -533,7 +534,7 @@ POST /api/trancy/captions   # {"videoId":"npka43vhwNo"}，花额度；target 可
 - 鉴权只有一层：Cloudflare Access。下游程序要么用 Access 的 Service Token
   （请求头 `CF-Access-Client-Id` / `CF-Access-Client-Secret`），要么把 Worker 放在自用域名后面。
   Worker 里不再有任何自己的 token 逻辑。
-- **`target` 可以省略**，默认 `en`；下游只要知道 videoId。
+- **`target` 可以省略**，默认 `en`；**`source` 也可以省略**，默认 `audio`，只允许 `audio` 或 `json3`；下游只要知道 videoId。
 - **同一视频并发会各花一次额度**：没有缓存也没有锁，两个并发请求就是两次生成。
   需要去重请在调用方做（这也是它「不需要缓存」的前提）。
 

@@ -21,7 +21,11 @@
  * reset time instead of a fake success.
  */
 
-import { fetchYoutubeCaptions } from "./api.js";
+import {
+    fetchYoutubeCaptions,
+    TRANCY_CAPTION_SOURCES,
+    TRANCY_DEFAULT_CAPTION_SOURCE
+} from "./api.js";
 import {
     listTrancyAccounts,
     markCaptionExhausted,
@@ -47,23 +51,28 @@ const MAX_ACCOUNTS_PER_REQUEST = 3;
 export const TRANCY_DEFAULT_DAILY_LIMIT = 5;
 
 /**
- * `target` is optional on purpose: downstream only has to know the video id, and
- * the common case is English subtitles.
+ * `target` and `source` are optional on purpose: downstream only has to know the
+ * video id. `source` defaults to `audio` and is deliberately limited to the two
+ * upstream modes supported by Trancy: `audio` and `json3`.
  */
-export function normalizeCaptionRequest({ videoId, target } = {}) {
+export function normalizeCaptionRequest({ videoId, target, source } = {}) {
     const video = String(videoId ?? "").trim();
     const language = String(target ?? "en").trim() || "en";
+    const captionSource = String(source ?? TRANCY_DEFAULT_CAPTION_SOURCE).trim();
 
     if (!video) {
-        return { videoId: "", target: "", error: "缺少 videoId" };
+        return { videoId: "", target: "", source: "", error: "缺少 videoId" };
     }
     if (!VIDEO_ID_PATTERN.test(video)) {
-        return { videoId: "", target: "", error: "videoId 只能是 YouTube 的 11 位 ID（字母、数字、-、_）" };
+        return { videoId: "", target: "", source: "", error: "videoId 只能是 YouTube 的 11 位 ID（字母、数字、-、_）" };
     }
     if (!TARGET_PATTERN.test(language)) {
-        return { videoId: "", target: "", error: "target 必须是语言代码，例如 en、zh-CN" };
+        return { videoId: "", target: "", source: "", error: "target 必须是语言代码，例如 en、zh-CN" };
     }
-    return { videoId: video, target: language, error: null };
+    if (!TRANCY_CAPTION_SOURCES.includes(captionSource)) {
+        return { videoId: "", target: "", source: "", error: "source 只支持 audio 或 json3" };
+    }
+    return { videoId: video, target: language, source: captionSource, error: null };
 }
 
 /**
@@ -73,7 +82,7 @@ export function normalizeCaptionRequest({ videoId, target } = {}) {
  * ("a@example.com: daily_limit, b@example.com: network") instead of returning a
  * bare 503.
  */
-export async function requestYoutubeCaptions(env, { videoId, target = "en", fetchImpl = fetch } = {}) {
+export async function requestYoutubeCaptions(env, { videoId, target = "en", source = TRANCY_DEFAULT_CAPTION_SOURCE, fetchImpl = fetch } = {}) {
     const accounts = await pickCaptionAccounts(env, { limit: MAX_ACCOUNTS_PER_REQUEST });
     if (!accounts.length) {
         // "The pool is empty" and "the pool is spent" are different answers for
@@ -108,6 +117,7 @@ export async function requestYoutubeCaptions(env, { videoId, target = "en", fetc
             token: account.token,
             videoId,
             target,
+            source,
             fetchImpl
         });
 
@@ -120,6 +130,7 @@ export async function requestYoutubeCaptions(env, { videoId, target = "en", fetc
                 ok: true,
                 videoId,
                 target,
+                source,
                 account: { id: account.id, email: account.email },
                 quota: { limit: result.quota.limit, remaining: result.quota.remaining },
                 usedToday,
