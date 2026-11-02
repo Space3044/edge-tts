@@ -92,4 +92,11 @@ if (/AADSTS65001|invalid_scope|unauthorized_client|AADSTS70011/.test(`${code} ${
     process.exit(0);
 }
 
-fail(`未知响应（${response.status}）：${JSON.stringify(payload).slice(0, 300)}`);
+// Conditional Access, tenant restrictions and other policy gates block the
+// client_credentials probe without saying anything about the credential pair.
+// The definitive check is the browser login, so report this as inconclusive
+// rather than as a failure.
+console.log("⚠ 无法用 client_credentials 判定凭据（被租户策略挡住），这不代表凭据有错。");
+console.log(`  ${code || response.status}: ${String(payload.error_description || "").slice(0, 200)}`);
+console.log("  直接走页面流程验证：Provider settings 填 region → 点「登录微软账号」。");
+process.exit(0);

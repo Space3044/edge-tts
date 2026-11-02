@@ -239,7 +239,13 @@ POST https://{region}.api.cognitive.microsoft.com
 2. 一个 **Entra ID 应用注册**，redirect URI 填 `https://你的域名/api/microsoft/callback`；
 3. 三个 Worker secret：`MICROSOFT_CLIENT_ID`、`MICROSOFT_CLIENT_SECRET`（confidential client，refresh token 90 天滑动）、`MICROSOFT_TENANT`（默认 `common`）。
 
-之后在 Provider settings 里填 Azure 区域（例如 `eastasia`），点「登录微软账号」完成一次授权即可。refresh token 失效时页面会显示「未连接」，转录接口返回 `microsoft_login_required`，重新登录一次就好。
+配好后可以先自检凭据（不需要浏览器）：
+
+```bash
+node scripts/check-microsoft-oauth.mjs
+```
+
+之后在 Provider settings 里填 Azure 区域（例如 `eastasia`），点「登录微软账号」完成一次授权即可。本地调试请访问 `http://localhost:8787`——Entra 接受 `http://localhost` 的 redirect URI，但不接受 `http://127.0.0.1`。refresh token 失效时页面会显示「未连接」，转录接口返回 `microsoft_login_required`，重新登录一次就好。
 
 没有可用密钥时，Google 引擎会返回明确的 `google_not_configured` 错误。
 
