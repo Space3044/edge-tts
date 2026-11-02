@@ -16,7 +16,7 @@ export const TRANSCRIPTION_STYLES = `
     }
     .engine-tabs {
       display:grid;
-      grid-template-columns:repeat(2,minmax(0,1fr));
+      grid-template-columns:repeat(3,minmax(0,1fr));
       gap:6px;
       padding:4px;
       background:var(--surface);
@@ -46,19 +46,16 @@ export const TRANSCRIPTION_STYLES = `
       border-color:var(--accent);
       box-shadow:inset 0 0 0 1px var(--accent-ring);
     }
-    #whisperOptions,
     #elevenlabsOptions {
       margin:0 0 12px;
       padding:14px;
       border:1px solid var(--border);
       background:var(--surface-2);
     }
-    #whisperOptions .form-label,
     #elevenlabsOptions .form-label {
       color:var(--text-2);
       font-size:.76rem;
     }
-    #whisperOptions .form-input,
     #elevenlabsOptions .form-input {
       background:var(--surface);
     }

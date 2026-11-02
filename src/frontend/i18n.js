@@ -228,14 +228,14 @@ export const translations = {
     Object.keys(STT_ENGINE_TRANSLATIONS).forEach(function(lang) { Object.assign(translations[lang], STT_ENGINE_TRANSLATIONS[lang]); });
 
     const GOOGLE_STT_TRANSLATIONS = {
-      en: { 'stt.engineGoogle': 'Google', 'stt.googleHint': 'Uses the endpoint, model and API key saved in provider settings for Google Gemini Transcribe.' },
-      zh: { 'stt.engineGoogle': 'Google', 'stt.googleHint': '使用 Provider 设置里保存的 endpoint、模型和 API Key 调用 Google Gemini Transcribe。' },
-      ja: { 'stt.engineGoogle': 'Google', 'stt.googleHint': 'Google Gemini 3.5 Transcribe を使用します。Worker の GEMINI_API_KEY で認証します。' },
-      ko: { 'stt.engineGoogle': 'Google', 'stt.googleHint': 'Google Gemini 3.5 Transcribe를 사용하며 Worker의 GEMINI_API_KEY로 인증합니다.' },
-      es: { 'stt.engineGoogle': 'Google', 'stt.googleHint': 'Usa Google Gemini 3.5 Transcribe con la GEMINI_API_KEY del Worker.' },
-      fr: { 'stt.engineGoogle': 'Google', 'stt.googleHint': 'Utilise Google Gemini 3.5 Transcribe avec la GEMINI_API_KEY du Worker.' },
-      de: { 'stt.engineGoogle': 'Google', 'stt.googleHint': 'Verwendet Google Gemini 3.5 Transcribe mit dem GEMINI_API_KEY des Workers.' },
-      ru: { 'stt.engineGoogle': 'Google', 'stt.googleHint': 'Использует Google Gemini 3.5 Transcribe и GEMINI_API_KEY Worker.' }
+      en: { 'stt.engineGoogle': 'Google' },
+      zh: { 'stt.engineGoogle': 'Google' },
+      ja: { 'stt.engineGoogle': 'Google' },
+      ko: { 'stt.engineGoogle': 'Google' },
+      es: { 'stt.engineGoogle': 'Google' },
+      fr: { 'stt.engineGoogle': 'Google' },
+      de: { 'stt.engineGoogle': 'Google' },
+      ru: { 'stt.engineGoogle': 'Google' }
     };
     Object.keys(GOOGLE_STT_TRANSLATIONS).forEach(function(lang) { Object.assign(translations[lang], GOOGLE_STT_TRANSLATIONS[lang]); });
 

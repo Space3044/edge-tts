@@ -194,7 +194,7 @@ assert.doesNotMatch(
   "frontend should not keep unused currentMode state",
 );
 
-for (const key of ["status.fileLabel", "error.copyFailed", "stt.endpoint", "stt.endpointPlaceholder", "stt.endpointHint", "error.endpointRequired", "stt.sourceUrl", "stt.sourceUrlPlaceholder", "stt.sourceUrlHint", "error.audioSourceRequired", "stt.engineOpenai", "stt.engineGoogle", "stt.googleHint", "provider.title", "provider.hint", "provider.apiKey", "provider.model", "provider.save", "provider.statusDb", "provider.statusEnv", "provider.statusNone", "provider.adminTokenPrompt"]) {
+for (const key of ["status.fileLabel", "error.copyFailed", "stt.endpoint", "stt.endpointPlaceholder", "stt.endpointHint", "error.endpointRequired", "stt.sourceUrl", "stt.sourceUrlPlaceholder", "stt.sourceUrlHint", "error.audioSourceRequired", "stt.engineOpenai", "stt.engineGoogle", "provider.title", "provider.hint", "provider.apiKey", "provider.model", "provider.save", "provider.statusDb", "provider.statusEnv", "provider.statusNone", "provider.adminTokenPrompt"]) {
   assert.ok(i18nSource.includes(`'${key}'`), `translations should include ${key}`);
 }
 
