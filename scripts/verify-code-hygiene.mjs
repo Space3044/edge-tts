@@ -200,7 +200,7 @@ assert.doesNotMatch(
   "frontend should not keep unused currentMode state",
 );
 
-for (const key of ["status.fileLabel", "error.copyFailed", "stt.endpoint", "stt.endpointPlaceholder", "stt.endpointHint", "error.endpointRequired", "stt.sourceUrl", "stt.sourceUrlPlaceholder", "stt.sourceUrlHint", "error.audioSourceRequired", "stt.engineOpenai", "stt.engineGoogle", "provider.title", "provider.hint", "provider.apiKey", "provider.model", "provider.save", "provider.statusDb", "provider.statusEnv", "provider.statusNone"]) {
+for (const key of ["status.fileLabel", "error.copyFailed", "stt.endpoint", "stt.endpointPlaceholder", "stt.endpointHint", "error.endpointRequired", "stt.sourceUrl", "stt.sourceUrlPlaceholder", "stt.sourceUrlHint", "error.audioSourceRequired", "stt.engineOpenai", "stt.engineGoogle", "provider.title", "provider.hint", "provider.apiKey", "provider.model", "provider.save", "provider.statusDb", "provider.statusNone"]) {
   assert.ok(i18nSource.includes(`'${key}'`), `translations should include ${key}`);
 }
 
@@ -234,10 +234,10 @@ assert.match(
   "transcription route should dispatch Google requests by engine",
 );
 
-assert.match(
+assert.doesNotMatch(
   transcriptionSource,
-  /GEMINI_API_KEY/,
-  "transcription route should read the Google key from the Worker environment",
+  /GEMINI_API_KEY|OPENAI_API_KEY|ELEVENLABS_API_KEY/,
+  "provider keys come from D1 only; there is no environment fallback",
 );
 
 assert.match(

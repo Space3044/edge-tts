@@ -162,7 +162,7 @@ export async function transcribeWithGoogle({
     signal
 }) {
     if (!apiKey) {
-        throw new Error("Google transcription is not configured: save an API key in provider settings or set GEMINI_API_KEY on the Worker.");
+        throw new Error("Google transcription is not configured: save an API key in provider settings.");
     }
 
     const endpoints = buildGoogleEndpoints(endpoint);

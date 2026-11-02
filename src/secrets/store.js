@@ -16,12 +16,6 @@ export const PROVIDER_DEFAULTS = {
     google: { endpoint: "https://generativelanguage.googleapis.com", model: "gemini-3.5-transcribe" }
 };
 
-export const PROVIDER_ENV_KEYS = {
-    openai: ["OPENAI_API_KEY"],
-    elevenlabs: ["ELEVENLABS_API_KEY"],
-    google: ["GEMINI_API_KEY", "GOOGLE_API_KEY"]
-};
-
 export function isSupportedProvider(provider) {
     return PROVIDERS.includes(String(provider || "").toLowerCase());
 }
@@ -39,16 +33,6 @@ function requireDatabase(env) {
         throw new Error("D1 binding DB 未配置，无法读写 Provider 配置");
     }
     return env.DB;
-}
-
-function envApiKey(provider, env) {
-    for (const name of PROVIDER_ENV_KEYS[provider] || []) {
-        const value = String(env?.[name] || "").trim();
-        if (value) {
-            return { apiKey: value, envName: name };
-        }
-    }
-    return { apiKey: "", envName: "" };
 }
 
 async function readRows(env) {
@@ -98,23 +82,18 @@ export async function resolveProvider(env, provider) {
     const endpoint = String(row?.endpoint || "").trim() || defaults.endpoint;
     const model = String(row?.model || "").trim() || defaults.model;
 
+    // D1 is the only place a provider key can live: the panel writes it, the
+    // Worker reads it, and SECRETS_ENCRYPTION_KEY is the only secret the
+    // deployment carries. There is deliberately no environment fallback, so
+    // "which key is in use" has exactly one answer.
     const stored = await decryptRowKey(name, row, env);
-    if (stored.apiKey) {
-        return { provider: name, endpoint, model, apiKey: stored.apiKey, keySource: "db", keyError: null };
-    }
-
-    const fromEnv = envApiKey(name, env);
-    if (fromEnv.apiKey) {
-        return { provider: name, endpoint, model, apiKey: fromEnv.apiKey, keySource: "env", keyError: null };
-    }
-
     return {
         provider: name,
         endpoint,
         model,
-        apiKey: "",
-        keySource: "none",
-        keyError: stored.keyError
+        apiKey: stored.apiKey,
+        keySource: stored.apiKey ? "db" : "none",
+        keyError: stored.apiKey ? null : stored.keyError
     };
 }
 
@@ -129,9 +108,8 @@ export async function listProviderStatus(env) {
         const row = rows.get(provider);
         const defaults = PROVIDER_DEFAULTS[provider];
         const stored = await decryptRowKey(provider, row, env);
-        const fromEnv = envApiKey(provider, env);
-        const source = stored.apiKey ? "db" : fromEnv.apiKey ? "env" : "none";
-        const apiKey = stored.apiKey || fromEnv.apiKey;
+        const source = stored.apiKey ? "db" : "none";
+        const apiKey = stored.apiKey;
 
 
         statuses.push({

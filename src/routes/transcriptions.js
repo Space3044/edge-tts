@@ -768,7 +768,7 @@ async function handleGoogleTranscription(formData, env) {
     }
 
     if (!config.apiKey) {
-        return errorResponse(config.keyError || "Google 转录未配置：请在 Provider 设置里保存 API Key，或配置 GEMINI_API_KEY 环境变量", {
+        return errorResponse(config.keyError || "Google 转录未配置：请在 Provider 设置里保存 API Key", {
             status: 500,
             type: "api_error",
             code: "google_not_configured"

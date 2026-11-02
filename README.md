@@ -130,7 +130,7 @@ npx wrangler secret put SECRETS_ENCRYPTION_KEY   # base64 的 32 字节
 # 不需要任何鉴权密钥：/api/* 交给 Cloudflare Access
 ```
 
-- `SECRETS_ENCRYPTION_KEY` 只用于加解密，不参与鉴权；换掉它会导致已保存的密钥无法解密，需要重新填写。
+- `SECRETS_ENCRYPTION_KEY` 是唯一的 secret：只用于加解密，不参与鉴权；换掉它会导致已保存的密钥和 Trancy token 无法解密，需要重新填写。
 - **鉴权全部交给 Cloudflare Access**：Worker 自己不校验任何 token。`/api/*` 必须挂 Access 策略（见下一节），因为 `GET /api/trancy/accounts` 会回明文密码、`POST /api/trancy/captions` 会花账号额度。裸部署到公网等于把这些直接暴露出去。
 - 除密钥外的变量都不写入仓库，`wrangler.toml` 里也不出现明文。
 
@@ -250,7 +250,7 @@ POST /v1/audio/transcriptions
 
 当前实现支持三种转录引擎：`openai`（OpenAI 兼容的 `/audio/transcriptions`）、`elevenlabs` 和 `google`。三个引擎的 endpoint、模型和 API Key 都在页面里的 Provider settings 中配置，保存在 D1 的 `provider_config` 表；API Key 用 `SECRETS_ENCRYPTION_KEY` 加密后落库，接口只会返回掩码尾巴。
 
-解析顺序是「D1 里保存的值 → 环境变量 → 内置默认值」：D1 没配时回落到 `OPENAI_API_KEY` / `ELEVENLABS_API_KEY` / `GEMINI_API_KEY`（或 `GOOGLE_API_KEY`），都没有就用默认地址和模型。`engine=whisper` 仍然保留为 `openai` 的别名，老调用方不需要改。
+解析顺序是「D1 里保存的值 → 内置默认值」：**密钥只有一个来源，就是 D1**（面板里保存，用 `SECRETS_ENCRYPTION_KEY` 加密）。没有环境变量兜底，所以「现在用的是哪把 key」永远只有一个答案。`engine=whisper` 仍然保留为 `openai` 的别名，老调用方不需要改。
 
 ElevenLabs 调用的是 Scribe Speech-to-Text 接口：
 
@@ -260,11 +260,8 @@ https://api.elevenlabs.io/v1/speech-to-text
 
 ElevenLabs 默认模型是 `scribe_v2`（可在 Provider settings 里改）。配置了 API Key 时请求带 `xi-api-key`；没有配置时沿用匿名 Scribe 请求。词级时间戳来自 ElevenLabs 返回的 `words[]`；句子时间戳由后端按词级结果和句末标点聚合生成。
 
-Google 的 endpoint、模型和密钥同样在 Provider settings 里配置：endpoint 默认 `https://generativelanguage.googleapis.com`，可以指向自建网关（例如 `https://gateway.example.com/gemini`，带 `/v1beta` 的写法也接受），Worker 会据此拼出 Files API（`{endpoint}/upload/v1beta/files`）和 Interactions API（`{endpoint}/v1beta/interactions`）。默认模型是 `gemini-3.5-transcribe`。音频由 Worker 下载（或接收上传）后传到 Gemini Files API，再调用 Interactions API；词级时间戳来自返回的 `word_info` 注解，句子时间戳同样在本地聚合。密钥优先读 D1，没有时回落到环境变量：
+Google 的 endpoint、模型和密钥同样在 Provider settings 里配置：endpoint 默认 `https://generativelanguage.googleapis.com`，可以指向自建网关（例如 `https://gateway.example.com/gemini`，带 `/v1beta` 的写法也接受），Worker 会据此拼出 Files API（`{endpoint}/upload/v1beta/files`）和 Interactions API（`{endpoint}/v1beta/interactions`）。默认模型是 `gemini-3.5-transcribe`。音频由 Worker 下载（或接收上传）后传到 Gemini Files API，再调用 Interactions API；词级时间戳来自返回的 `word_info` 注解，句子时间戳同样在本地聚合。密钥只从 D1 读（面板里保存的那一份）：
 
-```bash
-npx wrangler secret put GEMINI_API_KEY   # 可选，D1 里保存过密钥就不需要
-```
 
 ElevenLabs 调用的是 Scribe Speech-to-Text 接口：
 
@@ -274,11 +271,8 @@ https://api.elevenlabs.io/v1/speech-to-text
 
 ElevenLabs 默认模型是 `scribe_v2`（可在 Provider settings 里改）。配置了 API Key 时请求带 `xi-api-key`；没有配置时沿用匿名 Scribe 请求。词级时间戳来自 ElevenLabs 返回的 `words[]`；句子时间戳由后端按词级结果和句末标点聚合生成。
 
-Google 的 endpoint、模型和密钥同样在 Provider settings 里配置：endpoint 默认 `https://generativelanguage.googleapis.com`，可以指向自建网关（例如 `https://gateway.example.com/gemini`，带 `/v1beta` 的写法也接受），Worker 会据此拼出 Files API（`{endpoint}/upload/v1beta/files`）和 Interactions API（`{endpoint}/v1beta/interactions`）。默认模型是 `gemini-3.5-transcribe`。音频由 Worker 下载（或接收上传）后传到 Gemini Files API，再调用 Interactions API；词级时间戳来自返回的 `word_info` 注解，句子时间戳同样在本地聚合。密钥优先读 D1，没有时回落到环境变量：
+Google 的 endpoint、模型和密钥同样在 Provider settings 里配置：endpoint 默认 `https://generativelanguage.googleapis.com`，可以指向自建网关（例如 `https://gateway.example.com/gemini`，带 `/v1beta` 的写法也接受），Worker 会据此拼出 Files API（`{endpoint}/upload/v1beta/files`）和 Interactions API（`{endpoint}/v1beta/interactions`）。默认模型是 `gemini-3.5-transcribe`。音频由 Worker 下载（或接收上传）后传到 Gemini Files API，再调用 Interactions API；词级时间戳来自返回的 `word_info` 注解，句子时间戳同样在本地聚合。密钥只从 D1 读（面板里保存的那一份）：
 
-```bash
-npx wrangler secret put GEMINI_API_KEY   # 可选，D1 里保存过密钥就不需要
-```
 
 ElevenLabs 请求示例：
 
@@ -314,7 +308,7 @@ URL 模式的行为：
 
 - `engine=elevenlabs`：Worker 把 URL 原样交给 ElevenLabs 的 `source_url`，不在 Worker 端下载，ElevenLabs 的 2GB URL 上限生效。
 - `engine=openai`（别名 `whisper`）：Worker 自己下载音频（跟随最多 5 次重定向，每一跳都重新校验），再按 OpenAI 的 `file` 字段转发到 `{endpoint}/audio/transcriptions`；沿用 50MB 上限。请求会带上 `language` / `prompt` / `temperature`（如果提供了），并默认要词级时间戳：用 `response_format=verbose_json` + `timestamp_granularities[]=word`，返回 `text` + `sentences` + `words`。按官方文档，`gpt-4o-transcribe` / `gpt-4o-mini-transcribe` 不支持 `verbose_json`（只有 `json`），`gpt-4o-transcribe-diarize` 只有 `json`/`text`/`diarized_json`，这三种自动退回纯文本；`whisper-1`、`gpt-transcribe`、`gpt-live-transcribe`、`gpt-realtime-whisper` 都有词级时间戳。碰到表里没有的新模型，如果上游拒绝 `verbose_json`，Worker 会自动重试一次 `json`（校验类 400 不计费），并在当前 isolate 内记住这个模型。
-- `engine=google`：Worker 自己下载音频后上传到 Gemini Files API，再调用配置的模型；密钥来自 D1 或 `GEMINI_API_KEY`。默认请求词级时间戳（`timestamp_granularities: ["word"]`），传 `timestamps=false` 就不再请求，只回文本。
+- `engine=google`：Worker 自己下载音频后上传到 Gemini Files API，再调用配置的模型；密钥来自 D1（面板里保存的那一份）。默认请求词级时间戳（`timestamp_granularities: ["word"]`），传 `timestamps=false` 就不再请求，只回文本。
 - 只允许 `http://` / `https://` 的公开地址；本机、内网、云元数据地址会被拒绝。URL 里不能带用户名或密码。
 - 文件上传仍是 50MB 上限；粘贴 URL 时前端不再要求先选文件。
 
@@ -389,7 +383,7 @@ ElevenLabs 响应示例：
 | --- | --- | --- | --- |
 | `file` | File | 是 | 音频文件，最大 50MB |
 | `engine` | string | 否 | `openai`、`elevenlabs` 或 `google`，默认 `openai`（`whisper` 是 `openai` 的别名；其他值返回 400 `unknown_engine`） |
-| `endpoint` | string | 否 | 该引擎的 endpoint 覆盖值，默认取 D1 / 环境变量 / 内置默认；OpenAI 补 `/audio/transcriptions`，Google 用来拼 Files / Interactions 地址 |
+| `endpoint` | string | 否 | 该引擎的 endpoint 覆盖值，默认取 D1 / 内置默认；OpenAI 补 `/audio/transcriptions`，Google 用来拼 Files / Interactions 地址 |
 | `model` | string | 否 | 该引擎的模型覆盖值，默认取 D1 配置 |
 | `apiKey` | string | 否 | 仅 OpenAI 引擎支持单次覆盖；默认使用保存在 D1 的密钥 |
 | `language` | string | OpenAI / ElevenLabs 可选 | OpenAI 用 ISO-639-1 两字母代码（`en`、`zh`、`ja`）；ElevenLabs 用官方三字母代码（`eng`、`zho`、`jpn`、`kor`、`spa`、`fra`、`deu`、`rus`）。留空或 `auto` 表示自动检测 |
@@ -654,7 +648,7 @@ git diff --check
 - Edge TTS 依赖 Microsoft 服务可用性，网络环境会影响生成成功率。
 - 长文本会自动拆分再合成，内容越长，生成时间越久。
 - STT 文件上传限制为 50MB；OpenAI 引擎的 URL 模式同样限制 50MB，ElevenLabs 的 URL 模式由 ElevenLabs 自己限制（2GB），Google 的 URL 模式也受 Worker 50MB 上限约束。
-- 三个引擎都需要可用的密钥：优先用 Provider settings 保存到 D1 的那一份，缺失时回落到 `OPENAI_API_KEY` / `ELEVENLABS_API_KEY` / `GEMINI_API_KEY`。
+- 三个引擎的密钥都只从 D1 读：在 Provider settings 里保存（加密），没有环境变量兜底，所以**部署只需要一个 secret：`SECRETS_ENCRYPTION_KEY`**。
 - 文本文件上传限制为 500KB。
 - URL 模式会跟随最多 5 次重定向，并拒绝本机/内网地址；Worker 不会把任意 URL 当作内网代理。
 - 自建 OpenAI 兼容服务如果部署在非标准 HTTPS 端口，Cloudflare Workers 发布环境可能忽略自定义端口，建议使用标准 443 端口或反向代理到标准端口。

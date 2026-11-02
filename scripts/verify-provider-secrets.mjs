@@ -127,24 +127,25 @@ const env = {
   assert.equal(openai.keySource, "none");
 }
 
-// 4. Environment fallback and DB precedence.
+// 4. D1 is the only key source: environment variables are ignored on purpose.
 {
-  const envOnly = {
+  const withEnvVars = {
     DB: createFakeD1(),
     SECRETS_ENCRYPTION_KEY: encryptionKey,
     GEMINI_API_KEY: "env-google-key",
-    OPENAI_API_KEY: "env-openai-key"
+    OPENAI_API_KEY: "env-openai-key",
+    ELEVENLABS_API_KEY: "env-elevenlabs-key"
   };
 
-  const google = await resolveProvider(envOnly, "google");
-  assert.equal(google.apiKey, "env-google-key");
-  assert.equal(google.keySource, "env");
-  assert.equal(google.model, "gemini-3.5-transcribe", "default model should apply");
+  const google = await resolveProvider(withEnvVars, "google");
+  assert.equal(google.apiKey, "", "an env key must not be picked up");
+  assert.equal(google.keySource, "none");
+  assert.equal(google.model, "gemini-3.5-transcribe", "the built-in default model still applies");
 
-  await saveProviderConfig(envOnly, "openai", { apiKey: "db-openai-key" });
-  const openai = await resolveProvider(envOnly, "openai");
-  assert.equal(openai.apiKey, "db-openai-key", "the D1 key should win over the env key");
-  assert.equal(openai.keySource, "db");
+  await saveProviderConfig(withEnvVars, "openai", { apiKey: "db-openai-key" });
+  const openai = await resolveProvider(withEnvVars, "openai");
+  assert.equal(openai.apiKey, "db-openai-key");
+  assert.equal(openai.keySource, "db", "db is the only reported source");
 }
 
 // 5. A missing encryption key blocks writes and never silently stores plaintext.

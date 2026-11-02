@@ -15,7 +15,6 @@ SECRETS_ENCRYPTION_KEY=3MA8dqfnN1veywbjKPVE9hDwIq2Ra5TXvsTThon+SEc=
 # (GET /api/trancy/accounts). Local `wrangler dev` has no Access in front, so
 # everything is reachable there - which is fine, it is your own machine.
 
-# Optional fallbacks, used when D1 has no key for that provider.
-# OPENAI_API_KEY=
-# ELEVENLABS_API_KEY=
-# GEMINI_API_KEY=
+# This is the only secret the Worker needs. Provider keys (OpenAI / ElevenLabs /
+# Google) are entered in the settings panel and stored encrypted in D1 - there is
+# no environment fallback for them.

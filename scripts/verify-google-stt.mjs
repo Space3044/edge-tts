@@ -1,5 +1,32 @@
 import assert from "node:assert/strict";
 import { handleAudioTranscription } from "../src/routes/transcriptions.js";
+import { bytesToBase64, encryptSecret, importEncryptionKey } from "../src/secrets/crypto.js";
+
+// Provider keys live only in D1 now, so the test seeds a real encrypted row
+// instead of an environment variable.
+const encryptionKey = bytesToBase64(crypto.getRandomValues(new Uint8Array(32)));
+const cryptoKey = await importEncryptionKey(encryptionKey);
+const googleRow = {
+  provider: "google",
+  endpoint: "",
+  model: "gemini-3.5-transcribe",
+  api_key_cipher: await encryptSecret("google-key", { key: cryptoKey, aad: "google" }),
+  updated_at: new Date().toISOString()
+};
+
+function providerD1(rows) {
+  return {
+    prepare() {
+      return {
+        bind() { return this; },
+        async all() { return { results: rows }; }
+      };
+    }
+  };
+}
+
+const googleEnv = { DB: providerD1([googleRow]), SECRETS_ENCRYPTION_KEY: encryptionKey };
+const unconfiguredEnv = { DB: providerD1([]), SECRETS_ENCRYPTION_KEY: encryptionKey };
 
 const originalFetch = globalThis.fetch;
 let calls = [];
@@ -67,7 +94,7 @@ function request(data) {
 try {
   let response = await handleAudioTranscription(
     request(form({ engine: "google", file: new File(["audio"], "sample.mp3", { type: "audio/mpeg" }) })),
-    { GEMINI_API_KEY: "google-key" }
+    googleEnv
   );
   let body = await response.json();
   assert.equal(response.status, 200);
@@ -99,7 +126,7 @@ try {
   calls = [];
   response = await handleAudioTranscription(
     request(form({ engine: "google", source_url: "https://audio.example.com/episode.mp3", timestamps: "false" })),
-    { GEMINI_API_KEY: "google-key" }
+    googleEnv
   );
   body = await response.json();
   assert.equal(response.status, 200);
@@ -113,7 +140,7 @@ try {
   calls = [];
   response = await handleAudioTranscription(
     request(form({ engine: "google", source_url: "https://audio.example.com/episode.mp3" })),
-    { GEMINI_API_KEY: "google-key" }
+    googleEnv
   );
   body = await response.json();
   assert.equal(response.status, 200);
@@ -122,7 +149,7 @@ try {
 
   response = await handleAudioTranscription(
     request(form({ engine: "google", source_url: "https://audio.example.com/episode.mp3" })),
-    {}
+    unconfiguredEnv
   );
   body = await response.json();
   assert.equal(response.status, 500);
@@ -138,7 +165,7 @@ try {
         file: new File(["audio"], "sample.mp3", { type: "audio/mpeg" })
       })
     ),
-    { GEMINI_API_KEY: "google-key" }
+    googleEnv
   );
   body = await response.json();
   assert.equal(response.status, 200, JSON.stringify(body));
@@ -161,7 +188,7 @@ try {
         file: new File(["audio"], "sample.mp3", { type: "audio/mpeg" })
       })
     ),
-    { GEMINI_API_KEY: "google-key" }
+    googleEnv
   );
   body = await response.json();
   assert.equal(response.status, 200, JSON.stringify(body));
