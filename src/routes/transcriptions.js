@@ -1,6 +1,7 @@
 import { errorResponse, jsonResponse } from "../utils/response.js";
 import { transcribe as transcribeWithElevenLabs } from "../elevenlabs/stt.js";
 import { transcribeWithGoogle } from "../google/stt.js";
+import { resolveProvider } from "../secrets/store.js";
 
 const MAX_AUDIO_FILE_SIZE = 50 * 1024 * 1024;
 const MAX_SOURCE_REDIRECTS = 5;
@@ -181,34 +182,38 @@ async function fetchSourceAudio(sourceUrl, maxBytes) {
     throw new Error("音频 URL 重定向次数过多");
 }
 
-function normalizeBaseUrl(value) {
-    const endpoint = typeof value === "string" ? value.trim() : "";
-    if (!endpoint) {
-        throw new Error("请输入 Whisper ASR 服务地址");
+/**
+ * OpenAI-compatible transcription endpoint.
+ *
+ * A base such as `https://api.openai.com/v1` or `https://asr.example.com/v1`
+ * gets `/audio/transcriptions` appended; a fully qualified endpoint is kept as
+ * is so self-hosted whisper services that already include the path work too.
+ */
+function buildTranscriptionUrl(value) {
+    const raw = typeof value === "string" ? value.trim() : "";
+    if (!raw) {
+        throw new Error("请输入 OpenAI 兼容的转录地址");
     }
 
     let url;
     try {
-        url = new URL(endpoint);
+        url = new URL(raw);
     } catch {
-        throw new Error("Whisper ASR 服务地址格式无效");
+        throw new Error("OpenAI 转录地址格式无效");
     }
 
     if (url.protocol !== "https:" && url.protocol !== "http:") {
-        throw new Error("Whisper ASR 服务地址必须以 http:// 或 https:// 开头");
+        throw new Error("OpenAI 转录地址必须以 http:// 或 https:// 开头");
     }
 
-    url.pathname = url.pathname.replace(/\/+$/, "");
     url.search = "";
     url.hash = "";
-    return url.toString().replace(/\/$/, "");
-}
 
-function buildAsrUrl(baseUrl) {
-    const url = new URL(`${baseUrl}/asr`);
-    url.searchParams.set("output", "json");
-    url.searchParams.set("task", "transcribe");
-    url.searchParams.set("encode", "true");
+    const trimmedPath = url.pathname.replace(/\/+$/, "");
+    url.pathname = /\/(audio\/transcriptions|asr)$/.test(trimmedPath)
+        ? trimmedPath
+        : `${trimmedPath}/audio/transcriptions`;
+
     return url;
 }
 
@@ -394,15 +399,21 @@ function buildElevenLabsSentences(words) {
     return sentences;
 }
 
-function whisperError(status) {
+function openAiError(status) {
+    if (status === 401 || status === 403) {
+        return "OpenAI 转录服务拒绝了密钥，请检查 Provider 设置里的 API Key";
+    }
+    if (status === 404) {
+        return "OpenAI 转录端点不存在，请确认 Endpoint 是否包含 /v1";
+    }
     if (status === 413) {
         return "音频文件太大，请选择较小的文件";
     }
     if (status === 422) {
-        return "Whisper ASR 无法处理该音频，请检查文件格式";
+        return "转录服务无法处理该音频，请检查文件格式";
     }
     if (status === 503) {
-        return "Whisper ASR 服务暂时不可用";
+        return "转录服务暂时不可用";
     }
     return "语音转录服务暂时不可用";
 }
@@ -435,10 +446,49 @@ function validateAudioFile(file) {
     return null;
 }
 
-async function handleWhisperTranscription(formData) {
+async function handleOpenAiTranscription(formData, env) {
+    let config;
+    try {
+        config = await resolveProvider(env, "openai");
+    } catch (error) {
+        return errorResponse(error instanceof Error ? error.message : "读取 OpenAI 配置失败", {
+            status: 500,
+            type: "api_error",
+            code: "openai_config_error"
+        });
+    }
+
+    if (config.keyError) {
+        return errorResponse(config.keyError, {
+            status: 500,
+            type: "api_error",
+            code: "openai_key_unreadable"
+        });
+    }
+
+    // Per-request overrides stay supported for API callers; provider settings
+    // from D1 are the default source of truth.
+    const endpointOverride = String(formData.get("endpoint") || "").trim();
+    const modelOverride = String(formData.get("model") || "").trim();
+    const apiKeyOverride = String(formData.get("apiKey") || "").trim();
+
+    let transcriptionUrl;
+    try {
+        transcriptionUrl = buildTranscriptionUrl(endpointOverride || config.endpoint);
+    } catch (error) {
+        return errorResponse(error instanceof Error ? error.message : "OpenAI 转录地址无效", {
+            status: 400,
+            type: "invalid_request_error",
+            param: "endpoint",
+            code: "invalid_endpoint"
+        });
+    }
+
+    const model = modelOverride || config.model;
+    const apiKey = apiKeyOverride || config.apiKey;
+
     const audioFile = formData.get("file");
     const sourceUrl = readSourceUrl(formData);
-    const whisperBaseUrl = normalizeBaseUrl(formData.get("endpoint"));
 
     let audioBlob = audioFile;
     let audioName = audioFile && audioFile.name ? audioFile.name : "audio";
@@ -468,17 +518,25 @@ async function handleWhisperTranscription(formData) {
     if (invalid) return invalid;
 
     const apiFormData = new FormData();
-    apiFormData.append("audio_file", audioBlob, audioName);
+    apiFormData.append("file", audioBlob, audioName);
+    apiFormData.append("model", model);
+    apiFormData.append("response_format", "json");
 
-    const apiResponse = await fetch(buildAsrUrl(whisperBaseUrl), {
+    const headers = {};
+    if (apiKey) {
+        headers.Authorization = `Bearer ${apiKey}`;
+    }
+
+    const apiResponse = await fetch(transcriptionUrl, {
         method: "POST",
+        headers,
         body: apiFormData
     });
 
     if (!apiResponse.ok) {
         const errorText = await apiResponse.text();
-        console.error("Whisper ASR error:", apiResponse.status, errorText);
-        return errorResponse(whisperError(apiResponse.status), {
+        console.error("OpenAI transcription error:", apiResponse.status, errorText.slice(0, 500));
+        return errorResponse(openAiError(apiResponse.status), {
             status: apiResponse.status,
             type: "api_error",
             code: "transcription_api_error"
@@ -489,7 +547,7 @@ async function handleWhisperTranscription(formData) {
     const text = extractText(result);
 
     if (!text) {
-        return errorResponse("Whisper ASR 未返回可用转录文本", {
+        return errorResponse("OpenAI 转录未返回可用转录文本", {
             status: 502,
             type: "api_error",
             code: "empty_transcription_result"
@@ -500,14 +558,27 @@ async function handleWhisperTranscription(formData) {
 }
 
 async function handleGoogleTranscription(formData, env) {
-    const apiKey = String(env?.GEMINI_API_KEY || env?.GOOGLE_API_KEY || "").trim();
-    if (!apiKey) {
-        return errorResponse("Google transcription is not configured: set GEMINI_API_KEY on the Worker.", {
+    let config;
+    try {
+        config = await resolveProvider(env, "google");
+    } catch (error) {
+        return errorResponse(error instanceof Error ? error.message : "读取 Google 配置失败", {
+            status: 500,
+            type: "api_error",
+            code: "google_config_error"
+        });
+    }
+
+    if (!config.apiKey) {
+        return errorResponse(config.keyError || "Google 转录未配置：请在 Provider 设置里保存 API Key，或配置 GEMINI_API_KEY 环境变量", {
             status: 500,
             type: "api_error",
             code: "google_not_configured"
         });
     }
+
+    const apiKey = config.apiKey;
+    const model = String(formData.get("model") || "").trim() || config.model;
 
     const audioFile = formData.get("file");
     const sourceUrl = readSourceUrl(formData);
@@ -542,7 +613,7 @@ async function handleGoogleTranscription(formData, env) {
     }
 
     try {
-        const result = await transcribeWithGoogle({ apiKey, data, filename, mimeType });
+        const result = await transcribeWithGoogle({ apiKey, data, filename, mimeType, model });
         const words = normalizeElevenLabsWords(result);
         const text = extractElevenLabsText(result) || words.map(word => word.text).join("").trim();
         if (!text) {
@@ -584,11 +655,34 @@ function elevenLabsResultResponse(result) {
     });
 }
 
-async function handleElevenLabsTranscription(formData) {
+async function handleElevenLabsTranscription(formData, env) {
     const audioFile = formData.get("file");
     const sourceUrl = readSourceUrl(formData);
     const languageCode = String(formData.get("language") || "auto").trim().toLowerCase() || "auto";
     const tagAudioEvents = formData.get("tagAudioEvents") === "true";
+
+    let config;
+    try {
+        config = await resolveProvider(env, "elevenlabs");
+    } catch (error) {
+        return errorResponse(error instanceof Error ? error.message : "读取 ElevenLabs 配置失败", {
+            status: 500,
+            type: "api_error",
+            code: "elevenlabs_config_error"
+        });
+    }
+
+    if (config.keyError) {
+        return errorResponse(config.keyError, {
+            status: 500,
+            type: "api_error",
+            code: "elevenlabs_key_unreadable"
+        });
+    }
+
+    // No key configured keeps the historical anonymous Scribe request.
+    const apiKey = config.apiKey;
+    const modelId = String(formData.get("model") || "").trim() || config.model;
 
     if (!audioFile && !sourceUrl) return missingAudioResponse();
 
@@ -599,7 +693,9 @@ async function handleElevenLabsTranscription(formData) {
             const result = await transcribeWithElevenLabs({
                 sourceUrl: checked.url,
                 languageCode,
-                tagAudioEvents
+                tagAudioEvents,
+                apiKey,
+                modelId
             });
             return elevenLabsResultResponse(result);
         }
@@ -611,7 +707,9 @@ async function handleElevenLabsTranscription(formData) {
             data: audioFile,
             filename: audioFile.name || "audio",
             languageCode,
-            tagAudioEvents
+            tagAudioEvents,
+            apiKey,
+            modelId
         });
         return elevenLabsResultResponse(result);
     } catch (error) {
@@ -646,15 +744,18 @@ export async function handleAudioTranscription(request, env) {
         }
 
         const formData = await request.formData();
-        const engine = String(formData.get("engine") || "whisper").toLowerCase();
+        const requested = String(formData.get("engine") || "openai").toLowerCase();
+        // `whisper` stays a supported alias so existing callers keep working
+        // after the engine was renamed to `openai`.
+        const engine = requested === "whisper" ? "openai" : requested;
 
         if (engine === "elevenlabs") {
-            return handleElevenLabsTranscription(formData);
+            return handleElevenLabsTranscription(formData, env);
         }
         if (engine === "google") {
             return handleGoogleTranscription(formData, env);
         }
-        return handleWhisperTranscription(formData);
+        return handleOpenAiTranscription(formData, env);
     } catch (error) {
         console.error("语音转录处理失败:", error);
         return errorResponse(error.message || "语音转录处理失败", {

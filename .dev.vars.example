@@ -1,0 +1,17 @@
+# Copy to .dev.vars for `npx wrangler dev` and fill in real values.
+# .dev.vars is git-ignored; never commit real secrets.
+
+# AES-256-GCM key used to encrypt provider API keys before they are stored in D1.
+# Must be base64 of exactly 32 random bytes. Generate one with:
+#   node -e "console.log(require('crypto').randomBytes(32).toString('base64'))"
+# Changing this value makes existing rows undecryptable: re-save the keys afterwards.
+SECRETS_ENCRYPTION_KEY=3MA8dqfnN1veywbjKPVE9hDwIq2Ra5TXvsTThon+SEc=
+
+# Bearer token required by PUT /api/providers/:provider.
+# Without it the settings panel is read-only.
+ADMIN_TOKEN=change-me-local-admin-token
+
+# Optional fallbacks, used when D1 has no key for that provider.
+# OPENAI_API_KEY=
+# ELEVENLABS_API_KEY=
+# GEMINI_API_KEY=

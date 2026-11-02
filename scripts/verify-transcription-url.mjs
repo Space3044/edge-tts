@@ -4,7 +4,7 @@ import { handleAudioTranscription } from "../src/routes/transcriptions.js";
 const AUDIO_BYTES = new Uint8Array([1, 2, 3, 4]);
 const SOURCE_URL = "https://cdn.example.com/audio.mp3";
 const REDIRECT_URL = "https://cdn2.example.com/real.mp3";
-const WHISPER_ENDPOINT = "https://whisper.example.com";
+const OPENAI_ENDPOINT = "https://asr.example.com/v1";
 
 const originalFetch = globalThis.fetch;
 let calls = [];
@@ -56,7 +56,7 @@ globalThis.fetch = async (url, init) => {
     });
   }
 
-  if (href.includes("whisper.example.com/asr")) {
+  if (href === `${OPENAI_ENDPOINT}/audio/transcriptions`) {
     return json({
       text: "Hello world.",
       segments: [{ start: 0, end: 1.2, text: "Hello world.", compression_ratio: 1.1 }]
@@ -103,24 +103,26 @@ try {
 
   reset();
   response = await handleAudioTranscription(
-    request(form({ source_url: SOURCE_URL, engine: "whisper", endpoint: WHISPER_ENDPOINT }))
+    request(form({ source_url: SOURCE_URL, engine: "openai", endpoint: OPENAI_ENDPOINT }))
   );
   body = await response.json();
   assert.equal(response.status, 200);
   assert.equal(body.text, "Hello world.");
   const sourceCall = calls.find((call) => call.url === SOURCE_URL);
-  assert.ok(sourceCall, "Whisper URL mode should download the source");
+  assert.ok(sourceCall, "OpenAI URL mode should download the source");
   assert.equal(sourceCall.init.redirect, "manual");
-  const whisperCall = calls.find((call) => call.url.includes("whisper.example.com/asr"));
-  assert.ok(whisperCall, "Whisper ASR should be called");
-  const whisperFile = whisperCall.init.body.get("audio_file");
-  assert.equal(whisperFile.name, "audio.mp3");
-  assert.equal(whisperFile.size, AUDIO_BYTES.length);
+  const openaiCall = calls.find((call) => call.url === `${OPENAI_ENDPOINT}/audio/transcriptions`);
+  assert.ok(openaiCall, "OpenAI transcription endpoint should be called");
+  const openaiFile = openaiCall.init.body.get("file");
+  assert.equal(openaiFile.name, "audio.mp3");
+  assert.equal(openaiFile.size, AUDIO_BYTES.length);
+  assert.equal(openaiCall.init.body.get("model"), "whisper-1");
+  assert.equal(openaiCall.init.body.get("response_format"), "json");
 
   reset();
   redirectSource = true;
   response = await handleAudioTranscription(
-    request(form({ source_url: SOURCE_URL, engine: "whisper", endpoint: WHISPER_ENDPOINT }))
+    request(form({ source_url: SOURCE_URL, engine: "openai", endpoint: OPENAI_ENDPOINT }))
   );
   body = await response.json();
   assert.equal(response.status, 200);
@@ -129,7 +131,7 @@ try {
   for (const privateUrl of ["http://127.0.0.1/audio.mp3", "http://[::1]/audio.mp3", "http://[::ffff:7f00:1]/audio.mp3", "http://169.254.169.254/audio.mp3"]) {
     reset();
     response = await handleAudioTranscription(
-      request(form({ source_url: privateUrl, engine: "whisper", endpoint: WHISPER_ENDPOINT }))
+      request(form({ source_url: privateUrl, engine: "openai", endpoint: OPENAI_ENDPOINT }))
     );
     body = await response.json();
     assert.equal(response.status, 400, privateUrl);
@@ -138,7 +140,7 @@ try {
   }
 
   reset();
-  response = await handleAudioTranscription(request(form({ engine: "whisper", endpoint: WHISPER_ENDPOINT })));
+  response = await handleAudioTranscription(request(form({ engine: "openai", endpoint: OPENAI_ENDPOINT })));
   body = await response.json();
   assert.equal(response.status, 400);
   assert.equal(body.error.code, "missing_audio");
@@ -146,13 +148,13 @@ try {
   reset();
   sourceTooLarge = true;
   response = await handleAudioTranscription(
-    request(form({ source_url: SOURCE_URL, engine: "whisper", endpoint: WHISPER_ENDPOINT }))
+    request(form({ source_url: SOURCE_URL, engine: "openai", endpoint: OPENAI_ENDPOINT }))
   );
   body = await response.json();
   assert.equal(response.status, 400);
   assert.equal(body.error.code, "source_too_large");
 
-  console.log("Verified audio URL transcription for ElevenLabs and Whisper.");
+  console.log("Verified audio URL transcription for ElevenLabs and OpenAI.");
 } finally {
   globalThis.fetch = originalFetch;
 }

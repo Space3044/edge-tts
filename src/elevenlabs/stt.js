@@ -98,11 +98,13 @@ export async function transcribe({
     filename,
     languageCode = "auto",
     tagAudioEvents = true,
+    apiKey = "",
+    modelId = DEFAULT_STT_MODEL_ID,
     timeoutMs = 1800000,
     signal
 }) {
     const formData = new FormData();
-    formData.append("model_id", DEFAULT_STT_MODEL_ID);
+    formData.append("model_id", modelId || DEFAULT_STT_MODEL_ID);
     formData.append("diarize", "true");
     formData.append("tag_audio_events", String(tagAudioEvents).toLowerCase());
 
@@ -120,11 +122,19 @@ export async function transcribe({
     }
 
     const url = new URL(ELEVENLABS_STT_API_URL);
-    url.searchParams.set("allow_unauthenticated", "1");
+    const headers = buildHeaders();
+    const key = String(apiKey || "").trim();
+    if (key) {
+        // A configured key takes over the request: the anonymous query parameter
+        // must not be sent alongside it.
+        headers["xi-api-key"] = key;
+    } else {
+        url.searchParams.set("allow_unauthenticated", "1");
+    }
 
     const response = await fetch(url, {
         method: "POST",
-        headers: buildHeaders(),
+        headers,
         body: formData,
         signal: combineSignals(timeoutMs, signal)
     });

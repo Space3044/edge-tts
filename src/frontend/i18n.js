@@ -192,44 +192,44 @@ export const translations = {
     };
     Object.keys(CONTROL_PANEL_TRANSLATIONS).forEach(function(lang) { Object.assign(translations[lang], CONTROL_PANEL_TRANSLATIONS[lang]); });
     const WHISPER_ENDPOINT_TRANSLATIONS = {
-      en: { 'stt.endpoint': 'Whisper ASR URL', 'stt.endpointPlaceholder': 'https://your-whisper-asr.example.com', 'stt.endpointHint': 'Enter the deployed Whisper ASR service base URL.', 'error.endpointRequired': 'Enter the Whisper ASR service URL' },
-      zh: { 'stt.endpoint': 'Whisper ASR 地址', 'stt.endpointPlaceholder': 'https://你的-whisper-asr.example.com', 'stt.endpointHint': '填写已部署的 Whisper ASR 服务基础地址。', 'error.endpointRequired': '请输入 Whisper ASR 服务地址' },
-      ja: { 'stt.endpoint': 'Whisper ASR URL', 'stt.endpointPlaceholder': 'https://your-whisper-asr.example.com', 'stt.endpointHint': 'デプロイ済み Whisper ASR サービスのベースURLを入力します。', 'error.endpointRequired': 'Whisper ASR サービスURLを入力してください' },
-      ko: { 'stt.endpoint': 'Whisper ASR URL', 'stt.endpointPlaceholder': 'https://your-whisper-asr.example.com', 'stt.endpointHint': '배포된 Whisper ASR 서비스 기본 URL을 입력합니다.', 'error.endpointRequired': 'Whisper ASR 서비스 URL을 입력하세요' },
-      es: { 'stt.endpoint': 'URL de Whisper ASR', 'stt.endpointPlaceholder': 'https://your-whisper-asr.example.com', 'stt.endpointHint': 'Introduce la URL base del servicio Whisper ASR desplegado.', 'error.endpointRequired': 'Introduce la URL del servicio Whisper ASR' },
-      fr: { 'stt.endpoint': 'URL Whisper ASR', 'stt.endpointPlaceholder': 'https://your-whisper-asr.example.com', 'stt.endpointHint': 'Saisissez l URL de base du service Whisper ASR déployé.', 'error.endpointRequired': 'Saisissez l URL du service Whisper ASR' },
-      de: { 'stt.endpoint': 'Whisper ASR URL', 'stt.endpointPlaceholder': 'https://your-whisper-asr.example.com', 'stt.endpointHint': 'Basis-URL des bereitgestellten Whisper ASR-Dienstes eingeben.', 'error.endpointRequired': 'Whisper ASR Service-URL eingeben' },
-      ru: { 'stt.endpoint': 'URL Whisper ASR', 'stt.endpointPlaceholder': 'https://your-whisper-asr.example.com', 'stt.endpointHint': 'Введите базовый URL развернутого сервиса Whisper ASR.', 'error.endpointRequired': 'Введите URL сервиса Whisper ASR' }
+      en: { 'stt.endpoint': 'OpenAI endpoint', 'stt.endpointPlaceholder': 'https://api.openai.com/v1', 'stt.endpointHint': 'OpenAI-compatible base URL, for example https://api.openai.com/v1 or https://your-asr.example.com/v1.', 'error.endpointRequired': 'Enter the OpenAI service URL' },
+      zh: { 'stt.endpoint': 'OpenAI 转录地址', 'stt.endpointPlaceholder': 'https://api.openai.com/v1', 'stt.endpointHint': 'OpenAI 兼容基础地址，例如 https://api.openai.com/v1 或自建服务的 .../v1。', 'error.endpointRequired': '请输入 OpenAI 服务地址' },
+      ja: { 'stt.endpoint': 'OpenAI endpoint', 'stt.endpointPlaceholder': 'https://api.openai.com/v1', 'stt.endpointHint': 'デプロイ済み OpenAI サービスのベースURLを入力します。', 'error.endpointRequired': 'OpenAI サービスURLを入力してください' },
+      ko: { 'stt.endpoint': 'OpenAI endpoint', 'stt.endpointPlaceholder': 'https://api.openai.com/v1', 'stt.endpointHint': '배포된 OpenAI 서비스 기본 URL을 입력합니다.', 'error.endpointRequired': 'OpenAI 서비스 URL을 입력하세요' },
+      es: { 'stt.endpoint': 'URL de OpenAI', 'stt.endpointPlaceholder': 'https://api.openai.com/v1', 'stt.endpointHint': 'Introduce la URL base del servicio OpenAI desplegado.', 'error.endpointRequired': 'Introduce la URL del servicio OpenAI' },
+      fr: { 'stt.endpoint': 'URL OpenAI', 'stt.endpointPlaceholder': 'https://api.openai.com/v1', 'stt.endpointHint': 'Saisissez l URL de base du service OpenAI déployé.', 'error.endpointRequired': 'Saisissez l URL du service OpenAI' },
+      de: { 'stt.endpoint': 'OpenAI endpoint', 'stt.endpointPlaceholder': 'https://api.openai.com/v1', 'stt.endpointHint': 'Basis-URL des bereitgestellten OpenAI-Dienstes eingeben.', 'error.endpointRequired': 'OpenAI Service-URL eingeben' },
+      ru: { 'stt.endpoint': 'URL OpenAI', 'stt.endpointPlaceholder': 'https://api.openai.com/v1', 'stt.endpointHint': 'Введите базовый URL развернутого сервиса OpenAI.', 'error.endpointRequired': 'Введите URL сервиса OpenAI' }
     };
     Object.keys(WHISPER_ENDPOINT_TRANSLATIONS).forEach(function(lang) { Object.assign(translations[lang], WHISPER_ENDPOINT_TRANSLATIONS[lang]); });
 
     const STT_SOURCE_URL_TRANSLATIONS = {
-      en: { 'stt.sourceUrl': 'Audio URL', 'stt.sourceUrlPlaceholder': 'https://example.com/audio.mp3', 'stt.sourceUrlHint': 'Or paste a public audio URL; Whisper and Google download it, ElevenLabs reads it directly.', 'error.audioSourceRequired': 'Choose an audio file or paste an audio URL.' },
-      zh: { 'stt.sourceUrl': '音频 URL', 'stt.sourceUrlPlaceholder': 'https://example.com/audio.mp3', 'stt.sourceUrlHint': '或粘贴一个公开的音频 URL；Whisper 和 Google 由 Worker 下载，ElevenLabs 直接读取。', 'error.audioSourceRequired': '请选择音频文件或粘贴音频 URL。' },
-      ja: { 'stt.sourceUrl': '音声URL', 'stt.sourceUrlPlaceholder': 'https://example.com/audio.mp3', 'stt.sourceUrlHint': '公開音声URLを貼り付けることもできます。Whisper と Google は Worker が取得し、ElevenLabs は直接読み取ります。', 'error.audioSourceRequired': '音声ファイルを選択するか、音声URLを貼り付けてください。' },
-      ko: { 'stt.sourceUrl': '오디오 URL', 'stt.sourceUrlPlaceholder': 'https://example.com/audio.mp3', 'stt.sourceUrlHint': '공개 오디오 URL을 붙여넣을 수도 있습니다. Whisper와 Google은 Worker가 내려받고 ElevenLabs는 직접 읽습니다.', 'error.audioSourceRequired': '오디오 파일을 선택하거나 오디오 URL을 붙여넣으세요.' },
-      es: { 'stt.sourceUrl': 'URL de audio', 'stt.sourceUrlPlaceholder': 'https://example.com/audio.mp3', 'stt.sourceUrlHint': 'También puedes pegar una URL de audio pública; Whisper y Google la descargan y ElevenLabs la lee directamente.', 'error.audioSourceRequired': 'Elige un archivo de audio o pega una URL de audio.' },
-      fr: { 'stt.sourceUrl': 'URL audio', 'stt.sourceUrlPlaceholder': 'https://example.com/audio.mp3', 'stt.sourceUrlHint': 'Vous pouvez aussi coller une URL audio publique ; Whisper et Google la téléchargent et ElevenLabs la lit directement.', 'error.audioSourceRequired': 'Choisissez un fichier audio ou collez une URL audio.' },
-      de: { 'stt.sourceUrl': 'Audio-URL', 'stt.sourceUrlPlaceholder': 'https://example.com/audio.mp3', 'stt.sourceUrlHint': 'Alternativ eine öffentliche Audio-URL einfügen; Whisper und Google laden sie herunter, ElevenLabs liest sie direkt.', 'error.audioSourceRequired': 'Audiodatei wählen oder Audio-URL einfügen.' },
-      ru: { 'stt.sourceUrl': 'URL аудио', 'stt.sourceUrlPlaceholder': 'https://example.com/audio.mp3', 'stt.sourceUrlHint': 'Можно вставить публичный URL аудио; Whisper и Google скачают его, а ElevenLabs прочитает напрямую.', 'error.audioSourceRequired': 'Выберите аудиофайл или вставьте URL аудио.' }
+      en: { 'stt.sourceUrl': 'Audio URL', 'stt.sourceUrlPlaceholder': 'https://example.com/audio.mp3', 'stt.sourceUrlHint': 'Or paste a public audio URL; OpenAI and Google download it, ElevenLabs reads it directly.', 'error.audioSourceRequired': 'Choose an audio file or paste an audio URL.' },
+      zh: { 'stt.sourceUrl': '音频 URL', 'stt.sourceUrlPlaceholder': 'https://example.com/audio.mp3', 'stt.sourceUrlHint': '或粘贴一个公开的音频 URL；OpenAI 和 Google 由 Worker 下载，ElevenLabs 直接读取。', 'error.audioSourceRequired': '请选择音频文件或粘贴音频 URL。' },
+      ja: { 'stt.sourceUrl': '音声URL', 'stt.sourceUrlPlaceholder': 'https://example.com/audio.mp3', 'stt.sourceUrlHint': '公開音声URLを貼り付けることもできます。OpenAI と Google は Worker が取得し、ElevenLabs は直接読み取ります。', 'error.audioSourceRequired': '音声ファイルを選択するか、音声URLを貼り付けてください。' },
+      ko: { 'stt.sourceUrl': '오디오 URL', 'stt.sourceUrlPlaceholder': 'https://example.com/audio.mp3', 'stt.sourceUrlHint': '공개 오디오 URL을 붙여넣을 수도 있습니다. OpenAI와 Google은 Worker가 내려받고 ElevenLabs는 직접 읽습니다.', 'error.audioSourceRequired': '오디오 파일을 선택하거나 오디오 URL을 붙여넣으세요.' },
+      es: { 'stt.sourceUrl': 'URL de audio', 'stt.sourceUrlPlaceholder': 'https://example.com/audio.mp3', 'stt.sourceUrlHint': 'También puedes pegar una URL de audio pública; OpenAI y Google la descargan y ElevenLabs la lee directamente.', 'error.audioSourceRequired': 'Elige un archivo de audio o pega una URL de audio.' },
+      fr: { 'stt.sourceUrl': 'URL audio', 'stt.sourceUrlPlaceholder': 'https://example.com/audio.mp3', 'stt.sourceUrlHint': 'Vous pouvez aussi coller une URL audio publique ; OpenAI et Google la téléchargent et ElevenLabs la lit directement.', 'error.audioSourceRequired': 'Choisissez un fichier audio ou collez une URL audio.' },
+      de: { 'stt.sourceUrl': 'Audio-URL', 'stt.sourceUrlPlaceholder': 'https://example.com/audio.mp3', 'stt.sourceUrlHint': 'Alternativ eine öffentliche Audio-URL einfügen; OpenAI und Google laden sie herunter, ElevenLabs liest sie direkt.', 'error.audioSourceRequired': 'Audiodatei wählen oder Audio-URL einfügen.' },
+      ru: { 'stt.sourceUrl': 'URL аудио', 'stt.sourceUrlPlaceholder': 'https://example.com/audio.mp3', 'stt.sourceUrlHint': 'Можно вставить публичный URL аудио; OpenAI и Google скачают его, а ElevenLabs прочитает напрямую.', 'error.audioSourceRequired': 'Выберите аудиофайл или вставьте URL аудио.' }
     };
     Object.keys(STT_SOURCE_URL_TRANSLATIONS).forEach(function(lang) { Object.assign(translations[lang], STT_SOURCE_URL_TRANSLATIONS[lang]); });
 
     const STT_ENGINE_TRANSLATIONS = {
-      en: { 'stt.subtitle': 'Upload audio and transcribe it with Whisper ASR, ElevenLabs, or Google Gemini 3.5 Transcribe.', 'stt.engine': 'Transcription engine', 'stt.engineWhisper': 'Whisper', 'stt.engineElevenLabs': 'ElevenLabs', 'stt.language': 'Language', 'stt.languageAuto': 'Auto detect', 'stt.tagAudioEvents': 'Keep sound cues', 'stt.tagAudioEventsHint': 'Text may include cues like [laughter] or [applause].' },
-      zh: { 'stt.subtitle': '上传音频，使用 Whisper ASR、ElevenLabs 或 Google Gemini 3.5 Transcribe 转录。', 'stt.engine': '转录引擎', 'stt.engineWhisper': 'Whisper', 'stt.engineElevenLabs': 'ElevenLabs', 'stt.language': '语言', 'stt.languageAuto': '自动检测', 'stt.tagAudioEvents': '保留音效提示', 'stt.tagAudioEventsHint': '转写文本里可能出现 [笑声]、[掌声] 这类提示。' },
-      ja: { 'stt.subtitle': '音声をアップロードし、Whisper ASR、ElevenLabs、Google Gemini 3.5 Transcribe で文字起こしします。', 'stt.engine': '文字起こしエンジン', 'stt.engineWhisper': 'Whisper', 'stt.engineElevenLabs': 'ElevenLabs', 'stt.language': '言語', 'stt.languageAuto': '自動検出', 'stt.tagAudioEvents': '音声イベントをタグ付け', 'stt.tagAudioEventsHint': '笑い声や拍手などの非音声イベントを記録します。' },
-      ko: { 'stt.subtitle': '오디오를 업로드하고 Whisper ASR, ElevenLabs 또는 Google Gemini 3.5 Transcribe로 전사합니다.', 'stt.engine': '전사 엔진', 'stt.engineWhisper': 'Whisper', 'stt.engineElevenLabs': 'ElevenLabs', 'stt.language': '언어', 'stt.languageAuto': '자동 감지', 'stt.tagAudioEvents': '오디오 이벤트 태그', 'stt.tagAudioEventsHint': '웃음이나 박수 같은 비음성 이벤트를 표시합니다.' },
-      es: { 'stt.subtitle': 'Sube audio y transcríbelo con Whisper ASR, ElevenLabs o Google Gemini 3.5 Transcribe.', 'stt.engine': 'Motor de transcripción', 'stt.engineWhisper': 'Whisper', 'stt.engineElevenLabs': 'ElevenLabs', 'stt.language': 'Idioma', 'stt.languageAuto': 'Detectar automáticamente', 'stt.tagAudioEvents': 'Etiquetar eventos de audio', 'stt.tagAudioEventsHint': 'Marca eventos no hablados como risas o aplausos.' },
-      fr: { 'stt.subtitle': 'Importez un audio et transcrivez-le avec Whisper ASR, ElevenLabs ou Google Gemini 3.5 Transcribe.', 'stt.engine': 'Moteur de transcription', 'stt.engineWhisper': 'Whisper', 'stt.engineElevenLabs': 'ElevenLabs', 'stt.language': 'Langue', 'stt.languageAuto': 'Détection automatique', 'stt.tagAudioEvents': 'Marquer les événements audio', 'stt.tagAudioEventsHint': 'Marque les événements non vocaux comme les rires ou les applaudissements.' },
-      de: { 'stt.subtitle': 'Audio hochladen und mit Whisper ASR, ElevenLabs oder Google Gemini 3.5 Transcribe transkribieren.', 'stt.engine': 'Transkriptionsdienst', 'stt.engineWhisper': 'Whisper', 'stt.engineElevenLabs': 'ElevenLabs', 'stt.language': 'Sprache', 'stt.languageAuto': 'Automatisch erkennen', 'stt.tagAudioEvents': 'Audioereignisse markieren', 'stt.tagAudioEventsHint': 'Markiert nichtsprachliche Ereignisse wie Lachen oder Applaus.' },
-      ru: { 'stt.subtitle': 'Загрузите аудио и распознайте его через Whisper ASR, ElevenLabs или Google Gemini 3.5 Transcribe.', 'stt.engine': 'Сервис распознавания', 'stt.engineWhisper': 'Whisper', 'stt.engineElevenLabs': 'ElevenLabs', 'stt.language': 'Язык', 'stt.languageAuto': 'Автоопределение', 'stt.tagAudioEvents': 'Отмечать аудиособытия', 'stt.tagAudioEventsHint': 'Отмечает неречевые события, например смех или аплодисменты.' }
+      en: { 'stt.subtitle': 'Upload audio and transcribe it with OpenAI, ElevenLabs, or Google Gemini 3.5 Transcribe.', 'stt.engine': 'Transcription engine', 'stt.engineOpenai': 'OpenAI', 'stt.engineElevenLabs': 'ElevenLabs', 'stt.language': 'Language', 'stt.languageAuto': 'Auto detect', 'stt.tagAudioEvents': 'Keep sound cues', 'stt.tagAudioEventsHint': 'Text may include cues like [laughter] or [applause].' },
+      zh: { 'stt.subtitle': '上传音频，使用 OpenAI、ElevenLabs 或 Google Gemini 3.5 Transcribe 转录。', 'stt.engine': '转录引擎', 'stt.engineOpenai': 'OpenAI', 'stt.engineElevenLabs': 'ElevenLabs', 'stt.language': '语言', 'stt.languageAuto': '自动检测', 'stt.tagAudioEvents': '保留音效提示', 'stt.tagAudioEventsHint': '转写文本里可能出现 [笑声]、[掌声] 这类提示。' },
+      ja: { 'stt.subtitle': '音声をアップロードし、OpenAI、ElevenLabs、Google Gemini 3.5 Transcribe で文字起こしします。', 'stt.engine': '文字起こしエンジン', 'stt.engineOpenai': 'OpenAI', 'stt.engineElevenLabs': 'ElevenLabs', 'stt.language': '言語', 'stt.languageAuto': '自動検出', 'stt.tagAudioEvents': '音声イベントをタグ付け', 'stt.tagAudioEventsHint': '笑い声や拍手などの非音声イベントを記録します。' },
+      ko: { 'stt.subtitle': '오디오를 업로드하고 OpenAI, ElevenLabs 또는 Google Gemini 3.5 Transcribe로 전사합니다.', 'stt.engine': '전사 엔진', 'stt.engineOpenai': 'OpenAI', 'stt.engineElevenLabs': 'ElevenLabs', 'stt.language': '언어', 'stt.languageAuto': '자동 감지', 'stt.tagAudioEvents': '오디오 이벤트 태그', 'stt.tagAudioEventsHint': '웃음이나 박수 같은 비음성 이벤트를 표시합니다.' },
+      es: { 'stt.subtitle': 'Sube audio y transcríbelo con OpenAI, ElevenLabs o Google Gemini 3.5 Transcribe.', 'stt.engine': 'Motor de transcripción', 'stt.engineOpenai': 'OpenAI', 'stt.engineElevenLabs': 'ElevenLabs', 'stt.language': 'Idioma', 'stt.languageAuto': 'Detectar automáticamente', 'stt.tagAudioEvents': 'Etiquetar eventos de audio', 'stt.tagAudioEventsHint': 'Marca eventos no hablados como risas o aplausos.' },
+      fr: { 'stt.subtitle': 'Importez un audio et transcrivez-le avec OpenAI, ElevenLabs ou Google Gemini 3.5 Transcribe.', 'stt.engine': 'Moteur de transcription', 'stt.engineOpenai': 'OpenAI', 'stt.engineElevenLabs': 'ElevenLabs', 'stt.language': 'Langue', 'stt.languageAuto': 'Détection automatique', 'stt.tagAudioEvents': 'Marquer les événements audio', 'stt.tagAudioEventsHint': 'Marque les événements non vocaux comme les rires ou les applaudissements.' },
+      de: { 'stt.subtitle': 'Audio hochladen und mit OpenAI, ElevenLabs oder Google Gemini 3.5 Transcribe transkribieren.', 'stt.engine': 'Transkriptionsdienst', 'stt.engineOpenai': 'OpenAI', 'stt.engineElevenLabs': 'ElevenLabs', 'stt.language': 'Sprache', 'stt.languageAuto': 'Automatisch erkennen', 'stt.tagAudioEvents': 'Audioereignisse markieren', 'stt.tagAudioEventsHint': 'Markiert nichtsprachliche Ereignisse wie Lachen oder Applaus.' },
+      ru: { 'stt.subtitle': 'Загрузите аудио и распознайте его через OpenAI, ElevenLabs или Google Gemini 3.5 Transcribe.', 'stt.engine': 'Сервис распознавания', 'stt.engineOpenai': 'OpenAI', 'stt.engineElevenLabs': 'ElevenLabs', 'stt.language': 'Язык', 'stt.languageAuto': 'Автоопределение', 'stt.tagAudioEvents': 'Отмечать аудиособытия', 'stt.tagAudioEventsHint': 'Отмечает неречевые события, например смех или аплодисменты.' }
     };
     Object.keys(STT_ENGINE_TRANSLATIONS).forEach(function(lang) { Object.assign(translations[lang], STT_ENGINE_TRANSLATIONS[lang]); });
 
     const GOOGLE_STT_TRANSLATIONS = {
-      en: { 'stt.engineGoogle': 'Google', 'stt.googleHint': 'Uses Google Gemini 3.5 Transcribe with the Worker\'s GEMINI_API_KEY.' },
-      zh: { 'stt.engineGoogle': 'Google', 'stt.googleHint': '使用 Google Gemini 3.5 Transcribe，Worker 通过环境变量 GEMINI_API_KEY 认证。' },
+      en: { 'stt.engineGoogle': 'Google', 'stt.googleHint': 'Uses Google Gemini Transcribe with the model and API key saved in provider settings.' },
+      zh: { 'stt.engineGoogle': 'Google', 'stt.googleHint': '使用 Provider 设置里保存的模型和 API Key 调用 Google Gemini Transcribe。' },
       ja: { 'stt.engineGoogle': 'Google', 'stt.googleHint': 'Google Gemini 3.5 Transcribe を使用します。Worker の GEMINI_API_KEY で認証します。' },
       ko: { 'stt.engineGoogle': 'Google', 'stt.googleHint': 'Google Gemini 3.5 Transcribe를 사용하며 Worker의 GEMINI_API_KEY로 인증합니다.' },
       es: { 'stt.engineGoogle': 'Google', 'stt.googleHint': 'Usa Google Gemini 3.5 Transcribe con la GEMINI_API_KEY del Worker.' },
@@ -250,6 +250,56 @@ export const translations = {
       ru: { 'stt.viewPlain': 'Текст', 'stt.viewSentences': 'Фразы', 'stt.viewWords': 'Слова', 'stt.noTimestamps': 'В этом результате нет временных меток.' }
     };
     Object.keys(STT_RESULT_VIEW_TRANSLATIONS).forEach(function(lang) { Object.assign(translations[lang], STT_RESULT_VIEW_TRANSLATIONS[lang]); });
+
+    const PROVIDER_SETTINGS_TRANSLATIONS = {
+      en: {
+        'provider.title': 'Provider settings',
+        'provider.hint': 'API keys are encrypted with SECRETS_ENCRYPTION_KEY and stored in D1. Leave the key field empty to keep the saved one.',
+        'provider.model': 'Model',
+        'provider.apiKey': 'API Key',
+        'provider.apiKeyPlaceholder': 'Leave empty to keep the saved key',
+        'provider.openaiTitle': 'OpenAI transcription',
+        'provider.elevenlabsTitle': 'ElevenLabs Scribe',
+        'provider.googleTitle': 'Google Gemini Transcribe',
+        'provider.endpoint': 'Endpoint',
+        'provider.save': 'Save',
+        'provider.saving': 'Saving...',
+        'provider.saved': 'Saved',
+        'provider.statusNone': 'No API key saved',
+        'provider.statusEnv': 'API key from environment variable',
+        'provider.statusDb': 'API key encrypted in D1',
+        'provider.readOnly': 'ADMIN_TOKEN is not set, provider settings are read-only.',
+        'provider.adminTokenPrompt': 'Enter ADMIN_TOKEN to save provider settings',
+        'provider.adminTokenRejected': 'ADMIN_TOKEN rejected',
+        'provider.loadFailed': 'Could not load provider settings',
+        'provider.saveFailed': 'Could not save provider settings',
+        'error.providerSaveFailed': 'Save failed'
+      },
+      zh: {
+        'provider.title': '服务配置',
+        'provider.hint': 'API Key 会用 SECRETS_ENCRYPTION_KEY 加密后存进 D1；密钥输入框留空表示保留已保存的密钥。',
+        'provider.model': '模型',
+        'provider.apiKey': 'API Key',
+        'provider.apiKeyPlaceholder': '留空表示保留已保存的密钥',
+        'provider.openaiTitle': 'OpenAI 转录',
+        'provider.elevenlabsTitle': 'ElevenLabs Scribe',
+        'provider.googleTitle': 'Google Gemini Transcribe',
+        'provider.endpoint': 'Endpoint',
+        'provider.save': '保存',
+        'provider.saving': '保存中...',
+        'provider.saved': '已保存',
+        'provider.statusNone': '未保存 API Key',
+        'provider.statusEnv': 'API Key 来自环境变量',
+        'provider.statusDb': 'API Key 已加密保存到 D1',
+        'provider.readOnly': '未配置 ADMIN_TOKEN，服务配置只读。',
+        'provider.adminTokenPrompt': '请输入 ADMIN_TOKEN 以保存服务配置',
+        'provider.adminTokenRejected': 'ADMIN_TOKEN 无效',
+        'provider.loadFailed': '读取服务配置失败',
+        'provider.saveFailed': '保存服务配置失败',
+        'error.providerSaveFailed': '保存失败'
+      }
+    };
+    Object.keys(PROVIDER_SETTINGS_TRANSLATIONS).forEach(function(lang) { Object.assign(translations[lang], PROVIDER_SETTINGS_TRANSLATIONS[lang]); });
 
     const AI_POLISH_TRANSLATIONS = {
       en: { 'action.polish': 'AI polish', 'action.undoPolish': 'Undo AI polish', 'polish.config': 'AI polish settings', 'polish.baseUrl': 'API Base URL', 'polish.baseUrlPlaceholder': 'https://api.openai.com/v1', 'polish.apiKey': 'API Key', 'polish.model': 'Model', 'polish.instruction': 'Polish instruction', 'polish.instructionPlaceholder': 'Polish text for natural speech. Return only the final text.', 'status.polishing': 'Polishing...', 'error.polishInputRequired': 'Enter text before polishing', 'error.polishConfigRequired': 'Enter Base URL, API Key, and model', 'error.polishFailed': 'Polish failed', 'error.polishEmpty': 'AI returned empty text', 'error.prefix': 'Error: ' },

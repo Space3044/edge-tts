@@ -2,7 +2,7 @@ export function makeCORSHeaders() {
     return {
         "Access-Control-Allow-Origin": "*",
         "Access-Control-Allow-Methods": "GET,HEAD,POST,OPTIONS",
-        "Access-Control-Allow-Headers": "Content-Type, x-api-key",
+        "Access-Control-Allow-Headers": "Content-Type, Authorization, x-api-key",
         "Access-Control-Max-Age": "86400"
     };
 }

@@ -3,6 +3,7 @@ import { getFaviconBytes } from "./frontend/favicon.js";
 import { handleSpeech } from "./routes/speech.js";
 import { handleTextPolish } from "./routes/polish.js";
 import { handleAudioTranscription } from "./routes/transcriptions.js";
+import { handleProviders } from "./routes/providers.js";
 import { handleOptions, makeCORSHeaders } from "./utils/cors.js";
 
 async function handleRequest(request, env = {}) {
@@ -34,6 +35,10 @@ async function handleRequest(request, env = {}) {
 
     if (path === "/v1/audio/transcriptions") {
         return handleAudioTranscription(request, env);
+    }
+
+    if (path === "/api/providers" || path.startsWith("/api/providers/")) {
+        return handleProviders(request, env);
     }
 
     if (path === "/v1/text/polish") {

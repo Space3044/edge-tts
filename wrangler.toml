@@ -19,11 +19,27 @@ name = "tts-voice-magic-staging"
 # id = "your-kv-namespace-id"
 # preview_id = "your-preview-kv-namespace-id"
 
-# 如果需要 D1 数据库（可选）
-# [[d1_databases]]
-# binding = "DB"
-# database_name = "my-database"
-# database_id = "your-database-id"
+# D1：加密保存各家转录服务的 endpoint / model / API Key。
+# 本地 wrangler dev --local 可以直接用这个占位 id；
+# 远端部署前执行 npx wrangler d1 create voicecraft，把返回的 database_id 填到这里。
+[[d1_databases]]
+binding = "DB"
+database_name = "voicecraft"
+database_id = "00000000-0000-0000-0000-000000000000"
+migrations_dir = "migrations"
+
+# 非默认环境不会继承上面的 binding，每个 env 都要重新声明。
+[[env.production.d1_databases]]
+binding = "DB"
+database_name = "voicecraft"
+database_id = "00000000-0000-0000-0000-000000000000"
+migrations_dir = "migrations"
+
+[[env.staging.d1_databases]]
+binding = "DB"
+database_name = "voicecraft-staging"
+database_id = "00000000-0000-0000-0000-000000000001"
+migrations_dir = "migrations"
 
 # 路由配置
 [triggers]

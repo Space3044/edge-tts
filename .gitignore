@@ -3,3 +3,4 @@
 wrangler-dev.*.log
 docs/
 .playwright-cli
+.dev.vars

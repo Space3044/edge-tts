@@ -15,6 +15,12 @@ const clientSource = read("../src/frontend/client.js");
 const i18nSource = read("../src/frontend/i18n.js");
 const transcriptionBundle = [transcriptionSource, pageSource, clientSource, i18nSource].join("\n");
 
+// A syntax error in the injected client script breaks every DOM handler at
+// once, and the failure only shows up in the browser console.
+const { CLIENT_SCRIPT } = await import("../src/frontend/client.js");
+assert.doesNotThrow(() => new Function(CLIENT_SCRIPT), "the browser client script must parse");
+
+
 assert.ok(
   existsSync(new URL("../src/utils/response.js", import.meta.url)),
   "shared JSON/audio response helpers should exist",
@@ -32,40 +38,46 @@ assert.doesNotMatch(
   "Whisper ASR transcription flow should not keep token UI or token forwarding",
 );
 
+assert.match(
+  transcriptionSource,
+  /resolveProvider\(env, "openai"\)/,
+  "the OpenAI engine should read endpoint/model/key from the provider store",
+);
+
+assert.match(
+  transcriptionSource,
+  /\/audio\/transcriptions/,
+  "the OpenAI engine should call the OpenAI-compatible /audio/transcriptions endpoint",
+);
+
+assert.match(
+  transcriptionSource,
+  /apiFormData\.append\("file", audioBlob, audioName\)/,
+  "the OpenAI engine should forward the audio as the OpenAI `file` field",
+);
+
+assert.match(
+  transcriptionSource,
+  /apiFormData\.append\("model", model\)/,
+  "the OpenAI engine should forward the configured model",
+);
+
+assert.match(
+  transcriptionSource,
+  /requested === "whisper" \? "openai" : requested/,
+  "`engine=whisper` should stay a supported alias for the renamed openai engine",
+);
+
 assert.doesNotMatch(
   transcriptionSource,
-  /env\.[A-Z0-9_]+|WHISPER_ASR_BASE_URL|SILICONFLOW_API_KEY/,
-  "Whisper ASR endpoint should be supplied by the frontend, not Cloudflare env",
-);
-
-assert.match(
-  transcriptionSource,
-  /audio_file/,
-  "Whisper ASR proxy should forward the file as audio_file",
-);
-
-assert.match(
-  transcriptionSource,
-  /\/asr/,
-  "Whisper ASR proxy should call the /asr endpoint",
-);
-
-assert.match(
-  transcriptionSource,
-  /searchParams\.set\("output", "json"\)/,
-  "Whisper ASR proxy should request JSON output",
-);
-
-assert.match(
-  transcriptionSource,
-  /endpoint|whisper/i,
-  "transcription route should accept a frontend-supplied Whisper endpoint",
+  /resolveProvider\(env, "openai"\)[\s\S]*?console\.log\(/,
+  "provider resolution should not log secrets",
 );
 
 assert.match(
   pageSource + clientSource,
-  /whisperEndpoint|WHISPER ASR|Whisper ASR/i,
-  "frontend should expose a Whisper ASR endpoint input",
+  /providerConfig|provider-card|PROVIDER_API_URL/,
+  "frontend should expose the provider settings panel",
 );
 
 assert.match(
@@ -94,8 +106,20 @@ assert.doesNotMatch(
 
 assert.match(
   clientSource,
-  /WHISPER_ENDPOINT_STORAGE_KEY|voicecraft-whisper-endpoint|loadWhisperEndpoint|saveWhisperEndpoint/,
-  "frontend should persist the Whisper ASR endpoint in local browser storage",
+  /ADMIN_TOKEN_STORAGE_KEY|voicecraft-admin-token/,
+  "frontend should keep the admin token in sessionStorage, not localStorage",
+);
+
+assert.doesNotMatch(
+  clientSource,
+  /voicecraft-whisper-endpoint|WHISPER_ENDPOINT_STORAGE_KEY/,
+  "the old browser-stored Whisper endpoint should be gone",
+);
+
+assert.doesNotMatch(
+  clientSource + pageSource,
+  /apiKey:\s*readAdminToken|localStorage\.setItem\([^)]*apiKey/i,
+  "API keys must never be persisted in browser storage",
 );
 
 assert.match(
@@ -170,7 +194,7 @@ assert.doesNotMatch(
   "frontend should not keep unused currentMode state",
 );
 
-for (const key of ["status.fileLabel", "error.copyFailed", "stt.endpoint", "stt.endpointPlaceholder", "stt.endpointHint", "error.endpointRequired", "stt.sourceUrl", "stt.sourceUrlPlaceholder", "stt.sourceUrlHint", "error.audioSourceRequired", "stt.engineGoogle", "stt.googleHint"]) {
+for (const key of ["status.fileLabel", "error.copyFailed", "stt.endpoint", "stt.endpointPlaceholder", "stt.endpointHint", "error.endpointRequired", "stt.sourceUrl", "stt.sourceUrlPlaceholder", "stt.sourceUrlHint", "error.audioSourceRequired", "stt.engineOpenai", "stt.engineGoogle", "stt.googleHint", "provider.title", "provider.hint", "provider.apiKey", "provider.model", "provider.save", "provider.statusDb", "provider.statusEnv", "provider.statusNone", "provider.adminTokenPrompt"]) {
   assert.ok(i18nSource.includes(`'${key}'`), `translations should include ${key}`);
 }
 
@@ -222,4 +246,4 @@ assert.match(
   "frontend should expose the Google transcription engine",
 );
 
-console.log("Verified code hygiene and Whisper ASR transcription flow.");
+console.log("Verified code hygiene and transcription provider flow.");

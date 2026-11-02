@@ -20,9 +20,10 @@ https://github.com/Space3044/edge-tts
 - 声音库：内置 114 个 Microsoft Edge TTS 声音，支持按语言、性别、名称、地区和 voice ID 搜索。
 - 参数调节：支持语速、音调和语音风格，语速和音调可双击恢复默认值。
 - 生成结果：生成后的 MP3 可在线播放和下载。
-- 语音转文字：上传音频或粘贴公开音频 URL，可使用 Whisper ASR、ElevenLabs Scribe 或 Google Gemini 3.5 Transcribe；ElevenLabs 和 Gemini 都支持纯文本、句子时间戳和词级时间戳查看。
+- 语音转文字：上传音频或粘贴公开音频 URL，可使用 OpenAI 兼容转录接口、ElevenLabs Scribe 或 Google Gemini Transcribe；ElevenLabs 和 Gemini 都支持纯文本、句子时间戳和词级时间戳查看。
 - AI 润色：调用 OpenAI 兼容接口润色输入文本。
-- 浏览器本地保存：Whisper ASR 地址、AI 润色 Base URL、API Key、模型和润色指令只保存在当前浏览器本地。
+- 服务配置：转录服务的 endpoint、模型和 API Key 在页面里设置，API Key 用 `SECRETS_ENCRYPTION_KEY` 加密后存进 D1；页面只显示掩码尾巴，不回传明文。
+- 浏览器本地保存：AI 润色的 Base URL、API Key、模型和润色指令只保存在当前浏览器本地。
 - 多语言界面：支持中文、英文、日文、韩文、西班牙文、法文、德文、俄文。
 
 ## 项目结构
@@ -32,10 +33,12 @@ https://github.com/Space3044/edge-tts
 ├── index.js                         # Cloudflare Worker 入口
 ├── src/
 │   ├── worker.js                    # 路由分发
-│   ├── routes/                      # speech、transcriptions、polish、favicon
+│   ├── routes/                      # speech、transcriptions、polish、providers、favicon
 │   ├── edge/                        # Edge TTS 端点、签名、SSML、合成逻辑
+│   ├── secrets/                     # API Key 加解密（AES-GCM）与 D1 配置读写
 │   ├── frontend/                    # 页面、样式、客户端脚本、声音库、多语言、favicon
 │   └── utils/                       # CORS、文本切分等工具
+├── migrations/                      # D1 迁移（provider_config 表）
 ├── scripts/                         # 验证脚本
 ├── docs/                            # 设计和实现说明
 ├── wrangler.toml                    # Cloudflare Workers 配置
@@ -47,8 +50,18 @@ https://github.com/Space3044/edge-tts
 
 项目没有 `package.json`。本地调试需要 Node.js 和 Wrangler。
 
+首次运行前要先建本地 D1 并写好 `.dev.vars`：
+
 ```bash
+cp .dev.vars.example .dev.vars        # 填入 SECRETS_ENCRYPTION_KEY 和 ADMIN_TOKEN
+npx wrangler d1 migrations apply voicecraft --local
 npx wrangler dev index.js --local --port 8787
+```
+
+`SECRETS_ENCRYPTION_KEY` 必须是 base64 的 32 字节随机值，可以这样生成：
+
+```bash
+node -e "console.log(require('crypto').randomBytes(32).toString('base64'))"
 ```
 
 启动后访问：
@@ -83,6 +96,23 @@ npx --yes wrangler dev index.js --local --port 8787
 ```text
 index.js
 ```
+
+### D1 与密钥
+
+转录服务的配置存放在 D1 的 `provider_config` 表，API Key 先用 AES-256-GCM 加密再落库：
+
+```bash
+npx wrangler d1 create voicecraft
+# 把输出的 database_id 填进 wrangler.toml（默认、production、staging 三处）
+npx wrangler d1 migrations apply voicecraft --remote
+
+npx wrangler secret put SECRETS_ENCRYPTION_KEY   # base64 的 32 字节
+npx wrangler secret put ADMIN_TOKEN              # 写入服务配置时用的 Bearer token
+```
+
+- `SECRETS_ENCRYPTION_KEY` 只用于加解密，不参与鉴权；换掉它会导致已保存的密钥无法解密，需要重新填写。
+- `ADMIN_TOKEN` 决定 `PUT /api/providers/:provider` 是否可用；没配置时设置面板只读。
+- 两个变量都不写入仓库，`wrangler.toml` 里也不出现明文。
 
 ## Cloudflare Access
 
@@ -178,29 +208,43 @@ zh-CN-YunyangNeural
 POST /v1/audio/transcriptions
 ```
 
-当前实现支持三种转录引擎。默认调用 Whisper ASR Webservice，前端会让用户填写 Whisper ASR 地址，后端再把音频转发到该地址。选择 ElevenLabs 时，后端会调用 ElevenLabs Scribe Speech-to-Text 接口；选择 Google 时，后端使用 Gemini 3.5 Transcribe，并通过环境变量 `GEMINI_API_KEY` 认证：
+当前实现支持三种转录引擎：`openai`（OpenAI 兼容的 `/audio/transcriptions`）、`elevenlabs` 和 `google`。三个引擎的 endpoint、模型和 API Key 都在页面里的 Provider settings 中配置，保存在 D1 的 `provider_config` 表；API Key 用 `SECRETS_ENCRYPTION_KEY` 加密后落库，接口只会返回掩码尾巴。
+
+解析顺序是「D1 里保存的值 → 环境变量 → 内置默认值」：D1 没配时回落到 `OPENAI_API_KEY` / `ELEVENLABS_API_KEY` / `GEMINI_API_KEY`（或 `GOOGLE_API_KEY`），都没有就用默认地址和模型。`engine=whisper` 仍然保留为 `openai` 的别名，老调用方不需要改。
+
+ElevenLabs 调用的是 Scribe Speech-to-Text 接口：
 
 ```text
 https://api.elevenlabs.io/v1/speech-to-text
 ```
 
-ElevenLabs 使用 `scribe_v2` 模型。词级时间戳来自 ElevenLabs 返回的 `words[]`；句子时间戳由后端按词级结果和句末标点聚合生成。
+ElevenLabs 默认模型是 `scribe_v2`（可在 Provider settings 里改）。配置了 API Key 时请求带 `xi-api-key`；没有配置时沿用匿名 Scribe 请求。词级时间戳来自 ElevenLabs 返回的 `words[]`；句子时间戳由后端按词级结果和句末标点聚合生成。
 
-Google 使用 `gemini-3.5-transcribe`。音频由 Worker 下载（或接收上传）后传到 Gemini Files API，再调用 Interactions API；词级时间戳来自返回的 `word_info` 注解，句子时间戳同样在本地聚合。Google 的密钥从 Worker 环境变量读取，不写入仓库：
+Google 默认模型是 `gemini-3.5-transcribe`（同样可以在 Provider settings 里改）。音频由 Worker 下载（或接收上传）后传到 Gemini Files API，再调用 Interactions API；词级时间戳来自返回的 `word_info` 注解，句子时间戳同样在本地聚合。密钥优先读 D1，没有时回落到环境变量：
 
 ```bash
-npx wrangler secret put GEMINI_API_KEY
+npx wrangler secret put GEMINI_API_KEY   # 可选，D1 里保存过密钥就不需要
 ```
 
-也可以使用 `GOOGLE_API_KEY` 作为备用变量名。没有配置密钥时，Google 引擎会返回明确的 `google_not_configured` 错误。
+没有可用密钥时，Google 引擎会返回明确的 `google_not_configured` 错误。
 
-Whisper ASR 请求示例：
+OpenAI 兼容请求示例（endpoint / 模型 / 密钥默认取 D1 配置）：
 
 ```bash
 curl -X POST "https://your-worker.example.com/v1/audio/transcriptions" \
   -F "file=@audio.mp3" \
-  -F "engine=whisper" \
-  -F "endpoint=https://your-whisper-asr.example.com"
+  -F "engine=openai"
+```
+
+调用方也可以在单次请求里覆盖，适合用不同的模型或临时密钥测试：
+
+```bash
+curl -X POST "https://your-worker.example.com/v1/audio/transcriptions" \
+  -F "file=@audio.mp3" \
+  -F "engine=openai" \
+  -F "endpoint=https://your-asr.example.com/v1" \
+  -F "model=whisper-1" \
+  -F "apiKey=sk-..."
 ```
 
 ElevenLabs 请求示例：
@@ -224,8 +268,7 @@ curl -X POST "https://your-worker.example.com/v1/audio/transcriptions" \
 ```bash
 curl -X POST "https://your-worker.example.com/v1/audio/transcriptions" \
   -F "source_url=https://example.com/audio.mp3" \
-  -F "engine=whisper" \
-  -F "endpoint=https://your-whisper-asr.example.com"
+  -F "engine=openai"
 ```
 
 ```bash
@@ -237,12 +280,12 @@ curl -X POST "https://your-worker.example.com/v1/audio/transcriptions" \
 URL 模式的行为：
 
 - `engine=elevenlabs`：Worker 把 URL 原样交给 ElevenLabs 的 `source_url`，不在 Worker 端下载，ElevenLabs 的 2GB URL 上限生效。
-- `engine=whisper`：Worker 自己下载音频（跟随最多 5 次重定向，每一跳都重新校验），再按 `audio_file` 转发给 Whisper ASR；沿用 50MB 上限。
-- `engine=google`：Worker 自己下载音频后上传到 Gemini Files API，再调用 `gemini-3.5-transcribe`；使用 Worker 的 `GEMINI_API_KEY`，不需要在扩展里填写 Google 密钥。
+- `engine=openai`（别名 `whisper`）：Worker 自己下载音频（跟随最多 5 次重定向，每一跳都重新校验），再按 OpenAI 的 `file` 字段转发到 `{endpoint}/audio/transcriptions`；沿用 50MB 上限。
+- `engine=google`：Worker 自己下载音频后上传到 Gemini Files API，再调用配置的模型；密钥来自 D1 或 `GEMINI_API_KEY`。
 - 只允许 `http://` / `https://` 的公开地址；本机、内网、云元数据地址会被拒绝。URL 里不能带用户名或密码。
 - 文件上传仍是 50MB 上限；粘贴 URL 时前端不再要求先选文件。
 
-Whisper ASR 响应示例：
+OpenAI 兼容响应示例：
 
 ```json
 {
@@ -312,8 +355,10 @@ ElevenLabs 响应示例：
 | 参数 | 类型 | 必填 | 说明 |
 | --- | --- | --- | --- |
 | `file` | File | 是 | 音频文件，最大 50MB |
-| `engine` | string | 否 | `whisper` 或 `elevenlabs`，默认 `whisper` |
-| `endpoint` | string | Whisper 必填 | Whisper ASR Webservice 基础地址 |
+| `engine` | string | 否 | `openai`、`elevenlabs` 或 `google`，默认 `openai`（`whisper` 是 `openai` 的别名） |
+| `endpoint` | string | 否 | 该引擎的 endpoint 覆盖值，默认取 D1 / 环境变量 / 内置默认 |
+| `model` | string | 否 | 该引擎的模型覆盖值，默认取 D1 配置 |
+| `apiKey` | string | 否 | 仅 OpenAI 引擎支持单次覆盖；默认使用保存在 D1 的密钥 |
 | `language` | string | ElevenLabs 可选 | ElevenLabs 官方语言代码，默认 `auto` 自动检测。常用值：`eng`、`zho`、`jpn`、`kor`、`spa`、`fra`、`deu`、`rus` |
 | `tagAudioEvents` | string | ElevenLabs 可选 | 是否标记笑声、掌声等音频事件，传 `true` 或 `false` |
 
@@ -322,6 +367,28 @@ ElevenLabs 响应示例：
 ```text
 mp3, wav, m4a, flac, aac, ogg, webm, amr, 3gp
 ```
+
+### 服务配置（Provider settings）
+
+接口：
+
+```text
+GET /api/providers              # 公开，只返回 endpoint、模型、是否已配置和掩码尾巴
+PUT /api/providers/:provider    # 需要 Authorization: Bearer $ADMIN_TOKEN
+```
+
+`provider` 取值 `openai`、`elevenlabs`、`google`。请求示例：
+
+```bash
+curl -X PUT "https://your-worker.example.com/api/providers/openai" \
+  -H "Authorization: Bearer $ADMIN_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"endpoint":"https://api.openai.com/v1","model":"whisper-1","apiKey":"sk-..."}'
+```
+
+- `apiKey` 留空表示保留已保存的密钥，传 `"clearApiKey": true` 才会清空。
+- 响应只包含 `configured`、`keySource`（`db` / `env` / `none`）和 `keyTail`（例如 `••••a1b2`），不会回传明文。
+- 未配置 `ADMIN_TOKEN` 时写接口返回 `admin_not_configured`，页面里的设置面板变成只读。
 
 ### 文本 AI 润色
 
@@ -376,7 +443,7 @@ curl -X POST "https://your-worker.example.com/v1/text/polish" \
 
 1. 切换到 Speech to Text。
 2. 上传音频文件，或在 `Audio URL` 里粘贴公开音频 URL。
-3. 选择 Whisper 时填写已部署的 Whisper ASR 地址；选择 ElevenLabs 时可设置语言和音频事件标记。
+3. 展开 Provider settings，为本机要用的引擎填好 endpoint、模型和 API Key（首次保存时输入 `ADMIN_TOKEN`，只存在 sessionStorage）；选择 ElevenLabs 时还可以设置语言和音频事件标记。
 4. 点击转录。
 5. ElevenLabs 结果可在纯文本、句子时间戳和词级时间戳之间切换。
 6. 点击句子或词的时间戳会播放上传音频的对应片段。
@@ -388,7 +455,7 @@ AI 润色流程：
 2. 填写 OpenAI 兼容接口 Base URL、API Key 和模型。
 3. 输入文本后点击 AI 润色图标。
 
-Whisper ASR 地址和 AI 润色设置会保存在浏览器本地 `localStorage`，不会写入仓库，也不会保存到 Worker 端。
+AI 润色的 Base URL、API Key、模型和润色指令会保存在浏览器本地 `localStorage`，不会写入仓库。转录服务的配置则相反：endpoint / 模型 / API Key 保存在 Worker 的 D1 里，其中 API Key 是加密后的密文，`ADMIN_TOKEN` 只留在当前标签页的 `sessionStorage`。
 
 ## 验证
 
@@ -404,6 +471,7 @@ node scripts/verify-transcription-format.mjs
 node scripts/verify-elevenlabs-stt.mjs
 node scripts/verify-google-stt.mjs
 node scripts/verify-transcription-url.mjs
+node scripts/verify-provider-secrets.mjs
 node -e "import('./index.js').then((m) => { if (!m.default || typeof m.default.fetch !== 'function') throw new Error('Worker fetch export missing'); console.log('Worker entry import ok'); })"
 git diff --check
 ```
@@ -412,12 +480,13 @@ git diff --check
 
 - Edge TTS 依赖 Microsoft 服务可用性，网络环境会影响生成成功率。
 - 长文本会自动拆分再合成，内容越长，生成时间越久。
-- STT 文件上传限制为 50MB；Whisper 的 URL 模式同样限制 50MB，ElevenLabs 的 URL 模式由 ElevenLabs 自己限制（2GB），Google 的 URL 模式也受 Worker 50MB 上限约束。
-- Google Transcribe 需要 Worker 环境变量 `GEMINI_API_KEY`（或 `GOOGLE_API_KEY`）；没有密钥时请切到 Whisper 或 ElevenLabs。
+- STT 文件上传限制为 50MB；OpenAI 引擎的 URL 模式同样限制 50MB，ElevenLabs 的 URL 模式由 ElevenLabs 自己限制（2GB），Google 的 URL 模式也受 Worker 50MB 上限约束。
+- 三个引擎都需要可用的密钥：优先用 Provider settings 保存到 D1 的那一份，缺失时回落到 `OPENAI_API_KEY` / `ELEVENLABS_API_KEY` / `GEMINI_API_KEY`。
 - 文本文件上传限制为 500KB。
 - URL 模式会跟随最多 5 次重定向，并拒绝本机/内网地址；Worker 不会把任意 URL 当作内网代理。
-- Whisper ASR 如果部署在非标准 HTTPS 端口，Cloudflare Workers 发布环境可能忽略自定义端口，建议使用标准 443 端口或反向代理到标准端口。
-- 本项目不需要数据库、KV 或 D1。
+- 自建 OpenAI 兼容服务如果部署在非标准 HTTPS 端口，Cloudflare Workers 发布环境可能忽略自定义端口，建议使用标准 443 端口或反向代理到标准端口。
+- 项目需要 D1 存服务配置；没有 D1 binding 时设置接口会返回明确错误，页面里的 Provider settings 不可写。
+- 更换 `SECRETS_ENCRYPTION_KEY` 会让已保存的 API Key 无法解密，需要在页面里重新填写一次。
 
 ## 开源协议
 
