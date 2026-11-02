@@ -157,6 +157,7 @@ export async function transcribeWithGoogle({
     mimeType = "audio/mpeg",
     model = GOOGLE_TRANSCRIBE_MODEL,
     endpoint = DEFAULT_GOOGLE_ENDPOINT,
+    wordTimestamps = true,
     timeoutMs = 1800000,
     signal
 }) {
@@ -186,7 +187,12 @@ export async function transcribeWithGoogle({
             input: [{ type: "audio", uri: file.uri, mime_type: file.mimeType || mimeType }],
             generation_config: {
                 transcription_config: {
-                    mode: { type: "verbatim", timestamp_granularities: ["word"] }
+                    // Word-level annotations are opt-out: without
+                    // `timestamp_granularities` the model still returns text, just
+                    // no `word_info`, so the caller gets no timings.
+                    mode: wordTimestamps
+                        ? { type: "verbatim", timestamp_granularities: ["word"] }
+                        : { type: "verbatim" }
                 }
             }
         }),

@@ -94,6 +94,22 @@ try {
     timestamp_granularities: ["word"]
   });
 
+  // Word timings are opt-out: `timestamps=false` drops the granularity request
+  // and the response carries text only.
+  calls = [];
+  response = await handleAudioTranscription(
+    request(form({ engine: "google", source_url: "https://audio.example.com/episode.mp3", timestamps: "false" })),
+    { GEMINI_API_KEY: "google-key" }
+  );
+  body = await response.json();
+  assert.equal(response.status, 200);
+  const plainInteraction = calls.find((call) => call.url.endsWith("/v1beta/interactions"));
+  assert.deepEqual(
+    JSON.parse(plainInteraction.init.body).generation_config.transcription_config.mode,
+    { type: "verbatim" },
+    "timestamps=false must not ask for word granularity"
+  );
+
   calls = [];
   response = await handleAudioTranscription(
     request(form({ engine: "google", source_url: "https://audio.example.com/episode.mp3" })),

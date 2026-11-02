@@ -42,19 +42,24 @@ Status: implemented
 ### ElevenLabs
 
 - `diarize`（默认 `true`，保持旧行为）、`numSpeakers`（1–32，留空自动）、
-  `timestampsGranularity`（`word` 默认 / `character`），分别映射到
+  `timestampsGranularity`（`word` 默认 / `character` / `none`），分别映射到
   `diarize` / `num_speakers` / `timestamps_granularity`。
+
+  `none` 来自对方 OpenAPI 的枚举（`none | word | character`）。**ElevenLabs 没有句级粒度**：
+  句子是 `buildElevenLabsSentences` 在 Worker 里按标点从词项聚合出来的，三家共用这套逻辑。
 
 ### Google
 
-这次不动。它的 `transcription_config` 是 Gemini 较新的接口，除了已经在用的
-`timestamp_granularities: ["word"]` 之外，其它字段（`system_instruction`、`temperature`、
-更细的 granularity）没有确认过的契约，宁可不发也不猜。
+只加了 `timestamps`（默认 `true`）：关掉时不再发 `timestamp_granularities`，
+`mode` 只留 `{ type: "verbatim" }`，响应没有 `word_info`，接口只回 `text`。
+其它字段（`system_instruction`、`temperature`、更细的 granularity）没有确认过的契约，
+宁可不发也不猜。
 
 ### 校验
 
 非法值在 Worker 侧直接 400，不浪费一次上游请求：`invalid_language`、`invalid_prompt`、
-`invalid_temperature`、`invalid_num_speakers`、`invalid_timestamp_granularity`。
+`invalid_temperature`、`invalid_num_speakers`、`invalid_timestamp_granularity`
+（ElevenLabs 的枚举只接受 `none` / `word` / `character`）。
 `language=auto` 与空值等价（不发送）。
 
 ### 面板
@@ -84,7 +89,8 @@ Status: implemented
   前端三条视图对三家都可用；调用方如果只读 `text` 不受影响。
 - 新增 5 个错误码，都是 400，且都在发请求之前返回。
 - 面板多了 7 个控件、13 条 i18n 文案（8 种语言）。
-- Google 仍然只有词级时间戳，没有 temperature/prompt——这是明确留的缺口，不是遗漏。
+- Google 的时间戳只有一个开关，没有 temperature/prompt/更细的粒度——这是明确留的缺口。
+- 面板上不放解释性小字：像 `timestamps` 这种就是一个勾选框，语义写在 README 和本文里。
 
 ## Testing
 
@@ -95,7 +101,8 @@ Status: implemented
   `gpt-4o-transcribe-diarize` 用 `json` 且丢掉 `prompt`、
   未知模型先吃一次 400 再自动以 `json` 重试并记住。
 - `scripts/verify-elevenlabs-stt.mjs`：`diarize=false` / `numSpeakers=3` /
-  `timestampsGranularity=character` 正确映射成 `diarize` / `num_speakers` / `timestamps_granularity`；
+  `timestampsGranularity=character` 正确映射成 `diarize` / `num_speakers` / `timestamps_granularity`，
+  `none` 也原样透传；
   越界值返回 400 且不发请求。
 - `scripts/verify-transcription-url.mjs`：URL 模式的 OpenAI 请求同样带 `verbose_json`。
 - 浏览器：OpenAI / ElevenLabs 两组控件按引擎切换显示，`prompt` 与 `temperature` 填完后刷新仍保留。

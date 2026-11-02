@@ -28,7 +28,8 @@ const NO_PROMPT_MODEL_PATTERN = /-diarize\b/i;
  * so the fallback below costs one probe per model rather than one per request.
  */
 const verboseJsonRejectedModels = new Set();
-const ELEVENLABS_TIMESTAMP_GRANULARITIES = ["word", "character"];
+// ElevenLabs documents `none | word | character`; sentences are derived here.
+const ELEVENLABS_TIMESTAMP_GRANULARITIES = ["none", "word", "character"];
 const MAX_SPEAKERS = 32;
 const ALLOWED_AUDIO_TYPES = [
     "audio/mpeg",
@@ -477,7 +478,7 @@ function readTimestampGranularity(value) {
         return { granularity: "word", error: null };
     }
     if (!ELEVENLABS_TIMESTAMP_GRANULARITIES.includes(granularity)) {
-        return { granularity: "", error: "timestampsGranularity 只能是 word 或 character" };
+        return { granularity: "", error: "timestampsGranularity 只能是 none、word 或 character" };
     }
     return { granularity, error: null };
 }
@@ -813,7 +814,8 @@ async function handleGoogleTranscription(formData, env) {
     }
 
     try {
-        const result = await transcribeWithGoogle({ apiKey, data, filename, mimeType, model, endpoint });
+        const wordTimestamps = readBooleanField(formData.get("timestamps"), true);
+        const result = await transcribeWithGoogle({ apiKey, data, filename, mimeType, model, endpoint, wordTimestamps });
         const words = normalizeElevenLabsWords(result);
         const text = extractElevenLabsText(result) || words.map(word => word.text).join("").trim();
         if (!text) {
@@ -822,6 +824,9 @@ async function handleGoogleTranscription(formData, env) {
                 type: "api_error",
                 code: "empty_transcription_result"
             });
+        }
+        if (!words.length) {
+            return jsonResponse({ text });
         }
         return jsonResponse({
             text,

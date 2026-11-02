@@ -283,7 +283,7 @@ URL 模式的行为：
 
 - `engine=elevenlabs`：Worker 把 URL 原样交给 ElevenLabs 的 `source_url`，不在 Worker 端下载，ElevenLabs 的 2GB URL 上限生效。
 - `engine=openai`（别名 `whisper`）：Worker 自己下载音频（跟随最多 5 次重定向，每一跳都重新校验），再按 OpenAI 的 `file` 字段转发到 `{endpoint}/audio/transcriptions`；沿用 50MB 上限。请求会带上 `language` / `prompt` / `temperature`（如果提供了），并默认要词级时间戳：用 `response_format=verbose_json` + `timestamp_granularities[]=word`，返回 `text` + `sentences` + `words`。按官方文档，`gpt-4o-transcribe` / `gpt-4o-mini-transcribe` 不支持 `verbose_json`（只有 `json`），`gpt-4o-transcribe-diarize` 只有 `json`/`text`/`diarized_json`，这三种自动退回纯文本；`whisper-1`、`gpt-transcribe`、`gpt-live-transcribe`、`gpt-realtime-whisper` 都有词级时间戳。碰到表里没有的新模型，如果上游拒绝 `verbose_json`，Worker 会自动重试一次 `json`（校验类 400 不计费），并在当前 isolate 内记住这个模型。
-- `engine=google`：Worker 自己下载音频后上传到 Gemini Files API，再调用配置的模型；密钥来自 D1 或 `GEMINI_API_KEY`。
+- `engine=google`：Worker 自己下载音频后上传到 Gemini Files API，再调用配置的模型；密钥来自 D1 或 `GEMINI_API_KEY`。默认请求词级时间戳（`timestamp_granularities: ["word"]`），传 `timestamps=false` 就不再请求，只回文本。
 - 只允许 `http://` / `https://` 的公开地址；本机、内网、云元数据地址会被拒绝。URL 里不能带用户名或密码。
 - 文件上传仍是 50MB 上限；粘贴 URL 时前端不再要求先选文件。
 
@@ -365,10 +365,10 @@ ElevenLabs 响应示例：
 | `tagAudioEvents` | string | ElevenLabs 可选 | 是否标记笑声、掌声等音频事件，传 `true` 或 `false`，默认 `false` |
 | `prompt` | string | OpenAI 可选 | 词表/上下文提示，最长 1000 字符；对人名、专有名词、术语很有效。`gpt-4o-transcribe-diarize` 不支持该字段，会跳过 |
 | `temperature` | string | OpenAI 可选 | 0 到 1 之间的采样温度，默认由上游决定 |
-| `timestamps` | string | OpenAI 可选 | 传 `false` 关闭时间戳，默认 `true`。只有支持 `verbose_json` 的模型会有词级时间戳（`whisper-1`、`gpt-transcribe`、`gpt-live-transcribe`、`gpt-realtime-whisper`）；`gpt-4o-transcribe*` 会自动退回纯文本 |
+| `timestamps` | string | OpenAI / Google 可选 | 传 `false` 关闭词级时间戳，默认 `true`。OpenAI 侧只有支持 `verbose_json` 的模型会有词级时间戳（`whisper-1`、`gpt-transcribe`、`gpt-live-transcribe`、`gpt-realtime-whisper`），`gpt-4o-transcribe*` 会自动退回纯文本；Google 侧关掉就不再请求 `timestamp_granularities`，只回文本 |
 | `diarize` | string | ElevenLabs 可选 | 是否标注说话人，默认 `true` |
 | `numSpeakers` | string | ElevenLabs 可选 | 1–32 的说话人数量提示，配合 `diarize` 使用；留空表示自动 |
-| `timestampsGranularity` | string | ElevenLabs 可选 | `word`（默认）或 `character`，控制时间戳粒度 |
+| `timestampsGranularity` | string | ElevenLabs 可选 | `word`（默认）、`character` 或 `none`（完全不返回时间戳）。ElevenLabs 原生的粒度只有 `none`/`word`/`character` 三档，**没有句级**——句子是我们按标点从词项聚合出来的 |
 
 支持格式：
 

@@ -111,4 +111,29 @@ try {
   }
 }
 
+// `none` is a documented granularity (no timestamps at all) and must pass through.
+{
+  const originalFetch3 = globalThis.fetch;
+  let body = null;
+  globalThis.fetch = async (url, init) => {
+    body = init.body;
+    return new Response(JSON.stringify({ text: "no timings" }), {
+      status: 200, headers: { "Content-Type": "application/json" }
+    });
+  };
+  try {
+    const formData = new FormData();
+    formData.append("file", new File(["audio"], "sample.m4a", { type: "audio/mp4" }));
+    formData.append("engine", "elevenlabs");
+    formData.append("timestampsGranularity", "none");
+    const response = await handleAudioTranscription(
+      new Request("https://voicecraft.example.com/v1/audio/transcriptions", { method: "POST", body: formData })
+    );
+    assert.equal(response.status, 200);
+    assert.equal(body.get("timestamps_granularity"), "none");
+  } finally {
+    globalThis.fetch = originalFetch3;
+  }
+}
+
 console.log("Verified ElevenLabs STT transcription flow.");
