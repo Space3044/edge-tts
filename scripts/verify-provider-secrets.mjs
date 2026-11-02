@@ -27,6 +27,9 @@ function createFakeD1() {
           if (!statement.includes("INSERT INTO provider_config")) {
             throw new Error(`unexpected WRITE: ${statement}`);
           }
+          if (this._params.length !== 11) {
+            throw new Error(`Wrong number of parameter bindings: got ${this._params.length}`);
+          }
           const [provider, endpoint, model, apiKeyCipher, updatedAt] = this._params;
           rows.set(provider, { provider, endpoint, model, api_key_cipher: apiKeyCipher, updated_at: updatedAt });
           return { success: true };

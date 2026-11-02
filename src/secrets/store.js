@@ -272,7 +272,8 @@ export async function saveProviderConfig(env, provider, input = {}) {
             String(existing?.refresh_token_cipher || ""),
             String(existing?.token_updated_at || ""),
             String(existing?.access_token_cipher || ""),
-            String(existing?.access_token_expires_at || "")
+            String(existing?.access_token_expires_at || ""),
+            String(existing?.cookie_cipher || "")
         )
         .run();
 
