@@ -136,6 +136,20 @@ npx wrangler secret put SECRETS_ENCRYPTION_KEY   # base64 的 32 字节
 
 ## API
 
+下游能用到的接口一览（`/api/*` 全部由 Cloudflare Access 保护，Worker 自身不校验 token）：
+
+| 接口 | 用途 | 计费/成本 |
+| --- | --- | --- |
+| `POST /v1/audio/speech` | 文字转语音，返回 MP3 | Edge TTS 免费 |
+| `POST /v1/audio/transcriptions` | 语音转文字，`engine=openai\|elevenlabs\|google` | 按各 provider 的 key 计费 |
+| `POST /v1/text/polish` | 文本润色（透传 OpenAI 兼容接口） | 调用方自己的 key |
+| `POST /api/trancy/captions` | 用账号池生成 YouTube AI 字幕 | **每天每账号 5 个视频额度**，见下文 |
+| `GET /api/providers` | 读转录服务配置（只回掩码尾巴） | 无 |
+| `PUT /api/providers/:provider` | 写转录服务配置 | 无 |
+| `/api/trancy/accounts*` | 账号池管理（增删改、登录、刷新） | 无（面板用） |
+
+页面路由：`/tts`、`/transcription`、`/trancy`。
+
 ### 文字转语音
 
 接口：
@@ -437,8 +451,6 @@ DELETE /api/trancy/accounts/:id          # 删除账号
 ```
 
 这些接口都不做应用层鉴权，全部依赖 Cloudflare Access 覆盖 `/api/*`。
-
-转发接口（`/api/trancy/relay`）已删除：下游只需要字幕，多一个通用代理就是多一个要防护的面。
 
 自动续期（每天一次）：
 
