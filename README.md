@@ -41,6 +41,7 @@ https://github.com/Space3044/edge-tts
 │   ├── trancy/                      # Trancy token 解析、账号存取、字幕额度调度、上游调用
 │   ├── frontend/                    # 页面、样式、客户端脚本、声音库、多语言、favicon
 │   └── utils/                       # CORS、文本切分等工具
+├── schema.sql                       # 从零建库的完整 DDL（等价于跑完所有迁移）
 ├── migrations/                      # D1 迁移（provider_config、trancy_account 两张表）
 ├── scripts/                         # 验证脚本
 ├── docs/                            # 设计和实现说明
@@ -108,6 +109,15 @@ index.js
 npx wrangler d1 create voicecraft
 # 把输出的 database_id 填进 wrangler.toml（默认、production、staging 三处）
 npx wrangler d1 migrations apply voicecraft --remote
+```
+
+如果不想走迁移链，仓库根目录还有一份合并好的完整建表脚本 `schema.sql`（等价于跑完 `0001`..`0007`）：
+
+```bash
+npx wrangler d1 execute voicecraft --remote --file=schema.sql
+```
+
+它会一并把 `0001`..`0007` 写进 `d1_migrations`，所以之后再 `wrangler d1 migrations apply` 不会重复执行，将来新增的迁移照常 apply。**已有数据的库不要跑这个文件**，用 `migrations apply` 走增量。
 
 npx wrangler secret put SECRETS_ENCRYPTION_KEY   # base64 的 32 字节
 # 不需要任何鉴权密钥：/api/* 交给 Cloudflare Access

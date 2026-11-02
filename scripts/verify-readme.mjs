@@ -13,6 +13,7 @@ assert.match(readme, /Cloudflare Access/, "README should state that /api/* is pr
 assert.doesNotMatch(readme, /ADMIN_TOKEN/, "no application-level admin token: Access is the only gate");
 assert.match(readme, /provider_config/, "README should document where provider config is stored");
 assert.match(readme, /\/api\/providers/, "README should document the provider settings API");
+assert.match(readme, /schema\.sql/, "README should point at the consolidated schema for a fresh database");
 assert.match(readme, /ElevenLabs/, "README should describe the ElevenLabs transcription flow");
 assert.match(readme, /engine=elevenlabs/, "README should include an ElevenLabs transcription request example");
 assert.match(readme, /gemini-3\.5-transcribe/, "README should describe the Google transcription model");
