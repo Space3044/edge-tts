@@ -42,6 +42,13 @@ database_id = "00000000-0000-0000-0000-000000000001"
 migrations_dir = "migrations"
 
 # 路由配置
+#
+# 每天 UTC 03:17 探测一次所有 Trancy 账号：调 /1/user/profile 拿回新 token。
+# Trancy 的 JWT 没有 exp，靠这次调用续命；一天一次足够。改时间记得同步 README。
 [triggers]
-crons = []
+crons = ["17 3 * * *"]
+
+# 非默认环境同样不继承 triggers；线上要跑定时续期就得在这里再声明一份。
+[env.production.triggers]
+crons = ["17 3 * * *"]
 

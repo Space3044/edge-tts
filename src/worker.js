@@ -4,6 +4,8 @@ import { handleSpeech } from "./routes/speech.js";
 import { handleTextPolish } from "./routes/polish.js";
 import { handleAudioTranscription } from "./routes/transcriptions.js";
 import { handleProviders } from "./routes/providers.js";
+import { handleTrancy } from "./routes/trancy.js";
+import { refreshAllTrancyAccounts } from "./trancy/store.js";
 import { handleOptions, makeCORSHeaders } from "./utils/cors.js";
 
 async function handleRequest(request, env = {}) {
@@ -24,7 +26,9 @@ async function handleRequest(request, env = {}) {
         });
     }
 
-    if (path === "/" || path === "/index.html" || path === "/tts" || path === "/transcription") {
+    // Every path that serves the single-page shell; `/trancy` exists so the
+    // gateway tab is linkable and the client picks the tab from the path.
+    if (path === "/" || path === "/index.html" || path === "/tts" || path === "/transcription" || path === "/trancy") {
         return new Response(HTML_PAGE, {
             headers: {
                 "Content-Type": "text/html; charset=utf-8",
@@ -41,6 +45,10 @@ async function handleRequest(request, env = {}) {
         return handleProviders(request, env);
     }
 
+    if (path === "/api/trancy" || path.startsWith("/api/trancy/")) {
+        return handleTrancy(request, env);
+    }
+
     if (path === "/v1/text/polish") {
         return handleTextPolish(request);
     }
@@ -55,5 +63,30 @@ async function handleRequest(request, env = {}) {
 export default {
     async fetch(request, env) {
         return handleRequest(request, env);
+    },
+
+    /**
+     * Daily Trancy renewal (`crons` in wrangler.toml).
+     *
+     * The token has no `exp`; it is kept alive by `/1/user/profile`, which
+     * answers with a re-issued token. One probe a day is enough to never let an
+     * account idle out, and it also refreshes premium/banned flags. Failure of
+     * one account never fails the run - each row records its own status.
+     */
+    async scheduled(event, env, ctx) {
+        const task = refreshAllTrancyAccounts(env, { minAgeMinutes: 0 })
+            .then(result => {
+                console.log(`trancy cron: checked=${result.checked} ok=${result.ok} dead=${result.dead} failed=${result.failed} skipped=${result.skipped}`);
+                return result;
+            })
+            .catch(error => {
+                console.error("trancy cron failed:", error);
+            });
+
+        if (ctx && typeof ctx.waitUntil === "function") {
+            ctx.waitUntil(task);
+            return undefined;
+        }
+        return task;
     }
 };

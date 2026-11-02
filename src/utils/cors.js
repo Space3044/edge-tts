@@ -1,7 +1,7 @@
 export function makeCORSHeaders() {
     return {
         "Access-Control-Allow-Origin": "*",
-        "Access-Control-Allow-Methods": "GET,HEAD,POST,OPTIONS",
+        "Access-Control-Allow-Methods": "GET,HEAD,POST,DELETE,OPTIONS",
         "Access-Control-Allow-Headers": "Content-Type, Authorization, x-api-key",
         "Access-Control-Max-Age": "86400"
     };
@@ -12,7 +12,7 @@ export async function handleOptions(request) {
         status: 204,
         headers: {
             ...makeCORSHeaders(),
-            "Access-Control-Allow-Methods": "GET,HEAD,POST,OPTIONS",
+            "Access-Control-Allow-Methods": "GET,HEAD,POST,DELETE,OPTIONS",
             "Access-Control-Allow-Headers": request.headers.get("Access-Control-Request-Headers") || "Authorization"
         }
     });
