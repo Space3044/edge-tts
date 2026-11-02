@@ -55,6 +55,26 @@ export function writeMode(request, env) {
 }
 
 /**
+ * Guard for the endpoints a *downstream program* is meant to call.
+ *
+ * `ADMIN_TOKEN` is the operator's key: whoever holds it can delete accounts and
+ * read the plaintext passwords. A service that only needs subtitles should not
+ * get that, so `TRANCY_API_TOKEN` is a narrower credential - when it is set, a
+ * matching bearer token is accepted here and nowhere else. The operator key
+ * still works, and so do the Cloudflare Access / localhost modes.
+ */
+export function requireTrancyClient(request, env) {
+    const clientToken = String(env?.TRANCY_API_TOKEN || "").trim();
+    if (clientToken) {
+        const provided = adminTokenFrom(request);
+        if (provided && constantTimeEqual(provided, clientToken)) {
+            return null;
+        }
+    }
+    return requireAdmin(request, env, "Trancy 网关");
+}
+
+/**
  * `subject` only shapes the refusal message, so providers keep saying
  * "Provider 配置" and the Trancy tab says "Trancy 账号".
  */

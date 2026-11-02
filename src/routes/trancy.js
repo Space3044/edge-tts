@@ -19,6 +19,7 @@ import {
     normalizeCaptionRequest,
     readCachedCaptions,
     requestYoutubeCaptions,
+    PENDING_RETRY_MS,
     TRANCY_DEFAULT_DAILY_LIMIT
 } from "../trancy/captions.js";
 import {
@@ -34,7 +35,7 @@ import {
     reloginTrancyAccount,
     normalizeIncomingToken
 } from "../trancy/store.js";
-import { requireAdmin, writeMode } from "../utils/admin.js";
+import { requireAdmin, requireTrancyClient, writeMode } from "../utils/admin.js";
 import { makeCORSHeaders } from "../utils/cors.js";
 import { errorResponse, jsonResponse } from "../utils/response.js";
 
@@ -323,6 +324,12 @@ async function handleCaptions(request, env, segments) {
             });
         }
         const cached = await readCachedCaptions(env, normalized);
+        if (cached && cached.pending) {
+            return jsonResponse(cached, {
+                status: 202,
+                headers: { "Retry-After": String(Math.ceil(PENDING_RETRY_MS / 1000)) }
+            });
+        }
         if (!cached) {
             return errorResponse("这个视频还没有缓存，需要先 POST 生成", {
                 status: 404,
@@ -343,7 +350,7 @@ async function handleCaptions(request, env, segments) {
         });
     }
 
-    const denied = requireAdmin(request, env, "Trancy 网关");
+    const denied = requireTrancyClient(request, env);
     if (denied) {
         return denied;
     }
@@ -369,6 +376,12 @@ async function handleCaptions(request, env, segments) {
     }
 
     const result = await requestYoutubeCaptions(env, normalized);
+    if (result.pending) {
+        return jsonResponse(result, {
+            status: 202,
+            headers: { "Retry-After": String(Math.ceil(PENDING_RETRY_MS / 1000)) }
+        });
+    }
     if (!result.ok) {
         const status = result.reason === "no_account" || result.reason === "no_caption_quota" ? 503 : 502;
         return jsonResponse({
@@ -424,7 +437,7 @@ async function handleRelay(request, env) {
         });
     }
 
-    const denied = requireAdmin(request, env, "Trancy 网关");
+    const denied = requireTrancyClient(request, env);
     if (denied) {
         return denied;
     }

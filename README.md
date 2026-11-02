@@ -500,6 +500,34 @@ GET  /api/trancy/captions/:videoId   # ?target=en，只读本地缓存，永远�
 
 `tried` 会写清每个被咨询账号的失败原因，`resetAt` 是下一个 UTC 零点。
 
+给下游程序调用：
+
+- 入口就是上面两个：`POST /api/trancy/captions` 生成/取结果，`GET /api/trancy/captions/:videoId` 只读缓存。
+- 鉴权有两种，别把管理用的钥匙交给下游：
+  - `TRANCY_API_TOKEN`：只对 `captions` 和 `relay` 生效，**不能**管理账号、**看不到**明文密码。下游程序用这个。
+  - `ADMIN_TOKEN` / `CF_ACCESS_TRUSTED=1` / 本地 host：运维用，管理接口也走它。
+  - 两个都没配、也不是本地/Access 时，写接口返回 `403 write_not_configured`。
+- **同一个视频并发只会生成一次**：生成权是 D1 里的一行占位记录（`ON CONFLICT DO NOTHING`），
+  抢不到的那个立刻拿到 `202 {"pending":true,"retryAfterMs":1500}` + `Retry-After`，
+  拿到后轮询 `GET`（或重发 `POST`）即可，**不会多花一次额度**。占位记录 90 秒没人完成会被下一个请求接管。
+- 生成失败（额度用完、网络错误）会释放占位，同一个视频可以重试。
+
+下游调用示例：
+
+```bash
+# 1) 发起（或者直接命中缓存）
+curl -s -X POST "$GW/api/trancy/captions" \
+  -H "Authorization: Bearer $TRANCY_API_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"videoId":"npka43vhwNo","target":"en"}'
+# 200 → {"data":[...],"cached":false,...}
+# 202 → 别的请求正在生成，等 1~2 秒重试
+# 503 → {"error":{"code":"no_caption_quota"},"resetAt":"...","tried":[...]}
+
+# 2) 只读缓存（不花额度，可以随便重试）
+curl -s "$GW/api/trancy/captions/npka43hwNo?target=en"
+```
+
 面板上的额度显示：
 
 - 每个账号一行 `AI subtitles <剩余>/<每日上限> · today <今天已用>`；上限来自上游 `x-quota-limit`，账号还没请求过时按官方的 5 显示。

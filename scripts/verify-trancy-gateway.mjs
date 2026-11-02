@@ -80,19 +80,39 @@ function createFakeD1() {
                 async run() {
                     if (/^INSERT (OR REPLACE )?INTO trancy_caption/.test(statement)) {
                         const columns = splitList(statement.match(/\(([\s\S]*?)\)\s*VALUES/)[1]);
-                        const values = splitList(statement.match(/VALUES\s*\(([\s\S]*)\)\s*$/)[1]);
+                        const values = splitList(statement.match(/VALUES\s*\(([\s\S]*?)\)\s*(?:ON CONFLICT[\s\S]*)?$/)[1]);
                         const row = {};
                         let cursor = 0;
                         values.forEach((expression, index) => {
                             row[columns[index]] = expression === "?" ? this._params[cursor++] : literal(expression);
                         });
-                        captions.set(`${row.video_id}|${row.target}`, row);
+                        const key = `${row.video_id}|${row.target}`;
+                        if (/ON CONFLICT/.test(statement) && captions.has(key)) {
+                            return { success: true, meta: { changes: 0 } };
+                        }
+                        captions.set(key, row);
+                        return { success: true, meta: { changes: 1 } };
+                    }
+
+                    if (/^UPDATE trancy_caption/.test(statement)) {
+                        const key = `${this._params[1]}|${this._params[2]}`;
+                        const row = captions.get(key);
+                        if (!row || row.payload !== "") return { success: true, meta: { changes: 0 } };
+                        row.created_at = this._params[0];
+                        return { success: true, meta: { changes: 1 } };
+                    }
+
+                    if (/^DELETE FROM trancy_caption/.test(statement)) {
+                        const key = `${this._params[0]}|${this._params[1]}`;
+                        const row = captions.get(key);
+                        if (!row || row.payload !== "") return { success: true, meta: { changes: 0 } };
+                        captions.delete(key);
                         return { success: true, meta: { changes: 1 } };
                     }
 
                     if (/^INSERT INTO trancy_account/.test(statement)) {
                         const columns = splitList(statement.match(/\(([\s\S]*?)\)\s*VALUES/)[1]);
-                        const values = splitList(statement.match(/VALUES\s*\(([\s\S]*)\)\s*$/)[1]);
+                        const values = splitList(statement.match(/VALUES\s*\(([\s\S]*?)\)\s*(?:ON CONFLICT[\s\S]*)?$/)[1]);
                         assert.equal(columns.length, values.length, `INSERT columns/vALUES mismatch: ${statement}`);
                         const row = {};
                         let cursor = 0;
@@ -781,6 +801,123 @@ const env = { DB: createFakeD1(), SECRETS_ENCRYPTION_KEY: encryptionKey, ADMIN_T
     const exhaustedPayload = await exhausted.json();
     assert.equal(exhaustedPayload.error.code, "no_caption_quota");
     assert.ok(exhaustedPayload.resetAt);
+}
+
+// 15. Two callers asking for the same video spend one generation, not two.
+{
+    // Test 13 parked every account for the rest of the day; give them back.
+    for (const row of env.DB.rows.values()) {
+        row.exhausted_until = "";
+        row.cooldown_until = "";
+        row.day_used = 0;
+        row.day_used_date = "";
+        row.status = "ok";
+    }
+    const videoId = "concurrentVideo";
+    let upstreamCalls = 0;
+    let releaseUpstream;
+    const gate = new Promise(resolve => { releaseUpstream = resolve; });
+    const slowFetch = fakeFetch(async () => {
+        upstreamCalls += 1;
+        await gate;
+        return new Response(JSON.stringify({ data: [{ start: 0, end: 500, text: "once" }] }), {
+            status: 200,
+            headers: { "Content-Type": "application/json", "x-quota-limit": "5", "x-quota-remaining": "4" }
+        });
+    });
+
+    const firstPromise = requestYoutubeCaptions(env, { videoId, target: "en", fetchImpl: slowFetch });
+    // Let the first caller take the claim and reach the upstream call.
+    await new Promise(resolve => setTimeout(resolve, 10));
+
+    const second = await requestYoutubeCaptions(env, { videoId, target: "en", fetchImpl: slowFetch });
+    assert.equal(second.ok, false);
+    assert.equal(second.pending, true, "the second caller is told to wait instead of paying again");
+    assert.equal(upstreamCalls, 1, "only one upstream generation is in flight");
+
+    releaseUpstream();
+    const first = await firstPromise;
+    assert.equal(first.ok, true);
+    assert.equal(upstreamCalls, 1);
+
+    // The claim is gone once the payload lands: a third call is a plain cache hit.
+    const third = await requestYoutubeCaptions(env, { videoId, target: "en", fetchImpl: slowFetch });
+    assert.equal(third.cached, true);
+    assert.equal(upstreamCalls, 1, "a finished video never calls upstream again");
+    assert.equal(env.DB.captions.get(`${videoId}|en`).payload.includes("once"), true);
+
+    // A stale claim (owner crashed) is taken over instead of blocking forever.
+    env.DB.captions.set("stuckVideo|en", {
+        video_id: "stuckVideo",
+        target: "en",
+        account_id: "",
+        payload: "",
+        sentence_count: 0,
+        created_at: new Date(Date.now() - 10 * 60 * 1000).toISOString()
+    });
+    const takeover = await requestYoutubeCaptions(env, { videoId: "stuckVideo", target: "en", fetchImpl: slowFetch });
+    assert.equal(takeover.ok, true, "an abandoned claim is stolen after the TTL");
+
+    // A refusal must release the claim so the caller can retry the same video.
+    env.DB.captions.delete("refusedVideo|en");
+    const refusing = fakeFetch(async () => new Response(JSON.stringify({ code: 403, message: "You've reached the daily limit of 5 AI subtitles for free users." }), {
+        status: 200,
+        headers: { "Content-Type": "application/json", "x-quota-limit": "5", "x-quota-remaining": "0" }
+    }));
+    for (const row of env.DB.rows.values()) row.exhausted_until = "";
+    const refused = await requestYoutubeCaptions(env, { videoId: "refusedVideo", target: "en", fetchImpl: refusing });
+    assert.equal(refused.ok, false);
+    assert.equal(env.DB.captions.has("refusedVideo|en"), false, "a failed generation leaves no placeholder behind");
+}
+
+// 16. Downstream contract: 202 while another request owns the video, and a
+//     narrow client token that cannot touch account management.
+{
+    const call = (path, init = {}) => handleTrancy(new Request(`https://worker.example${path}`, init), env);
+    const clientHeaders = { Authorization: "Bearer client-only-token", "Content-Type": "application/json" };
+    const clientEnv = { ...env, TRANCY_API_TOKEN: "client-only-token" };
+
+    // A pending row is what a waiting caller sees.
+    env.DB.captions.set("pendingVideo|en", {
+        video_id: "pendingVideo",
+        target: "en",
+        account_id: "",
+        payload: "",
+        sentence_count: 0,
+        created_at: new Date().toISOString()
+    });
+    const pendingGet = await handleTrancy(
+        new Request("https://worker.example/api/trancy/captions/pendingVideo?target=en"),
+        clientEnv
+    );
+    assert.equal(pendingGet.status, 202);
+    assert.equal(pendingGet.headers.get("Retry-After"), "2");
+    assert.equal((await pendingGet.json()).pending, true);
+
+    // The narrow token may start a generation...
+    const allowed = await handleTrancy(new Request("https://worker.example/api/trancy/captions", {
+        method: "POST",
+        headers: clientHeaders,
+        body: JSON.stringify({ videoId: "pendingVideo", target: "en" })
+    }), clientEnv);
+    assert.equal(allowed.status, 202, "the client token is accepted and the in-flight claim answers 202");
+
+    // ...but not read passwords or delete accounts.
+    const management = await handleTrancy(new Request("https://worker.example/api/trancy/accounts", {
+        headers: clientHeaders
+    }), clientEnv);
+    assert.equal((await management.json()).passwordsVisible, false, "the client token is not an operator key");
+
+    const deleteAttempt = await handleTrancy(new Request("https://worker.example/api/trancy/accounts/whatever", {
+        method: "DELETE",
+        headers: clientHeaders
+    }), clientEnv);
+    assert.equal(deleteAttempt.status, 401, "the client token cannot delete accounts");
+
+    const operatorStillWorks = await handleTrancy(new Request("https://worker.example/api/trancy/accounts", {
+        headers: { Authorization: "Bearer admin-secret-token" }
+    }), clientEnv);
+    assert.equal((await operatorStillWorks.json()).passwordsVisible, true, "ADMIN_TOKEN keeps full access");
 }
 
 console.log("Verified the Trancy multi-account gateway: token parsing, encrypted storage, LRU rotation, dead-token retirement, cron refresh and the guarded relay endpoint.");

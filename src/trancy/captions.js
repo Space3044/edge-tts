@@ -20,6 +20,7 @@
 
 import { fetchYoutubeCaptions } from "./api.js";
 import {
+    claimCaptionSlot,
     listTrancyAccounts,
     markCaptionExhausted,
     nextUtcMidnight,
@@ -28,6 +29,8 @@ import {
     recordCaptionUsage,
     recordTrancyUsage,
     refreshTrancyAccount,
+    releaseCaptionClaim,
+    stealStaleCaptionClaim,
     utcDay,
     writeCaptionCache
 } from "./store.js";
@@ -35,6 +38,10 @@ import {
 const VIDEO_ID_PATTERN = /^[A-Za-z0-9_-]{6,20}$/;
 const TARGET_PATTERN = /^[A-Za-z]{2,3}(-[A-Za-z0-9]{2,8})*$/;
 const MAX_ACCOUNTS_PER_REQUEST = 3;
+/** How long a caller should wait before re-reading when someone else holds the claim. */
+export const PENDING_RETRY_MS = 1500;
+/** A claim older than this is assumed dead and may be taken over. */
+const CLAIM_TTL_MS = 90000;
 
 /**
  * What a free account gets per day, as documented by Trancy ("5 AI subtitles
@@ -83,7 +90,22 @@ function cacheView(row, { videoId, target }) {
 
 export async function readCachedCaptions(env, { videoId, target }) {
     const row = await readCaptionCache(env, videoId, target);
-    return row ? cacheView(row, { videoId, target }) : null;
+    if (!row) {
+        return null;
+    }
+    // An empty payload is a claim in flight, not a cache entry.
+    if (String(row.payload || "") === "") {
+        return {
+            ok: false,
+            pending: true,
+            cached: false,
+            videoId,
+            target,
+            message: "这个视频正在生成中，稍后用 GET 取结果",
+            retryAfterMs: PENDING_RETRY_MS
+        };
+    }
+    return cacheView(row, { videoId, target });
 }
 
 /**
@@ -94,8 +116,36 @@ export async function readCachedCaptions(env, { videoId, target }) {
  */
 export async function requestYoutubeCaptions(env, { videoId, target = "en", fetchImpl = fetch } = {}) {
     const cached = await readCachedCaptions(env, { videoId, target });
-    if (cached) {
+    if (cached && !cached.pending) {
         return cached;
+    }
+
+    if (cached && cached.pending) {
+        // Someone owns the claim. Only take it over if its owner looks dead,
+        // otherwise hand the caller the same "wait" answer.
+        if (!(await stealStaleCaptionClaim(env, { videoId, target, olderThanMs: CLAIM_TTL_MS }))) {
+            return cached;
+        }
+    }
+
+    if (!cached) {
+        // One generation per (video, target) at a time, enforced in D1.
+        const claim = await claimCaptionSlot(env, { videoId, target });
+        if (!claim.claimed) {
+            const row = claim.row;
+            if (row && String(row.payload || "") !== "") {
+                return cacheView(row, { videoId, target });
+            }
+            return {
+                ok: false,
+                pending: true,
+                cached: false,
+                videoId,
+                target,
+                message: "同一个视频已经有请求在生成，稍后重试",
+                retryAfterMs: PENDING_RETRY_MS
+            };
+        }
     }
 
     const accounts = await pickCaptionAccounts(env, { limit: MAX_ACCOUNTS_PER_REQUEST });
@@ -108,6 +158,7 @@ export async function requestYoutubeCaptions(env, { videoId, target = "en", fetc
             .map(account => account.exhaustedUntil)
             .filter(value => value && Date.parse(value) > now)
             .sort();
+        await releaseCaptionClaim(env, { videoId, target }).catch(() => null);
         if (parked.length) {
             return {
                 ok: false,
@@ -121,6 +172,7 @@ export async function requestYoutubeCaptions(env, { videoId, target = "en", fetc
         return {
             ok: false,
             cached: false,
+            pending: false,
             reason: "no_account",
             message: "没有可用账号：账号池为空、token 过期或正在冷却",
             resetAt: nextUtcMidnight(),
@@ -187,10 +239,12 @@ export async function requestYoutubeCaptions(env, { videoId, target = "en", fetc
         await recordTrancyUsage(env, account.id, { ok: false, cooldownMinutes: 2 }).catch(() => null);
     }
 
+    await releaseCaptionClaim(env, { videoId, target }).catch(() => null);
     const exhaustedAll = tried.every(entry => entry.endsWith("daily_limit"));
     return {
         ok: false,
         cached: false,
+        pending: false,
         reason: exhaustedAll ? "no_caption_quota" : "caption_failed",
         message: exhaustedAll
             ? "所有账号今天的 AI 字幕额度都用完了"

@@ -52,7 +52,27 @@ GET https://api.trancy.org/3/youtube/captions/{videoId}?target=en&source=audio
 区分「池子是空的」（`no_account`）和「池子今天花完了」（`no_caption_quota`），
 因为调用方对这两种情况的重试策略完全不同。
 
-### 5. 额度要对人可见
+### 5. 并发同一视频只生成一次
+
+缓存只能挡住「已经生成完」的重复请求；两个请求**同时**到达时都会 miss，
+都会打上游，各扣一次额度——在 5 次/天的池子里这是最贵的一种浪费，所以生成权也用
+`trancy_caption` 那一行来表示：
+
+- 发起前 `INSERT ... ON CONFLICT(video_id, target) DO NOTHING` 写一行空 `payload` 占位；
+  写进去的才是 owner，写不进去的直接读行：有 payload 就是已完成，没有就是有人在生成 →
+  `202 {pending: true, retryAfterMs: 1500}` + `Retry-After`。
+- 成功时用真实 payload 覆盖占位行；失败（额度耗尽、网络）删掉占位行，保证同一视频能立刻重试。
+- 占位超过 90 秒视为 owner 已死（Worker 被回收、超时），下一个请求直接接管，避免永久卡死。
+- `GET /api/trancy/captions/:videoId` 命中占位行时同样回 `202`，语义是「正在生成」而不是「不存在」。
+
+### 6. 下游用窄钥匙，不用运维钥匙
+
+`ADMIN_TOKEN` 能删账号、能读明文密码，把它发给下游等于把账号池交出去。所以新增
+`TRANCY_API_TOKEN`：只被 `captions` 与 `relay` 两个入口接受，管理接口一律不认它
+（`GET /api/trancy/accounts` 在只有它的时候仍是 `passwordsVisible: false`）。
+没配这个变量时行为与之前完全一致，老部署不受影响。
+
+### 7. 额度要对人可见
 
 额度只能在响应头里看到，所以面板不能只显示「上次的结果」，要显示可决策的数字：
 
@@ -64,7 +84,7 @@ GET https://api.trancy.org/3/youtube/captions/{videoId}?target=en&source=audio
 分母**不硬编码 5**：上游实测报 `x-quota-limit: 2`，所以有观测值时用观测值，没有才退回 5。
 这个数字只用于展示与「还剩多少」的估算，真正的拦截仍然是上游的 403。
 
-### 6. 接口收口
+### 8. 接口收口
 
 `POST /api/trancy/captions` 花额度，走写权限守卫；`GET /api/trancy/captions/:videoId`
 只读缓存、不花额度，所以保持开放。`videoId` 与 `target` 都做白名单校验，

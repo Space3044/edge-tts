@@ -18,6 +18,14 @@ SECRETS_ENCRYPTION_KEY=3MA8dqfnN1veywbjKPVE9hDwIq2Ra5TXvsTThon+SEc=
 # ADMIN_TOKEN=change-me
 # CF_ACCESS_TRUSTED=1
 
+# Optional: a narrow key for downstream programs.
+#
+# ADMIN_TOKEN doubles as the operator key - it can delete accounts and read the
+# plaintext passwords. A service that only needs subtitles should get this one
+# instead: it is accepted by POST /api/trancy/captions and POST /api/trancy/relay
+# and by nothing else.
+# TRANCY_API_TOKEN=
+
 # Optional fallbacks, used when D1 has no key for that provider.
 # OPENAI_API_KEY=
 # ELEVENLABS_API_KEY=
