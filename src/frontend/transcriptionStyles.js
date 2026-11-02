@@ -2,73 +2,80 @@ export const TRANSCRIPTION_STYLES = `
     #engineGroup {
       display:grid;
       gap:10px;
-      margin:0 0 12px;
-      padding:12px;
+      margin:0 0 16px;
+      padding:14px;
       border:1px solid var(--border);
       border-left:3px solid var(--accent);
-      background:linear-gradient(90deg,var(--accent-soft),var(--surface-2));
+      background:var(--surface-2);
+      border-radius:var(--radius-md);
+      box-shadow:var(--shadow-sm);
     }
     #engineGroup .form-label {
       margin:0;
       color:var(--text-2);
-      font-size:.76rem;
+      font-size:.74rem;
       text-transform:uppercase;
+      letter-spacing:.04em;
     }
     .engine-tabs {
       display:grid;
       grid-template-columns:repeat(2,minmax(0,1fr));
-      gap:6px;
-      padding:4px;
-      background:var(--surface);
+      gap:4px;
+      padding:3px;
+      background:var(--surface-3);
       border:1px solid var(--border);
       border-radius:var(--radius-sm);
     }
     .engine-btn {
-      min-height:42px;
+      min-height:38px;
       border:1px solid transparent;
       background:transparent;
       color:var(--text-2);
       padding:0 12px;
       font-family:var(--font-display);
       font-weight:600;
-      font-size:.88rem;
-      border-radius:var(--radius-sm);
+      font-size:.85rem;
+      border-radius:var(--radius-xs);
       cursor:pointer;
-      transition:color .18s ease,background-color .18s ease,border-color .18s ease,box-shadow .18s ease;
+      transition:color .15s ease,background-color .15s ease,border-color .15s ease,box-shadow .15s ease;
     }
     .engine-btn:hover {
       color:var(--text);
-      background:var(--surface-2);
     }
     .engine-btn.active {
       color:var(--accent);
-      background:var(--accent-soft);
-      border-color:var(--accent);
-      box-shadow:inset 0 0 0 1px var(--accent-ring);
+      background:var(--surface);
+      border-color:var(--border);
+      box-shadow:0 1px 3px rgba(0,0,0,.08);
     }
     #elevenlabsOptions {
-      margin:0 0 12px;
+      margin:0 0 16px;
       padding:14px;
       border:1px solid var(--border);
+      border-radius:var(--radius-md);
       background:var(--surface-2);
+      box-shadow:var(--shadow-sm);
     }
     #elevenlabsOptions .form-label {
       color:var(--text-2);
-      font-size:.76rem;
+      font-size:.74rem;
+      text-transform:uppercase;
+      letter-spacing:.04em;
     }
     #elevenlabsOptions .form-input {
       background:var(--surface);
     }
     .audio-preview-shell {
       margin-top:10px;
-      padding:10px 12px;
+      padding:10px 14px;
       border:1px solid var(--border);
+      border-radius:var(--radius-sm);
       background:var(--surface-2);
     }
     .audio-preview-player {
       display:block;
       width:100%;
-      height:38px;
+      height:36px;
     }
     .transcription-result-header {
       display:flex;
@@ -82,54 +89,62 @@ export const TRANSCRIPTION_STYLES = `
     }
     .transcription-view-tabs {
       display:flex;
-      gap:4px;
+      gap:3px;
       padding:3px;
       border:1px solid var(--border);
-      background:var(--surface);
+      border-radius:var(--radius-sm);
+      background:var(--surface-2);
     }
     .transcription-view-btn {
-      min-height:32px;
+      min-height:30px;
       border:1px solid transparent;
       background:transparent;
       color:var(--text-2);
       padding:0 10px;
+      font-family:var(--font-display);
       font-size:.78rem;
       font-weight:600;
+      border-radius:var(--radius-xs);
       cursor:pointer;
+      transition:color .15s ease,background-color .15s ease;
     }
     .transcription-view-btn:hover {
       color:var(--text);
-      background:var(--surface-2);
     }
     .transcription-view-btn.active {
       color:var(--accent);
-      border-color:var(--accent);
-      background:var(--accent-soft);
+      border-color:var(--border);
+      background:var(--surface);
+      box-shadow:0 1px 2px rgba(0,0,0,.05);
     }
     .timestamp-result-view {
       min-height:180px;
       max-height:360px;
       overflow:auto;
-      padding:12px;
+      padding:14px;
       border:1px solid var(--border);
+      border-radius:var(--radius-md);
       background:var(--surface);
+      scrollbar-width:thin;
     }
     .sentence-timestamp-view {
-      gap:8px;
+      gap:6px;
     }
     .timestamp-row {
       display:grid;
       grid-template-columns:200px minmax(0,1fr);
-      gap:16px;
+      gap:14px;
       align-items:start;
       width:100%;
-      padding:9px 0;
+      padding:8px 10px;
       border:0;
-      border-bottom:1px solid var(--border);
+      border-bottom:1px solid var(--border-subtle);
       background:transparent;
       color:inherit;
       text-align:left;
       cursor:pointer;
+      transition:background-color .12s ease;
+      border-radius:var(--radius-xs);
     }
     .timestamp-playable:hover {
       background:var(--accent-soft);
@@ -142,40 +157,50 @@ export const TRANSCRIPTION_STYLES = `
       color:var(--accent);
       font-size:.76rem;
       white-space:nowrap;
+      font-weight:600;
     }
     .timestamp-text {
       min-width:0;
-      line-height:1.55;
+      line-height:1.5;
       overflow-wrap:anywhere;
+      font-size:.88rem;
     }
     .word-timestamp-view {
       flex-wrap:wrap;
       align-content:flex-start;
-      gap:8px;
+      gap:6px;
     }
     .word-token {
       display:inline-grid;
       gap:2px;
       min-width:76px;
       max-width:180px;
-      padding:7px 8px;
+      padding:6px 8px;
       border:1px solid var(--border);
+      border-radius:var(--radius-xs);
       background:var(--surface-2);
       color:inherit;
       text-align:left;
       cursor:pointer;
+      transition:all .12s ease;
+    }
+    .word-token:hover {
+      background:var(--accent-soft);
+      border-color:var(--accent);
+      transform:translateY(-1px);
     }
     .word-token-punctuation {
-      min-width:58px;
+      min-width:54px;
     }
     .word-token-text {
       overflow:hidden;
       text-overflow:ellipsis;
       white-space:nowrap;
       font-weight:600;
+      font-size:.84rem;
     }
     .word-token-time {
-      color:var(--text-2);
+      color:var(--text-3);
       font-family:var(--font-mono);
       font-size:.66rem;
       white-space:nowrap;
@@ -183,7 +208,10 @@ export const TRANSCRIPTION_STYLES = `
     .timestamp-empty {
       margin:0;
       color:var(--text-2);
-      font-size:.85rem;
+      font-size:.84rem;
+      font-family:var(--font-mono);
+      padding:12px;
+      text-align:center;
     }
     .elevenlabs-grid {
       display:grid;
@@ -203,7 +231,9 @@ export const TRANSCRIPTION_STYLES = `
       min-height:44px;
       padding:11px 12px;
       border:1px solid var(--border);
+      border-radius:var(--radius-sm);
       background:var(--surface);
+      box-shadow:var(--shadow-sm);
     }
     .toggle-option input {
       width:18px;
