@@ -3,7 +3,7 @@ import { transcribe as transcribeWithElevenLabs } from "../elevenlabs/stt.js";
 import { transcribeWithGoogle } from "../google/stt.js";
 import { getMicrosoftAccount, saveMicrosoftTokens, resolveProvider } from "../secrets/store.js";
 import { accessTokenAudienceProblem, canRefreshMicrosoftToken, refreshAccessToken } from "../microsoft/oauth.js";
-import { refreshPlaygroundCookies, transcribeWithPlayground } from "../microsoft/playground.js";
+import { transcribeWithPlayground } from "../microsoft/playground.js";
 import { buildMicrosoftEndpoint, transcribeWithMicrosoft } from "../microsoft/stt.js";
 
 const MAX_AUDIO_FILE_SIZE = 50 * 1024 * 1024;
@@ -767,25 +767,7 @@ async function transcribeWithPlaygroundEngine(formData, { account, cookies, env 
     } catch (error) {
         const message = error instanceof Error ? error.message : "Playground 转录失败";
         if (message.includes("cookie 已失效")) {
-            // The short-lived session cookie can be renewed from the persisted
-            // Microsoft identity cookie without bothering the user; only when
-            // that fails do we ask for a new paste.
-            const renewed = await refreshPlaygroundCookies(cookies).catch(() => ({ cookies, renewed: false }));
-            if (renewed.renewed && renewed.cookies !== cookies) {
-                try {
-                    const retried = await transcribeWithPlayground({
-                        cookies: renewed.cookies,
-                        data,
-                        filename,
-                        mimeType
-                    });
-                    await saveMicrosoftTokens(env, { cookies: renewed.cookies });
-                    return jsonResponse(retried);
-                } catch (retryError) {
-                    console.error("Playground retry after silent SSO failed:", retryError);
-                }
-            }
-            return errorResponse("Playground cookie 已失效，请重新复制", {
+            return errorResponse("Playground cookie 已失效，请在服务配置里粘贴新的 cookie", {
                 status: 401,
                 type: "authentication_error",
                 code: "microsoft_cookie_expired"

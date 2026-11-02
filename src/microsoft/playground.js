@@ -11,9 +11,12 @@
  *   4. POST /api/trpc/conversations.delete?batch=1  (best effort cleanup)
  *
  * Server-side limits: raw audio must be mp3/wav, <= 25 MiB, <= 3615 s.
- * Authentication is the browser cookie jar of a signed-in Microsoft account;
- * `/.auth/login/aad?prompt=none` can silently renew it from the persisted
- * identity cookies, which is why one paste can keep working for a long time.
+ * Authentication is the `AppServiceAuthSession` cookie of a signed-in account.
+ * That cookie is a server-side session: when it expires the Worker cannot
+ * renew it on its own, because the silent SSO path needs the Microsoft
+ * identity cookies that live on login.microsoftonline.com — a different
+ * domain that a Worker-side request cannot reach with the playground cookie
+ * string. Expiry therefore means "paste a fresh cookie".
  */
 
 export const PLAYGROUND_BASE = "https://playground.microsoft.ai";
@@ -51,41 +54,6 @@ export function parseCookieString(input) {
         .map(line => line.trim())
         .filter(Boolean)
         .join("; ");
-}
-
-function cookiePairs(cookies) {
-    const pairs = new Map();
-    for (const part of String(cookies || "").split(";")) {
-        const index = part.indexOf("=");
-        if (index <= 0) continue;
-        const name = part.slice(0, index).trim();
-        const value = part.slice(index + 1).trim();
-        if (name) pairs.set(name, value);
-    }
-    return pairs;
-}
-
-function mergeSetCookies(cookies, setCookieHeaders) {
-    const pairs = cookiePairs(cookies);
-    for (const header of setCookieHeaders) {
-        // Multiple cookies can arrive in one header, separated by commas that
-        // are followed by another name=value pair.
-        for (const chunk of String(header).split(/,(?=\s*[^;=,\s]+=)/)) {
-            const pair = chunk.split(";")[0];
-            const index = pair.indexOf("=");
-            if (index <= 0) continue;
-            const name = pair.slice(0, index).trim();
-            const value = pair.slice(index + 1).trim();
-            const expired = /max-age=0|expires=thu, 01 jan 1970/i.test(chunk);
-            if (!name) continue;
-            if (expired || value === "") {
-                pairs.delete(name);
-            } else {
-                pairs.set(name, value);
-            }
-        }
-    }
-    return Array.from(pairs.entries()).map(([name, value]) => `${name}=${value}`).join("; ");
 }
 
 async function postJson(cookies, path, body, { requestId, signal } = {}) {
@@ -151,46 +119,6 @@ export function extractRichTranscription(sseText) {
         }
     }
     return found;
-}
-
-/**
- * `/.auth/me` answers 200 only for a live session. When the short-lived
- * session cookie has expired, the persisted Microsoft identity cookies can mint
- * a new one without user interaction.
- */
-export async function refreshPlaygroundCookies(cookies) {
-    const probe = await fetch(`${PLAYGROUND_BASE}/.auth/me`, {
-        headers: { Cookie: cookies, Accept: "application/json" },
-        redirect: "manual"
-    }).catch(() => null);
-
-    if (probe && probe.status === 200) {
-        return { cookies, renewed: false };
-    }
-
-    const login = await fetch(
-        `${PLAYGROUND_BASE}/.auth/login/aad?prompt=none&post_login_redirect_uri=%2Fchat`,
-        { headers: { Cookie: cookies }, redirect: "manual" }
-    ).catch(() => null);
-
-    if (!login) {
-        return { cookies, renewed: false };
-    }
-
-    const setCookies = typeof login.headers.getSetCookie === "function"
-        ? login.headers.getSetCookie()
-        : [login.headers.get("set-cookie")].filter(Boolean);
-    const merged = setCookies.length ? mergeSetCookies(cookies, setCookies) : cookies;
-
-    const after = await fetch(`${PLAYGROUND_BASE}/.auth/me`, {
-        headers: { Cookie: merged, Accept: "application/json" },
-        redirect: "manual"
-    }).catch(() => null);
-
-    if (after && after.status === 200) {
-        return { cookies: merged, renewed: true };
-    }
-    return { cookies, renewed: false };
 }
 
 function seconds(value) {

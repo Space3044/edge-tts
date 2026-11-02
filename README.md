@@ -232,7 +232,7 @@ Microsoft 有两条路，按你在 Provider settings 里填的东西自动选择
 登录 [playground.microsoft.ai](https://playground.microsoft.ai/chat)，从开发者工具复制请求头里的 `Cookie` 值，粘到 Microsoft 卡片的「Playground cookie」里。Worker 用这个 cookie 走 Playground 的内部接口（`conversations.create` → `addAudioPromptAndInitResponse` → `/api/chat/stream` 的 SSE），完成后自动删除会话。
 
 - 限制：**只吃 mp3/wav，单次 ≤ 25MB、≤ 3615 秒**；音频以 base64 塞进 JSON（Playground 唯一的上传方式）
-- 续期：会话 cookie 失效时，Worker 会用同一批 cookie 里的微软身份 cookie 走 `/.auth/login/aad?prompt=none` 静默续期，成功后把新 cookie 写回 D1；只有身份 cookie 也过期（通常几十天不用）才会返回 `microsoft_cookie_expired`，需要重新粘贴
+- 有效期：`AppServiceAuthSession` 是服务端会话 cookie，过期后**只能重新粘贴**。Worker 端无法静默续期——Easy Auth 的 `/.auth/login/aad?prompt=none` 会把请求转去 `login.microsoftonline.com`，而静默续期依赖那个域下的微软身份 cookie（`ESTSAUTH` / `ESTSAUTHPERSISTENT`），浏览器里能自动带上，Worker 里带不了。过期时接口返回 `401 microsoft_cookie_expired`
 - 首次使用前要在网页上同意生物特征（音频）授权，否则返回 451 并提示
 
 **② Azure 凭据（需要 Azure 订阅）**

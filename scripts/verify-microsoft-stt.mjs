@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { accessTokenAudienceProblem, accessTokenExpiry, isAccessTokenExpired, refreshAccessToken, decodeAccessToken } from "../src/microsoft/oauth.js";
 import { buildMicrosoftEndpoint, transcribeWithMicrosoft } from "../src/microsoft/stt.js";
-import { PLAYGROUND_MAX_BYTES, extractRichTranscription, normalizeRichTranscription, parseCookieString, refreshPlaygroundCookies, transcribeWithPlayground } from "../src/microsoft/playground.js";
+import { PLAYGROUND_MAX_BYTES, extractRichTranscription, normalizeRichTranscription, parseCookieString, transcribeWithPlayground } from "../src/microsoft/playground.js";
 import { getMicrosoftAccount, listProviderStatus, saveMicrosoftTokens } from "../src/secrets/store.js";
 import { handleAudioTranscription } from "../src/routes/transcriptions.js";
 import { handleProviders } from "../src/routes/providers.js";
@@ -546,29 +546,27 @@ const expiredExp = Math.floor(Date.now() / 1000) - 60;
   }
 }
 
-// 15. Silent SSO: a dead session cookie is renewed from the identity cookie.
+// 15. An expired session is reported, not silently retried: the Worker cannot
+//     reach the Microsoft identity cookies that live on another domain.
 {
   const originalFetch = globalThis.fetch;
-  globalThis.fetch = async (url, init = {}) => {
+  globalThis.fetch = async (url) => {
     const href = String(url);
-    if (href.endsWith("/.auth/me")) {
-      const fresh = String(init.headers?.Cookie || "").includes("fresh-session=1");
-      return new Response("{}", { status: fresh ? 200 : 401 });
-    }
-    if (href.includes("/.auth/login/aad")) {
-      return new Response(null, {
-        status: 302,
-        headers: { location: "/chat", "set-cookie": "fresh-session=1; Path=/; HttpOnly" }
-      });
+    if (href.includes("conversations.create")) {
+      return new Response("{}", { status: 302, headers: { location: "/.auth/login/aad" } });
     }
     throw new Error(`unexpected fetch: ${href}`);
   };
 
   try {
-    const renewed = await refreshPlaygroundCookies("old-session=0; ESTSAUTHPERSISTENT=x");
-    assert.equal(renewed.renewed, true);
-    assert.match(renewed.cookies, /fresh-session=1/);
-    assert.match(renewed.cookies, /ESTSAUTHPERSISTENT=x/, "existing identity cookies must survive the merge");
+    await assert.rejects(
+      () => transcribeWithPlayground({
+        cookies: "AppServiceAuthSession=dead",
+        data: new Blob(["audio"], { type: "audio/mpeg" }),
+        filename: "sample.mp3"
+      }),
+      /cookie 已失效/
+    );
   } finally {
     globalThis.fetch = originalFetch;
   }
