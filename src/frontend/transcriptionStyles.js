@@ -213,7 +213,7 @@ export const TRANSCRIPTION_STYLES = `
     }
     .engine-tabs {
       display: grid;
-      grid-template-columns: repeat(3, minmax(0, 1fr));
+      grid-template-columns: repeat(4, minmax(0, 1fr));
       gap: 4px;
       padding: 4px;
       background: var(--surface-3);
@@ -525,6 +525,9 @@ export const TRANSCRIPTION_STYLES = `
     @media (max-width: 900px) {
       .stt-workspace-grid {
         grid-template-columns: 1fr;
+      }
+      .engine-tabs {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
       }
       .transcription-result-header {
         align-items: stretch;

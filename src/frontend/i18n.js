@@ -312,14 +312,14 @@ export const translations = {
     Object.keys(WHISPER_ENDPOINT_TRANSLATIONS).forEach(function(lang) { Object.assign(translations[lang], WHISPER_ENDPOINT_TRANSLATIONS[lang]); });
 
     const STT_SOURCE_URL_TRANSLATIONS = {
-      en: { 'stt.sourceUrl': 'Audio URL', 'stt.sourceUrlPlaceholder': 'https://example.com/audio.mp3', 'stt.sourceUrlHint': 'Or paste a public audio URL; OpenAI and Google download it, ElevenLabs reads it directly.', 'error.audioSourceRequired': 'Choose an audio file or paste an audio URL.' },
-      zh: { 'stt.sourceUrl': '音频 URL', 'stt.sourceUrlPlaceholder': 'https://example.com/audio.mp3', 'stt.sourceUrlHint': '或粘贴一个公开的音频 URL；OpenAI 和 Google 由 Worker 下载，ElevenLabs 直接读取。', 'error.audioSourceRequired': '请选择音频文件或粘贴音频 URL。' },
-      ja: { 'stt.sourceUrl': '音声URL', 'stt.sourceUrlPlaceholder': 'https://example.com/audio.mp3', 'stt.sourceUrlHint': '公開音声URLを貼り付けることもできます。OpenAI と Google は Worker が取得し、ElevenLabs は直接読み取ります。', 'error.audioSourceRequired': '音声ファイルを選択するか、音声URLを貼り付けてください。' },
-      ko: { 'stt.sourceUrl': '오디오 URL', 'stt.sourceUrlPlaceholder': 'https://example.com/audio.mp3', 'stt.sourceUrlHint': '공개 오디오 URL을 붙여넣을 수도 있습니다. OpenAI와 Google은 Worker가 내려받고 ElevenLabs는 직접 읽습니다.', 'error.audioSourceRequired': '오디오 파일을 선택하거나 오디오 URL을 붙여넣으세요.' },
-      es: { 'stt.sourceUrl': 'URL de audio', 'stt.sourceUrlPlaceholder': 'https://example.com/audio.mp3', 'stt.sourceUrlHint': 'También puedes pegar una URL de audio pública; OpenAI y Google la descargan y ElevenLabs la lee directamente.', 'error.audioSourceRequired': 'Elige un archivo de audio o pega una URL de audio.' },
-      fr: { 'stt.sourceUrl': 'URL audio', 'stt.sourceUrlPlaceholder': 'https://example.com/audio.mp3', 'stt.sourceUrlHint': 'Vous pouvez aussi coller une URL audio publique ; OpenAI et Google la téléchargent et ElevenLabs la lit directement.', 'error.audioSourceRequired': 'Choisissez un fichier audio ou collez une URL audio.' },
-      de: { 'stt.sourceUrl': 'Audio-URL', 'stt.sourceUrlPlaceholder': 'https://example.com/audio.mp3', 'stt.sourceUrlHint': 'Alternativ eine öffentliche Audio-URL einfügen; OpenAI und Google laden sie herunter, ElevenLabs liest sie direkt.', 'error.audioSourceRequired': 'Audiodatei wählen oder Audio-URL einfügen.' },
-      ru: { 'stt.sourceUrl': 'URL аудио', 'stt.sourceUrlPlaceholder': 'https://example.com/audio.mp3', 'stt.sourceUrlHint': 'Можно вставить публичный URL аудио; OpenAI и Google скачают его, а ElevenLabs прочитает напрямую.', 'error.audioSourceRequired': 'Выберите аудиофайл или вставьте URL аудио.' }
+      en: { 'stt.sourceUrl': 'Audio URL', 'stt.sourceUrlPlaceholder': 'https://example.com/audio.mp3', 'stt.sourceUrlHint': 'Or paste a public audio URL; OpenAI and Google download it, Groq and ElevenLabs read it directly.', 'error.audioSourceRequired': 'Choose an audio file or paste an audio URL.' },
+      zh: { 'stt.sourceUrl': '音频 URL', 'stt.sourceUrlPlaceholder': 'https://example.com/audio.mp3', 'stt.sourceUrlHint': '或粘贴一个公开的音频 URL；OpenAI 和 Google 由 Worker 下载，Groq 和 ElevenLabs 直接读取。', 'error.audioSourceRequired': '请选择音频文件或粘贴音频 URL。' },
+      ja: { 'stt.sourceUrl': '音声URL', 'stt.sourceUrlPlaceholder': 'https://example.com/audio.mp3', 'stt.sourceUrlHint': '公開音声URLを貼り付けることもできます。OpenAI と Google は Worker が取得し、Groq と ElevenLabs は直接読み取ります。', 'error.audioSourceRequired': '音声ファイルを選択するか、音声URLを貼り付けてください。' },
+      ko: { 'stt.sourceUrl': '오디오 URL', 'stt.sourceUrlPlaceholder': 'https://example.com/audio.mp3', 'stt.sourceUrlHint': '공개 오디오 URL을 붙여넣을 수도 있습니다. OpenAI와 Google은 Worker가 내려받고 Groq와 ElevenLabs는 직접 읽습니다.', 'error.audioSourceRequired': '오디오 파일을 선택하거나 오디오 URL을 붙여넣으세요.' },
+      es: { 'stt.sourceUrl': 'URL de audio', 'stt.sourceUrlPlaceholder': 'https://example.com/audio.mp3', 'stt.sourceUrlHint': 'También puedes pegar una URL de audio pública; OpenAI y Google la descargan, mientras Groq y ElevenLabs la leen directamente.', 'error.audioSourceRequired': 'Elige un archivo de audio o pega una URL de audio.' },
+      fr: { 'stt.sourceUrl': 'URL audio', 'stt.sourceUrlPlaceholder': 'https://example.com/audio.mp3', 'stt.sourceUrlHint': 'Vous pouvez aussi coller une URL audio publique ; OpenAI et Google la téléchargent, tandis que Groq et ElevenLabs la lisent directement.', 'error.audioSourceRequired': 'Choisissez un fichier audio ou collez une URL audio.' },
+      de: { 'stt.sourceUrl': 'Audio-URL', 'stt.sourceUrlPlaceholder': 'https://example.com/audio.mp3', 'stt.sourceUrlHint': 'Alternativ eine öffentliche Audio-URL einfügen; OpenAI und Google laden sie herunter, Groq und ElevenLabs lesen sie direkt.', 'error.audioSourceRequired': 'Audiodatei wählen oder Audio-URL einfügen.' },
+      ru: { 'stt.sourceUrl': 'URL аудио', 'stt.sourceUrlPlaceholder': 'https://example.com/audio.mp3', 'stt.sourceUrlHint': 'Можно вставить публичный URL аудио; OpenAI и Google скачают его, а Groq и ElevenLabs прочитают напрямую.', 'error.audioSourceRequired': 'Выберите аудиофайл или вставьте URL аудио.' }
     };
     Object.keys(STT_SOURCE_URL_TRANSLATIONS).forEach(function(lang) { Object.assign(translations[lang], STT_SOURCE_URL_TRANSLATIONS[lang]); });
 
@@ -347,6 +347,18 @@ export const translations = {
     };
     Object.keys(GOOGLE_STT_TRANSLATIONS).forEach(function(lang) { Object.assign(translations[lang], GOOGLE_STT_TRANSLATIONS[lang]); });
 
+    const GROQ_STT_TRANSLATIONS = {
+      en: { 'stt.engineGroq': 'Groq' },
+      zh: { 'stt.engineGroq': 'Groq' },
+      ja: { 'stt.engineGroq': 'Groq' },
+      ko: { 'stt.engineGroq': 'Groq' },
+      es: { 'stt.engineGroq': 'Groq' },
+      fr: { 'stt.engineGroq': 'Groq' },
+      de: { 'stt.engineGroq': 'Groq' },
+      ru: { 'stt.engineGroq': 'Groq' }
+    };
+    Object.keys(GROQ_STT_TRANSLATIONS).forEach(function(lang) { Object.assign(translations[lang], GROQ_STT_TRANSLATIONS[lang]); });
+
     const STT_RESULT_VIEW_TRANSLATIONS = {
       en: { 'stt.viewPlain': 'Text', 'stt.viewSentences': 'Sentences', 'stt.viewWords': 'Words', 'stt.noTimestamps': 'No timestamp data for this result.' },
       zh: { 'stt.viewPlain': '纯文本', 'stt.viewSentences': '句子时间戳', 'stt.viewWords': '词级时间戳', 'stt.noTimestamps': '当前结果没有时间戳数据。' },
@@ -369,8 +381,10 @@ export const translations = {
         'provider.openaiTitle': 'OpenAI transcription',
         'provider.elevenlabsTitle': 'ElevenLabs Scribe',
         'provider.googleTitle': 'Google Gemini Transcribe',
+        'provider.groqTitle': 'Groq Whisper',
         'provider.endpoint': 'Endpoint',
         'provider.googleEndpointPlaceholder': 'https://generativelanguage.googleapis.com',
+        'provider.groqEndpointPlaceholder': 'https://api.groq.com/openai/v1',
         'provider.save': 'Save',
         'provider.saving': 'Saving...',
         'provider.saved': 'Saved',
@@ -389,8 +403,10 @@ export const translations = {
         'provider.openaiTitle': 'OpenAI 转录',
         'provider.elevenlabsTitle': 'ElevenLabs Scribe',
         'provider.googleTitle': 'Google Gemini Transcribe',
+        'provider.groqTitle': 'Groq Whisper',
         'provider.endpoint': 'Endpoint',
         'provider.googleEndpointPlaceholder': 'https://generativelanguage.googleapis.com',
+        'provider.groqEndpointPlaceholder': 'https://api.groq.com/openai/v1',
         'provider.save': '保存',
         'provider.saving': '保存中...',
         'provider.saved': '已保存',

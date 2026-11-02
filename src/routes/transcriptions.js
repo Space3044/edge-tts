@@ -4,6 +4,8 @@ import { transcribeWithGoogle } from "../google/stt.js";
 import { resolveProvider } from "../secrets/store.js";
 
 const MAX_AUDIO_FILE_SIZE = 50 * 1024 * 1024;
+// Groq's hosted Whisper endpoint documents a 25 MB upload limit.
+const MAX_GROQ_AUDIO_FILE_SIZE = 25 * 1024 * 1024;
 const MAX_SOURCE_REDIRECTS = 5;
 const SOURCE_TIMEOUT_MS = 120000;
 const SOURCE_URL_FIELDS = ["source_url", "url"];
@@ -24,8 +26,8 @@ const NO_VERBOSE_JSON_MODEL_PATTERN = /^gpt-4o(-mini)?-transcribe/i;
 /** `prompt` is rejected by the diarize model, per the same reference. */
 const NO_PROMPT_MODEL_PATTERN = /-diarize\b/i;
 /**
- * Models the upstream already refused `verbose_json` for, remembered per isolate
- * so the fallback below costs one probe per model rather than one per request.
+ * Provider/model pairs the upstream already refused `verbose_json` for, remembered
+ * per isolate so the fallback below costs one probe per pair rather than one per request.
  */
 const verboseJsonRejectedModels = new Set();
 // ElevenLabs documents `none | word | character`; sentences are derived here.
@@ -187,11 +189,11 @@ async function fetchSourceAudio(sourceUrl, maxBytes) {
         }
         const declared = Number(response.headers.get("content-length") || 0);
         if (declared > maxBytes) {
-            throw new Error("音频文件大小不能超过50MB");
+            throw new Error(`音频文件大小不能超过${Math.round(maxBytes / 1024 / 1024)}MB`);
         }
         const blob = await response.blob();
         if (blob.size > maxBytes) {
-            throw new Error("音频文件大小不能超过50MB");
+            throw new Error(`音频文件大小不能超过${Math.round(maxBytes / 1024 / 1024)}MB`);
         }
         if (blob.size === 0) {
             throw new Error("音频 URL 返回了空文件");
@@ -212,21 +214,21 @@ async function fetchSourceAudio(sourceUrl, maxBytes) {
  * gets `/audio/transcriptions` appended; a fully qualified endpoint is kept as
  * is so self-hosted whisper services that already include the path work too.
  */
-function buildTranscriptionUrl(value) {
+function buildTranscriptionUrl(value, providerLabel = "OpenAI") {
     const raw = typeof value === "string" ? value.trim() : "";
     if (!raw) {
-        throw new Error("请输入 OpenAI 兼容的转录地址");
+        throw new Error(`请输入 ${providerLabel} 兼容的转录地址`);
     }
 
     let url;
     try {
         url = new URL(raw);
     } catch {
-        throw new Error("OpenAI 转录地址格式无效");
+        throw new Error(`${providerLabel} 转录地址格式无效`);
     }
 
     if (url.protocol !== "https:" && url.protocol !== "http:") {
-        throw new Error("OpenAI 转录地址必须以 http:// 或 https:// 开头");
+        throw new Error(`${providerLabel} 转录地址必须以 http:// 或 https:// 开头`);
     }
 
     url.search = "";
@@ -519,12 +521,12 @@ function buildOpenAiSentences(result) {
     }).filter(sentence => sentence.text);
 }
 
-function openAiError(status) {
+function openAiError(status, providerLabel = "OpenAI") {
     if (status === 401 || status === 403) {
-        return "OpenAI 转录服务拒绝了密钥，请检查 Provider 设置里的 API Key";
+        return `${providerLabel} 转录服务拒绝了密钥，请检查 Provider 设置里的 API Key`;
     }
     if (status === 404) {
-        return "OpenAI 转录端点不存在，请确认 Endpoint 是否包含 /v1";
+        return `${providerLabel} 转录端点不存在，请确认 Endpoint 是否正确`;
     }
     if (status === 413) {
         return "音频文件太大，请选择较小的文件";
@@ -538,7 +540,7 @@ function openAiError(status) {
     return "语音转录服务暂时不可用";
 }
 
-function validateAudioFile(file) {
+function validateAudioFile(file, maxBytes = MAX_AUDIO_FILE_SIZE) {
     if (!file) {
         return errorResponse("未找到音频文件", {
             status: 400,
@@ -547,8 +549,8 @@ function validateAudioFile(file) {
             code: "missing_file"
         });
     }
-    if (file.size > MAX_AUDIO_FILE_SIZE) {
-        return errorResponse("音频文件大小不能超过50MB", {
+    if (file.size > maxBytes) {
+        return errorResponse(`音频文件大小不能超过${Math.round(maxBytes / 1024 / 1024)}MB`, {
             status: 400,
             type: "invalid_request_error",
             param: "file",
@@ -566,15 +568,17 @@ function validateAudioFile(file) {
     return null;
 }
 
-async function handleOpenAiTranscription(formData, env) {
+async function handleOpenAiCompatibleTranscription(formData, env, providerName = "openai") {
+    const providerLabel = providerName === "groq" ? "Groq" : "OpenAI";
+    const maxAudioFileSize = providerName === "groq" ? MAX_GROQ_AUDIO_FILE_SIZE : MAX_AUDIO_FILE_SIZE;
     let config;
     try {
-        config = await resolveProvider(env, "openai");
+        config = await resolveProvider(env, providerName);
     } catch (error) {
-        return errorResponse(error instanceof Error ? error.message : "读取 OpenAI 配置失败", {
+        return errorResponse(error instanceof Error ? error.message : `读取 ${providerLabel} 配置失败`, {
             status: 500,
             type: "api_error",
-            code: "openai_config_error"
+            code: `${providerName}_config_error`
         });
     }
 
@@ -582,7 +586,7 @@ async function handleOpenAiTranscription(formData, env) {
         return errorResponse(config.keyError, {
             status: 500,
             type: "api_error",
-            code: "openai_key_unreadable"
+            code: `${providerName}_key_unreadable`
         });
     }
 
@@ -594,9 +598,9 @@ async function handleOpenAiTranscription(formData, env) {
 
     let transcriptionUrl;
     try {
-        transcriptionUrl = buildTranscriptionUrl(endpointOverride || config.endpoint);
+        transcriptionUrl = buildTranscriptionUrl(endpointOverride || config.endpoint, providerLabel);
     } catch (error) {
-        return errorResponse(error instanceof Error ? error.message : "OpenAI 转录地址无效", {
+        return errorResponse(error instanceof Error ? error.message : `${providerLabel} 转录地址无效`, {
             status: 400,
             type: "invalid_request_error",
             param: "endpoint",
@@ -606,24 +610,39 @@ async function handleOpenAiTranscription(formData, env) {
 
     const model = modelOverride || config.model;
     const apiKey = apiKeyOverride || config.apiKey;
+    if (providerName === "groq" && !apiKey) {
+        return errorResponse("Groq 转录未配置：请在 Provider 设置里保存 API Key", {
+            status: 500,
+            type: "api_error",
+            code: "groq_not_configured"
+        });
+    }
 
     const audioFile = formData.get("file");
     const sourceUrl = readSourceUrl(formData);
+    // Groq accepts a public audio URL directly as the multipart `url` field.
+    // Keep the URL validation, but do not download and re-upload it through the Worker.
+    let directSourceUrl = "";
+    if (providerName === "groq" && !audioFile && sourceUrl) {
+        const checked = normalizeSourceUrl(sourceUrl);
+        if (checked.error) return sourceUrlError(checked.error);
+        directSourceUrl = checked.url;
+    }
 
     let audioBlob = audioFile;
     let audioName = audioFile && audioFile.name ? audioFile.name : "audio";
     let audioType = audioFile && audioFile.type ? audioFile.type : "";
-    if (!audioBlob && sourceUrl) {
+    if (!audioBlob && sourceUrl && !directSourceUrl) {
         const checked = normalizeSourceUrl(sourceUrl);
         if (checked.error) return sourceUrlError(checked.error);
         try {
-            const remote = await fetchSourceAudio(checked.url, MAX_AUDIO_FILE_SIZE);
+            const remote = await fetchSourceAudio(checked.url, maxAudioFileSize);
             audioBlob = remote.blob;
             audioName = sourceFilename(remote.url, remote.contentType);
             audioType = remote.contentType || remote.blob.type || "application/octet-stream";
         } catch (error) {
             const message = error instanceof Error ? error.message : "音频下载失败";
-            const tooLarge = message.includes("50MB");
+            const tooLarge = message.includes("大小不能超过");
             return errorResponse(message, {
                 status: tooLarge ? 400 : 502,
                 type: tooLarge ? "invalid_request_error" : "api_error",
@@ -632,10 +651,12 @@ async function handleOpenAiTranscription(formData, env) {
             });
         }
     }
-    if (!audioBlob) return missingAudioResponse();
+    if (!audioBlob && !directSourceUrl) return missingAudioResponse();
 
-    const invalid = validateAudioFile({ size: audioBlob.size, type: audioType, name: audioName });
-    if (invalid) return invalid;
+    if (!directSourceUrl) {
+        const invalid = validateAudioFile({ size: audioBlob.size, type: audioType, name: audioName }, maxAudioFileSize);
+        if (invalid) return invalid;
+    }
 
     const language = readOpenAiLanguage(formData.get("language"));
     if (language.error) {
@@ -669,12 +690,17 @@ async function handleOpenAiTranscription(formData, env) {
     // models do not accept; the capability table above decides, and a rejected
     // `verbose_json` (or a model from the future) falls back once at runtime.
     const wantsTimestamps = readBooleanField(formData.get("timestamps"), true);
+    const verboseJsonModelKey = `${providerName}:${model}`;
     const supportsVerboseJson = !NO_VERBOSE_JSON_MODEL_PATTERN.test(model)
-        && !verboseJsonRejectedModels.has(model);
+        && !verboseJsonRejectedModels.has(verboseJsonModelKey);
     const useVerboseJson = wantsTimestamps && supportsVerboseJson;
 
     const apiFormData = new FormData();
-    apiFormData.append("file", audioBlob, audioName);
+    if (directSourceUrl) {
+        apiFormData.append("url", directSourceUrl);
+    } else {
+        apiFormData.append("file", audioBlob, audioName);
+    }
     apiFormData.append("model", model);
     apiFormData.append("response_format", useVerboseJson ? "verbose_json" : "json");
     if (useVerboseJson) {
@@ -710,8 +736,8 @@ async function handleOpenAiTranscription(formData, env) {
     if (!apiResponse.ok && useVerboseJson && (apiResponse.status === 400 || apiResponse.status === 422)) {
         const rejectedText = await apiResponse.clone().text().catch(() => "");
         if (/verbose_json|response_format|timestamp/i.test(rejectedText)) {
-            verboseJsonRejectedModels.add(model);
-            console.warn(`OpenAI model ${model} rejected verbose_json; falling back to json for this isolate.`);
+            verboseJsonRejectedModels.add(verboseJsonModelKey);
+            console.warn(`${providerLabel} model ${model} rejected verbose_json; falling back to json for this isolate.`);
             apiFormData.delete("timestamp_granularities[]");
             apiFormData.set("response_format", "json");
             await apiResponse.text().catch(() => "");
@@ -721,8 +747,8 @@ async function handleOpenAiTranscription(formData, env) {
 
     if (!apiResponse.ok) {
         const errorText = await apiResponse.text();
-        console.error("OpenAI transcription error:", apiResponse.status, errorText.slice(0, 500));
-        return errorResponse(openAiError(apiResponse.status), {
+        console.error(`${providerLabel} transcription error:`, apiResponse.status, errorText.slice(0, 500));
+        return errorResponse(openAiError(apiResponse.status, providerLabel), {
             status: apiResponse.status,
             type: "api_error",
             code: "transcription_api_error"
@@ -733,7 +759,7 @@ async function handleOpenAiTranscription(formData, env) {
     const text = extractText(result);
 
     if (!text) {
-        return errorResponse("OpenAI 转录未返回可用转录文本", {
+        return errorResponse(`${providerLabel} 转录未返回可用转录文本`, {
             status: 502,
             type: "api_error",
             code: "empty_transcription_result"
@@ -979,7 +1005,7 @@ export async function handleAudioTranscription(request, env) {
         // after the engine was renamed to `openai`.
         const engine = requested === "whisper" ? "openai" : requested;
 
-        if (!["openai", "elevenlabs", "google"].includes(engine)) {
+        if (!["openai", "elevenlabs", "google", "groq"].includes(engine)) {
             return errorResponse(`不支持的引擎: ${requested}`, {
                 status: 400,
                 type: "invalid_request_error",
@@ -993,7 +1019,10 @@ export async function handleAudioTranscription(request, env) {
         if (engine === "google") {
             return handleGoogleTranscription(formData, env);
         }
-        return handleOpenAiTranscription(formData, env);
+        if (engine === "groq") {
+            return handleOpenAiCompatibleTranscription(formData, env, "groq");
+        }
+        return handleOpenAiCompatibleTranscription(formData, env);
     } catch (error) {
         console.error("语音转录处理失败:", error);
         return errorResponse(error.message || "语音转录处理失败", {

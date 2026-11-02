@@ -40,8 +40,8 @@ assert.doesNotMatch(
 
 assert.match(
   transcriptionSource,
-  /resolveProvider\(env, "openai"\)/,
-  "the OpenAI engine should read endpoint/model/key from the provider store",
+  /resolveProvider\(env, providerName\)/,
+  "OpenAI-compatible engines should read endpoint/model/key from the provider store",
 );
 
 assert.match(
@@ -210,7 +210,7 @@ assert.doesNotMatch(
   "frontend should not keep unused currentMode state",
 );
 
-for (const key of ["status.fileLabel", "error.copyFailed", "stt.endpoint", "stt.endpointPlaceholder", "stt.endpointHint", "error.endpointRequired", "stt.sourceUrl", "stt.sourceUrlPlaceholder", "stt.sourceUrlHint", "error.audioSourceRequired", "stt.engineOpenai", "stt.engineGoogle", "provider.title", "provider.hint", "provider.apiKey", "provider.model", "provider.save", "provider.statusDb", "provider.statusNone"]) {
+for (const key of ["status.fileLabel", "error.copyFailed", "stt.endpoint", "stt.endpointPlaceholder", "stt.endpointHint", "error.endpointRequired", "stt.sourceUrl", "stt.sourceUrlPlaceholder", "stt.sourceUrlHint", "error.audioSourceRequired", "stt.engineOpenai", "stt.engineGoogle", "stt.engineGroq", "provider.title", "provider.hint", "provider.apiKey", "provider.model", "provider.save", "provider.statusDb", "provider.statusNone"]) {
   assert.ok(i18nSource.includes(`'${key}'`), `translations should include ${key}`);
 }
 
@@ -244,6 +244,18 @@ assert.match(
   "transcription route should dispatch Google requests by engine",
 );
 
+assert.match(
+  transcriptionSource,
+  /engine === "groq"/,
+  "transcription route should dispatch Groq requests by engine",
+);
+
+assert.match(
+  transcriptionSource,
+  /MAX_GROQ_AUDIO_FILE_SIZE\s*=\s*25\s*\*\s*1024\s*\*\s*1024/,
+  "Groq transcription should enforce its 25MB upload limit",
+);
+
 assert.doesNotMatch(
   transcriptionSource,
   /GEMINI_API_KEY|OPENAI_API_KEY|ELEVENLABS_API_KEY/,
@@ -260,6 +272,12 @@ assert.match(
   pageSource,
   /engineGoogle/,
   "frontend should expose the Google transcription engine",
+);
+
+assert.match(
+  pageSource,
+  /engineGroq/,
+  "frontend should expose the Groq transcription engine",
 );
 
 console.log("Verified code hygiene and transcription provider flow.");

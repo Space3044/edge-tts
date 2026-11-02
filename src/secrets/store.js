@@ -8,12 +8,13 @@
 
 import { decryptSecret, encryptSecret, importEncryptionKey, maskSecret } from "./crypto.js";
 
-export const PROVIDERS = ["openai", "elevenlabs", "google"];
+export const PROVIDERS = ["openai", "elevenlabs", "google", "groq"];
 
 export const PROVIDER_DEFAULTS = {
     openai: { endpoint: "https://api.openai.com/v1", model: "whisper-1" },
     elevenlabs: { endpoint: "https://api.elevenlabs.io", model: "scribe_v2" },
-    google: { endpoint: "https://generativelanguage.googleapis.com", model: "gemini-3.5-transcribe" }
+    google: { endpoint: "https://generativelanguage.googleapis.com", model: "gemini-3.5-transcribe" },
+    groq: { endpoint: "https://api.groq.com/openai/v1", model: "whisper-large-v3-turbo" }
 };
 
 export function isSupportedProvider(provider) {

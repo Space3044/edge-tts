@@ -27,7 +27,10 @@ assert.match(readme, /schema\.sql/, "README should point at the consolidated sch
 assert.match(readme, /ElevenLabs/, "README should describe the ElevenLabs transcription flow");
 assert.match(readme, /engine=elevenlabs/, "README should include an ElevenLabs transcription request example");
 assert.match(readme, /gemini-3\.5-transcribe/, "README should describe the Google transcription model");
+assert.match(readme, /Groq/, "README should describe the Groq transcription flow");
+assert.match(readme, /whisper-large-v3-turbo/, "README should describe the Groq default transcription model");
 assert.match(readme, /engine=google/, "README should include a Google transcription request example");
+assert.match(readme, /engine=groq/, "README should include a Groq transcription request example");
 assert.doesNotMatch(readme, /OPENAI_API_KEY|ELEVENLABS_API_KEY|GEMINI_API_KEY/, "README should state that provider keys live only in D1");
 assert.match(readme, /\/tts\b/, "README should document the dedicated text-to-speech page path");
 assert.match(readme, /\/transcription\b/, "README should document the dedicated speech-to-text page path");

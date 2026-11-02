@@ -120,6 +120,8 @@ const env = {
     "the OpenAI provider should default to the official api.openai.com endpoint"
   );
   assert.equal(PROVIDER_DEFAULTS.openai.model, "whisper-1");
+  assert.equal(PROVIDER_DEFAULTS.groq.endpoint, "https://api.groq.com/openai/v1");
+  assert.equal(PROVIDER_DEFAULTS.groq.model, "whisper-large-v3-turbo");
 
   const fresh = { DB: createFakeD1(), SECRETS_ENCRYPTION_KEY: encryptionKey };
   const openai = await resolveProvider(fresh, "openai");
@@ -191,8 +193,8 @@ const env = {
   );
   assert.equal(publicRead.status, 200);
   const readBody = await publicRead.json();
-  assert.equal(readBody.providers.length, 3);
-  assert.deepEqual(readBody.providers.map(entry => entry.provider), ["openai", "elevenlabs", "google"]);
+  assert.equal(readBody.providers.length, 4);
+  assert.deepEqual(readBody.providers.map(entry => entry.provider), ["openai", "elevenlabs", "google", "groq"]);
   assert.ok(
     !("writable" in readBody) && !("writeMode" in readBody),
     "the API no longer reports a write mode; Access owns authorisation"

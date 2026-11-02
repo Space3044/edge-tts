@@ -20,7 +20,7 @@ https://github.com/Space3044/edge-tts
 - 声音库：内置 114 个 Microsoft Edge TTS 声音，支持按语言、性别、名称、地区和 voice ID 搜索；每行右侧的播放按钮可以直接试听（用该音色自己的语言说一句，结果按音色缓存）。
 - 参数调节：支持语速、音调和语音风格，语速和音调可双击恢复默认值。
 - 生成结果：生成后的 MP3 可在线播放和下载。
-- 语音转文字：上传音频或粘贴公开音频 URL，可使用 OpenAI 兼容转录接口、ElevenLabs Scribe 或 Google Gemini Transcribe；三家都能给出句子级时间戳，词级时间戳见各引擎说明。
+- 语音转文字：上传音频或粘贴公开音频 URL，可使用 OpenAI 兼容转录接口、Groq Whisper、ElevenLabs Scribe 或 Google Gemini Transcribe；四家都能给出统一的转录结果，词级时间戳见各引擎说明。
 - AI 润色：调用 OpenAI 兼容接口润色输入文本。
 - 服务配置：转录服务的 endpoint、模型和 API Key 在页面里设置，API Key 用 `SECRETS_ENCRYPTION_KEY` 加密后存进 D1；页面只显示掩码尾巴，不回传明文。
 - 浏览器本地保存：AI 润色的 Base URL、API Key、模型和润色指令只保存在当前浏览器本地。
@@ -166,7 +166,7 @@ npx wrangler secret put SECRETS_ENCRYPTION_KEY   # base64 的 32 字节
 | 接口 | 用途 | 计费/成本 | 保护 |
 | --- | --- | --- |
 | `POST /v1/audio/speech` | 文字转语音，返回 MP3 | Edge TTS 免费 | 公开 |
-| `POST /v1/audio/transcriptions` | 语音转文字，`engine=openai\|elevenlabs\|google` | 按各 provider 的 key 计费 | 建议 Access |
+| `POST /v1/audio/transcriptions` | 语音转文字，`engine=openai\|groq\|elevenlabs\|google` | 按各 provider 的 key 计费 | 建议 Access |
 | `POST /v1/text/polish` | 文本润色（透传 OpenAI 兼容接口） | 调用方自己的 key | 公开 |
 | `POST /api/trancy/captions` | 用账号池生成 YouTube AI 字幕 | **每天每账号 5 个视频额度**，见下文 | 必须 Access |
 | `GET /api/providers` | 读转录服务配置（只回掩码尾巴） | 无 | Access（随 `/api/*`）|
@@ -256,7 +256,7 @@ zh-CN-YunyangNeural
 POST /v1/audio/transcriptions
 ```
 
-当前实现支持三种转录引擎：`openai`（OpenAI 兼容的 `/audio/transcriptions`）、`elevenlabs` 和 `google`。三个引擎的 endpoint、模型和 API Key 都在页面里的 Provider settings 中配置，保存在 D1 的 `provider_config` 表；API Key 用 `SECRETS_ENCRYPTION_KEY` 加密后落库，接口只会返回掩码尾巴。
+当前实现支持四种转录引擎：`openai`（OpenAI 兼容的 `/audio/transcriptions`）、`groq`（Groq Whisper）、`elevenlabs` 和 `google`。四个引擎的 endpoint、模型和 API Key 都在页面里的 Provider settings 中配置，保存在 D1 的 `provider_config` 表；API Key 用 `SECRETS_ENCRYPTION_KEY` 加密后落库，接口只会返回掩码尾巴。
 
 解析顺序是「D1 里保存的值 → 内置默认值」：**密钥只有一个来源，就是 D1**（面板里保存，用 `SECRETS_ENCRYPTION_KEY` 加密）。没有环境变量兜底，所以「现在用的是哪把 key」永远只有一个答案。`engine=whisper` 仍然保留为 `openai` 的别名，老调用方不需要改。
 
@@ -281,6 +281,7 @@ ElevenLabs 默认模型是 `scribe_v2`（可在 Provider settings 里改）。�
 
 Google 的 endpoint、模型和密钥同样在 Provider settings 里配置：endpoint 默认 `https://generativelanguage.googleapis.com`，可以指向自建网关（例如 `https://gateway.example.com/gemini`，带 `/v1beta` 的写法也接受），Worker 会据此拼出 Files API（`{endpoint}/upload/v1beta/files`）和 Interactions API（`{endpoint}/v1beta/interactions`）。默认模型是 `gemini-3.5-transcribe`。音频由 Worker 下载（或接收上传）后传到 Gemini Files API，再调用 Interactions API；词级时间戳来自返回的 `word_info` 注解，句子时间戳同样在本地聚合。密钥只从 D1 读（面板里保存的那一份）：
 
+Groq 使用 OpenAI 兼容的 Speech-to-Text 接口，endpoint 默认 `https://api.groq.com/openai/v1`，模型默认 `whisper-large-v3-turbo`。上传文件时 Worker 转发 multipart 文件；传入公开 URL 时，Worker 只做 URL 安全校验，并将 URL 作为 Groq 的 `url` 字段直接转发，不再下载音频。请求带上 D1 中的 Groq API Key、`response_format=verbose_json` 和 `timestamp_granularities[]=word`，因此返回格式与 OpenAI 引擎一致。Groq 的托管 Whisper 接口单文件上限是 25MB，由 Groq 处理 URL 对应音频的大小限制。
 
 ElevenLabs 请求示例：
 
@@ -312,13 +313,20 @@ curl -X POST "https://your-worker.example.com/v1/audio/transcriptions" \
   -F "engine=google"
 ```
 
+```bash
+curl -X POST "https://your-worker.example.com/v1/audio/transcriptions" \
+  -F "source_url=https://example.com/audio.mp3" \
+  -F "engine=groq"
+```
+
 URL 模式的行为：
 
 - `engine=elevenlabs`：Worker 把 URL 原样交给 ElevenLabs 的 `source_url`，不在 Worker 端下载，ElevenLabs 的 2GB URL 上限生效。
 - `engine=openai`（别名 `whisper`）：Worker 自己下载音频（跟随最多 5 次重定向，每一跳都重新校验），再按 OpenAI 的 `file` 字段转发到 `{endpoint}/audio/transcriptions`；沿用 50MB 上限。请求会带上 `language` / `prompt` / `temperature`（如果提供了），并默认要词级时间戳：用 `response_format=verbose_json` + `timestamp_granularities[]=word`，返回 `text` + `sentences` + `words`。按官方文档，`gpt-4o-transcribe` / `gpt-4o-mini-transcribe` 不支持 `verbose_json`（只有 `json`），`gpt-4o-transcribe-diarize` 只有 `json`/`text`/`diarized_json`，这三种自动退回纯文本；`whisper-1`、`gpt-transcribe`、`gpt-live-transcribe`、`gpt-realtime-whisper` 都有词级时间戳。碰到表里没有的新模型，如果上游拒绝 `verbose_json`，Worker 会自动重试一次 `json`（校验类 400 不计费），并在当前 isolate 内记住这个模型。
 - `engine=google`：Worker 自己下载音频后上传到 Gemini Files API，再调用配置的模型；密钥来自 D1（面板里保存的那一份）。默认请求词级时间戳（`timestamp_granularities: ["word"]`），传 `timestamps=false` 就不再请求，只回文本。
+- `engine=groq`：上传文件时 Worker 按 Groq 的 OpenAI 兼容格式转发到 `{endpoint}/audio/transcriptions`；URL 模式则把公开 URL 直接放到 multipart 的 `url` 字段交给 Groq。默认模型是 `whisper-large-v3-turbo`，默认返回 `verbose_json` + 词级时间戳，单文件上限 25MB。
 - 只允许 `http://` / `https://` 的公开地址；本机、内网、云元数据地址会被拒绝。URL 里不能带用户名或密码。
-- 文件上传仍是 50MB 上限；粘贴 URL 时前端不再要求先选文件。
+- 文件上传通常是 50MB 上限；Groq 按上游限制为 25MB。粘贴 URL 时前端不再要求先选文件。
 
 OpenAI 兼容响应示例：
 
@@ -389,11 +397,11 @@ ElevenLabs 响应示例：
 
 | 参数 | 类型 | 必填 | 说明 |
 | --- | --- | --- | --- |
-| `file` | File | 是 | 音频文件，最大 50MB |
-| `engine` | string | 否 | `openai`、`elevenlabs` 或 `google`，默认 `openai`（`whisper` 是 `openai` 的别名；其他值返回 400 `unknown_engine`） |
-| `endpoint` | string | 否 | 该引擎的 endpoint 覆盖值，默认取 D1 / 内置默认；OpenAI 补 `/audio/transcriptions`，Google 用来拼 Files / Interactions 地址 |
+| `file` | File | 否（URL 模式除外） | 音频文件；普通引擎最大 50MB，Groq 最大 25MB |
+| `engine` | string | 否 | `openai`、`groq`、`elevenlabs` 或 `google`，默认 `openai`（`whisper` 是 `openai` 的别名；其他值返回 400 `unknown_engine`） |
+| `endpoint` | string | 否 | 该引擎的 endpoint 覆盖值，默认取 D1 / 内置默认；OpenAI / Groq 补 `/audio/transcriptions`，Google 用来拼 Files / Interactions 地址 |
 | `model` | string | 否 | 该引擎的模型覆盖值，默认取 D1 配置 |
-| `apiKey` | string | 否 | 仅 OpenAI 引擎支持单次覆盖；默认使用保存在 D1 的密钥 |
+| `apiKey` | string | 否 | OpenAI / Groq 支持单次覆盖；默认使用保存在 D1 的密钥 |
 | `language` | string | OpenAI / ElevenLabs 可选 | OpenAI 用 ISO-639-1 两字母代码（`en`、`zh`、`ja`）；ElevenLabs 用官方三字母代码（`eng`、`zho`、`jpn`、`kor`、`spa`、`fra`、`deu`、`rus`）。留空或 `auto` 表示自动检测 |
 | `tagAudioEvents` | string | ElevenLabs 可选 | 是否标记笑声、掌声等音频事件，传 `true` 或 `false`，默认 `false` |
 | `prompt` | string | OpenAI 可选 | 词表/上下文提示，最长 1000 字符；对人名、专有名词、术语很有效。`gpt-4o-transcribe-diarize` 不支持该字段，会跳过 |
@@ -418,7 +426,7 @@ GET /api/providers              # 公开，只返回 endpoint、模型、是否�
 PUT /api/providers/:provider    # 由 Cloudflare Access 保护（Worker 自身不校验 token）
 ```
 
-`provider` 取值 `openai`、`elevenlabs`、`google`。请求示例：
+`provider` 取值 `openai`、`groq`、`elevenlabs`、`google`。请求示例：
 
 ```bash
 curl -X PUT "https://your-worker.example.com/api/providers/openai" \
@@ -646,6 +654,7 @@ node scripts/verify-voices.mjs
 node scripts/verify-transcription-format.mjs
 node scripts/verify-elevenlabs-stt.mjs
 node scripts/verify-google-stt.mjs
+node scripts/verify-groq-stt.mjs
 node scripts/verify-transcription-url.mjs
 node scripts/verify-provider-secrets.mjs
 node scripts/verify-trancy-gateway.mjs
@@ -657,10 +666,10 @@ git diff --check
 
 - Edge TTS 依赖 Microsoft 服务可用性，网络环境会影响生成成功率。
 - 长文本会自动拆分再合成，内容越长，生成时间越久。
-- STT 文件上传限制为 50MB；OpenAI 引擎的 URL 模式同样限制 50MB，ElevenLabs 的 URL 模式由 ElevenLabs 自己限制（2GB），Google 的 URL 模式也受 Worker 50MB 上限约束。
-- 三个引擎的密钥都只从 D1 读：在 Provider settings 里保存（加密），没有环境变量兜底，所以**部署只需要一个 secret：`SECRETS_ENCRYPTION_KEY`**。
+- STT 文件上传通常限制为 50MB；OpenAI 和 Groq 引擎的 URL 模式分别受 50MB / 25MB 限制，ElevenLabs 的 URL 模式由 ElevenLabs 自己限制（2GB），Google 的 URL 模式受 Worker 50MB 上限约束。
+- 四个引擎的密钥都只从 D1 读：在 Provider settings 里保存（加密），没有环境变量兜底，所以**部署只需要一个 secret：`SECRETS_ENCRYPTION_KEY`**。
 - 文本文件上传限制为 500KB。
-- URL 模式会跟随最多 5 次重定向，并拒绝本机/内网地址；Worker 不会把任意 URL 当作内网代理。
+- OpenAI / Google 的 URL 模式由 Worker 下载并最多跟随 5 次重定向；Groq / ElevenLabs 将 URL 交给上游处理。所有 URL 仍会拒绝本机/内网地址，Worker 不会把任意 URL 当作内网代理。
 - 自建 OpenAI 兼容服务如果部署在非标准 HTTPS 端口，Cloudflare Workers 发布环境可能忽略自定义端口，建议使用标准 443 端口或反向代理到标准端口。
 - 项目需要 D1 存服务配置；没有 D1 binding 时设置接口会返回明确错误，页面里的 Provider settings 不可写。
 - 更换 `SECRETS_ENCRYPTION_KEY` 会让已保存的 API Key 无法解密，需要在页面里重新填写一次。

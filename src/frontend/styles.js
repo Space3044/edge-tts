@@ -123,7 +123,7 @@ export const PAGE_STYLES = `
     .provider-modal-header .provider-hint { margin:3px 0 0; color:var(--text-2); font-size:.76rem; font-family:var(--font-mono); }
     .provider-modal-close { flex:0 0 28px; width:28px; height:28px; display:grid; place-items:center; border:1px solid var(--border); background:var(--surface); color:var(--text-2); border-radius:var(--radius-xs); font-size:.95rem; line-height:1; cursor:pointer; transition:all .15s ease; }
     .provider-modal-close:hover { background:var(--error-bg); border-color:var(--error-border); color:var(--error); }
-    .provider-cards { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:14px; align-items:stretch; padding:18px 20px; overflow-y:auto; flex:1 1 auto; min-height:0; }
+    .provider-cards { display:grid; grid-template-columns:repeat(auto-fit,minmax(200px,1fr)); gap:14px; align-items:stretch; padding:18px 20px; overflow-y:auto; flex:1 1 auto; min-height:0; }
     .provider-card { display:flex; flex-direction:column; gap:9px; padding:15px; background:var(--surface-2); border:1px solid var(--border); border-radius:var(--radius-md); box-shadow:var(--shadow-sm); transition:border-color .15s ease; }
     .provider-card:hover { border-color:var(--border-strong); }
     .provider-card-header { display:flex; align-items:center; justify-content:space-between; gap:8px; margin-bottom:2px; }
