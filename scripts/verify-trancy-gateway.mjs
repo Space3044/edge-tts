@@ -573,11 +573,14 @@ const env = { DB: createFakeD1(), SECRETS_ENCRYPTION_KEY: encryptionKey };
     assert.equal(again.ok, true);
     assert.equal(captionCalls.length, 2, "a repeat goes upstream again");
 
-    // Trancy says the daily limit is gone: park that account, not the pool.
+    // A third account, so the failover below has to walk past two refusals.
+    await addTrancyAccount(env, { token: makeToken({ id: "acct-three", name: "three", iat: 1793620002 }), fetchImpl: profileOk });
+
+    // Trancy says the daily limit is gone: park those accounts, not the pool.
     let limitCalls = 0;
     const limitFetch = fakeFetch(async () => {
         limitCalls += 1;
-        if (limitCalls === 1) {
+        if (limitCalls <= 2) {
             return new Response(JSON.stringify({ code: 403, message: "You've reached the daily limit of 5 AI subtitles for free users. Upgrade to premium for unlimited access." }), {
                 status: 200,
                 headers: { "Content-Type": "application/json", "x-quota-limit": "5", "x-quota-remaining": "0" }
@@ -590,10 +593,10 @@ const env = { DB: createFakeD1(), SECRETS_ENCRYPTION_KEY: encryptionKey };
     });
 
     const failover = await requestYoutubeCaptions(env, { videoId: "anotherVideoId", target: "en", fetchImpl: limitFetch });
-    assert.equal(failover.ok, true, "an exhausted account makes the scheduler try the next one");
-    assert.equal(limitCalls, 2, "the refusal is retried once on the next account");
+    assert.equal(failover.ok, true, "two exhausted accounts later, the third one still answers");
+    assert.equal(limitCalls, 3, "the scheduler walks the candidate list, not just one retry");
     const parked = Array.from(env.DB.rows.values()).filter(row => row.exhausted_until);
-    assert.equal(parked.length, 1, "exactly one account is parked until the next UTC day");
+    assert.equal(parked.length, 2, "each refusing account is parked until the next UTC day");
     assert.match(parked[0].exhausted_until, /T00:00:00\.000Z$/, "the reset is the next UTC midnight");
     assert.equal(parked[0].status, "ok", "an exhausted account keeps its status and token");
 
