@@ -388,4 +388,51 @@ const expiredExp = Math.floor(Date.now() / 1000) - 60;
   }
 }
 
+// 12. A subscription key is used directly (long-lived, no token needed).
+{
+  const env = { DB: createFakeD1(), SECRETS_ENCRYPTION_KEY: encryptionKey, CF_ACCESS_TRUSTED: "1" };
+  const saved = await handleProviders(
+    new Request("https://voicecraft.example.com/api/providers/microsoft", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ region: "eastasia", apiKey: "speech-key-1234" })
+    }),
+    env
+  );
+  assert.equal(saved.status, 200);
+
+  const account = await getMicrosoftAccount(env);
+  assert.equal(account.subscriptionKey, "speech-key-1234");
+
+  const originalFetch = globalThis.fetch;
+  let headers;
+  globalThis.fetch = async (url, init) => {
+    headers = init.headers;
+    return new Response(JSON.stringify({
+      combinedPhrases: [{ text: "ok" }],
+      phrases: [{ offsetMilliseconds: 0, durationMilliseconds: 100, text: "ok", words: [{ text: "ok", offsetMilliseconds: 0, durationMilliseconds: 100 }] }]
+    }), { status: 200, headers: { "Content-Type": "application/json" } });
+  };
+
+  try {
+    const formData = new FormData();
+    formData.append("file", new File(["audio"], "sample.mp3", { type: "audio/mpeg" }));
+    formData.append("engine", "microsoft");
+
+    const response = await handleAudioTranscription(
+      new Request("https://voicecraft.example.com/v1/audio/transcriptions", { method: "POST", body: formData }),
+      env
+    );
+    const body = await response.json();
+    assert.equal(response.status, 200, JSON.stringify(body));
+    assert.equal(headers["Ocp-Apim-Subscription-Key"], "speech-key-1234");
+    assert.equal(headers.Authorization, undefined, "a key must not be sent as a bearer token");
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+
+  const status = (await listProviderStatus(env)).find(entry => entry.provider === "microsoft");
+  assert.ok(!JSON.stringify(status).includes("speech-key-1234"), "status must only expose the masked tail");
+}
+
 console.log("Verified Microsoft pasted-token storage and Azure fast transcription flow.");

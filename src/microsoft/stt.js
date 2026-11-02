@@ -102,6 +102,7 @@ function normalizeSentences(phrases) {
 
 export async function transcribeWithMicrosoft({
     accessToken,
+    subscriptionKey,
     endpoint,
     data,
     filename,
@@ -110,8 +111,10 @@ export async function transcribeWithMicrosoft({
     diarization = true,
     signal
 }) {
-    if (!accessToken) {
-        throw new Error("Microsoft 未登录：请先在服务配置里连接微软账号");
+    const key = String(subscriptionKey || "").trim();
+    const token = String(accessToken || "").trim();
+    if (!key && !token) {
+        throw new Error("Microsoft 未配置凭据：请保存订阅密钥或 access token");
     }
 
     const definition = {
@@ -128,7 +131,9 @@ export async function transcribeWithMicrosoft({
     const response = await fetch(buildTranscriptionUrl(endpoint), {
         method: "POST",
         headers: {
-            Authorization: `Bearer ${accessToken}`,
+            // A subscription key is the long-lived credential; a bearer token
+            // only lives for about an hour. Either is accepted by Azure.
+            ...(key ? { "Ocp-Apim-Subscription-Key": key } : { Authorization: `Bearer ${token}` }),
             Accept: "application/json"
         },
         body,
@@ -139,7 +144,7 @@ export async function transcribeWithMicrosoft({
     if (!response.ok) {
         const detail = raw.slice(0, 300);
         if (response.status === 401 || response.status === 403) {
-            throw new Error(`Microsoft 拒绝了访问令牌，请重新登录微软账号（${response.status}）：${detail}`);
+            throw new Error(`Microsoft 拒绝了凭据，请检查订阅密钥或 access token（${response.status}）：${detail}`);
         }
         throw new Error(`Microsoft 转录失败（${response.status}）：${detail}`);
     }

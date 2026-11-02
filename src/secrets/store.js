@@ -259,12 +259,14 @@ export async function saveProviderConfig(env, provider, input = {}) {
  */
 export async function getMicrosoftAccount(env) {
     const row = (await readRows(env)).get("microsoft");
+    const stored = await decryptRowKey("microsoft", row, env);
     const access = await decryptAccessToken(row, env);
     const refresh = await decryptRefreshToken(row, env);
     const tokenError = access.tokenError || refresh.tokenError;
     const expiresAt = String(row?.access_token_expires_at || "");
 
     return {
+        subscriptionKey: stored.apiKey,
         accessToken: access.accessToken,
         accessTokenExpiresAt: expiresAt,
         accessTokenExpired: access.accessToken

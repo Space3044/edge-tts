@@ -233,15 +233,18 @@ POST https://{region}.api.cognitive.microsoft.com
      /speechtotext/transcriptions:transcribe?api-version=2024-11-15
 ```
 
-需要的令牌：
+需要的凭据（二选一，**推荐订阅密钥**）：
 
-| 字段 | 是否必填 | 说明 |
-| --- | --- | --- |
-| `Region` | 必填 | Azure 区域，例如 `eastasia`，用来拼 `https://{region}.api.cognitive.microsoft.com` |
-| `Access token` | 至少填一个 | audience 必须是 `https://cognitiveservices.azure.com`；Worker 会读 JWT 的 `exp` 判断是否过期，token 不是给 Cognitive Services 的直接拒绝 |
-| `Refresh token` | 可选 | 填了才能自动续期；access token 过期后 Worker 会用它换新的（并保存轮换后的 refresh token） |
+| 字段 | 说明 |
+| --- | --- |
+| `Region` | 必填，Azure 区域，例如 `eastasia`，用来拼 `https://{region}.api.cognitive.microsoft.com` |
+| `Subscription key` | 推荐。Speech 资源 →「密钥和终结点」里的 `KEY 1`，永不过期，请求带 `Ocp-Apim-Subscription-Key` |
+| `Access token` | 可选。订阅密钥的替代品，audience 必须是 `https://cognitiveservices.azure.com`；Worker 读 JWT 的 `exp` 判断过期，audience 不对直接拒绝 |
+| `Refresh token` | 可选，配合 access token 自动续期；轮换后的新值会存回 D1 |
 
-自动续期需要发起续期的应用 id，因此还要配一个 Worker secret（不配就只能手动更新 access token）：
+填了订阅密钥就完全不走 token/续期逻辑；两者都填时订阅密钥优先。
+
+只有走 access token + 自动续期时，才需要发起续期的应用 id：
 
 ```bash
 npx wrangler secret put MICROSOFT_CLIENT_ID    # 签发这批 token 的应用
@@ -249,7 +252,7 @@ npx wrangler secret put MICROSOFT_CLIENT_SECRET  # 公共客户端/纯 PKCE 可�
 npx wrangler secret put MICROSOFT_TENANT       # 默认 common
 ```
 
-另外仍然需要 Azure 里的 **Speech 资源**（免费层 F0 每月 5 小时），签发令牌的账号要在该资源上有 `Cognitive Services Speech User` 角色。**不要**复用 Thunderbird / Office / Azure CLI 这类第三方公开 client id——它们的应用没有声明 Speech 权限，续期会失败（AADSTS65001），而且是冒用别人的应用身份。
+两种方式都需要 Azure 里的 **Speech 资源**（免费层 F0 每月 5 小时）。用订阅密钥时不需要任何额外角色；用 token 时，签发令牌的账号要在该资源上有 `Cognitive Services Speech User` 角色。**不要**复用 Thunderbird / Office / Azure CLI 这类第三方公开 client id——它们的应用没有声明 Speech 权限，续期会失败（AADSTS65001），而且是冒用别人的应用身份。
 
 配了 `MICROSOFT_CLIENT_ID` 的话可以先自检续期凭据：
 

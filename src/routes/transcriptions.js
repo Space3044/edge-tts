@@ -738,8 +738,11 @@ async function handleMicrosoftTranscription(formData, env) {
         });
     }
 
-    if (!account.accessToken && !account.refreshToken) {
-        return errorResponse("Microsoft 未配置令牌：请在服务配置里粘贴 access token", {
+    // A subscription key never expires, so it short-circuits the token dance.
+    const subscriptionKey = String(account.subscriptionKey || "").trim();
+
+    if (!subscriptionKey && !account.accessToken && !account.refreshToken) {
+        return errorResponse("Microsoft 未配置凭据：请保存订阅密钥或 access token", {
             status: 401,
             type: "authentication_error",
             code: "microsoft_token_required"
@@ -749,7 +752,7 @@ async function handleMicrosoftTranscription(formData, env) {
     let accessToken = account.accessToken;
     let renewed = false;
 
-    if (!accessToken || account.accessTokenExpired) {
+    if (!subscriptionKey && (!accessToken || account.accessTokenExpired)) {
         if (!account.refreshToken) {
             return errorResponse("Microsoft access token 已过期，请在服务配置里粘贴新的 access token", {
                 status: 401,
@@ -783,7 +786,7 @@ async function handleMicrosoftTranscription(formData, env) {
         }
     }
 
-    const audienceProblem = accessTokenAudienceProblem(accessToken);
+    const audienceProblem = subscriptionKey ? null : accessTokenAudienceProblem(accessToken);
     if (audienceProblem) {
         return errorResponse(audienceProblem, {
             status: 400,
@@ -845,6 +848,7 @@ async function handleMicrosoftTranscription(formData, env) {
     try {
         const result = await transcribeWithMicrosoft({
             accessToken,
+            subscriptionKey,
             endpoint: base,
             data,
             filename,
