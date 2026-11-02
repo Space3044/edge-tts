@@ -17,6 +17,7 @@
 
 import { decryptSecret, encryptSecret, importEncryptionKey } from "../secrets/crypto.js";
 import { fetchTrancyProfile, loginTrancyCredentials, signupTrancyCredentials } from "./api.js";
+import { requireDatabase } from "./db.js";
 import { maskTrancyToken, normalizeTrancyToken, parseTrancyToken } from "./token.js";
 
 export const TRANCY_STATUS = {
@@ -28,17 +29,18 @@ export const TRANCY_STATUS = {
 
 const SELECT_COLUMNS = `id, token_cipher, password, user_id, name, email, premium, banned,
     status, token_issued_at, last_checked_at, last_used_at, use_count, fail_count, cooldown_until,
+    quota_limit, quota_remaining, quota_checked_at, exhausted_until, day_used, day_used_date,
     created_at, updated_at`;
 
-function hasDatabase(env) {
-    return Boolean(env && env.DB && typeof env.DB.prepare === "function");
+/** UTC day key. Trancy's own reset boundary is unmeasured, so stay on UTC. */
+export function utcDay(at = Date.now()) {
+    return new Date(at).toISOString().slice(0, 10);
 }
 
-function requireDatabase(env) {
-    if (!hasDatabase(env)) {
-        throw new Error("D1 binding DB 未配置，无法读写 Trancy 账号");
-    }
-    return env.DB;
+/** First instant of the next UTC day, in ISO form. */
+export function nextUtcMidnight(at = Date.now()) {
+    const date = new Date(at);
+    return new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate() + 1)).toISOString();
 }
 
 function aadFor(id) {
@@ -96,6 +98,14 @@ export function accountView(row, { tokenTail = "", tokenError = null, includePas
         useCount: Number(row?.use_count || 0),
         failCount: Number(row?.fail_count || 0),
         cooldownUntil: isoFromRow(row?.cooldown_until),
+        // AI-subtitle quota as last reported by Trancy. `quotaRemaining` is -1
+        // until an account has answered once; `usedToday` is our own count, so
+        // the scheduler has a number even when the headers lie.
+        quotaLimit: Number(row?.quota_limit || 0),
+        quotaRemaining: Number(row?.quota_remaining ?? -1),
+        quotaCheckedAt: isoFromRow(row?.quota_checked_at),
+        exhaustedUntil: isoFromRow(row?.exhausted_until),
+        usedToday: String(row?.day_used_date || "") === utcDay() ? Number(row?.day_used || 0) : 0,
         createdAt: isoFromRow(row?.created_at),
         updatedAt: isoFromRow(row?.updated_at)
     };
@@ -524,10 +534,11 @@ export async function pickTrancyAccount(env) {
         .prepare(
             `SELECT ${SELECT_COLUMNS} FROM trancy_account
               WHERE status = ? AND (cooldown_until = '' OR cooldown_until <= ?)
+                AND (exhausted_until = '' OR exhausted_until <= ?)
               ORDER BY (last_used_at = '') DESC, last_used_at ASC
               LIMIT 1`
         )
-        .bind(TRANCY_STATUS.ok, nowIso())
+        .bind(TRANCY_STATUS.ok, nowIso(), nowIso())
         .first();
 
     if (!row) {
@@ -565,6 +576,125 @@ export async function recordTrancyUsage(env, id, { ok = true, cooldownMinutes = 
 }
 
 /** Normalize then hand back the token, so routes can validate before saving. */
+/**
+ * Accounts that may still spend AI-subtitle quota today.
+ *
+ * Ordering is local-first: our own `day_used` counter decides who is cheapest,
+ * then the last observed `x-quota-remaining`, and only then LRU. Accounts that
+ * Trancy explicitly refused sit in `exhausted_until`, so a 403 is not retried
+ * on every job - that is the difference between "5 videos a day" and "5
+ * requests a day".
+ */
+export async function pickCaptionAccounts(env, { limit = 3 } = {}) {
+    const now = nowIso();
+    const { results } = await requireDatabase(env)
+        .prepare(
+            `SELECT ${SELECT_COLUMNS} FROM trancy_account
+              WHERE status = ? AND (cooldown_until = '' OR cooldown_until <= ?)
+                AND (exhausted_until = '' OR exhausted_until <= ?)
+              ORDER BY last_used_at ASC`
+        )
+        .bind(TRANCY_STATUS.ok, now, now)
+        .all();
+
+    const day = utcDay();
+    const ranked = (results || []).map(row => ({
+        row,
+        usedToday: String(row.day_used_date || "") === day ? Number(row.day_used || 0) : 0,
+        remaining: Number(row.quota_remaining ?? -1)
+    })).sort((left, right) => {
+        if (left.usedToday !== right.usedToday) {
+            return left.usedToday - right.usedToday;
+        }
+        // -1 means "never answered"; treat it as one attempt's worth of room so
+        // a fresh account is tried before a known-empty one.
+        const leftRoom = left.remaining < 0 ? 1 : left.remaining;
+        const rightRoom = right.remaining < 0 ? 1 : right.remaining;
+        if (leftRoom !== rightRoom) {
+            return rightRoom - leftRoom;
+        }
+        return String(left.row.last_used_at).localeCompare(String(right.row.last_used_at));
+    });
+
+    const picked = [];
+    for (const entry of ranked) {
+        const { token, error } = await decryptToken(env, entry.row);
+        if (!token) {
+            continue;
+        }
+        picked.push({
+            id: entry.row.id,
+            email: String(entry.row.email || ""),
+            name: String(entry.row.name || ""),
+            token,
+            tokenError: error,
+            usedToday: entry.usedToday,
+            quotaRemaining: entry.remaining
+        });
+        if (picked.length >= limit) {
+            break;
+        }
+    }
+    return picked;
+}
+
+/** Book one caption generation against an account and store the quota headers. */
+export async function recordCaptionUsage(env, id, { quotaLimit = 0, quotaRemaining = -1 } = {}) {
+    const row = await readRow(env, id);
+    if (!row) {
+        return null;
+    }
+    const timestamp = nowIso();
+    const day = utcDay();
+    const usedToday = String(row.day_used_date || "") === day ? Number(row.day_used || 0) + 1 : 1;
+    await requireDatabase(env)
+        .prepare(
+            `UPDATE trancy_account SET
+                 quota_limit = ?, quota_remaining = ?, quota_checked_at = ?,
+                 day_used = ?, day_used_date = ?, last_used_at = ?,
+                 use_count = use_count + 1, updated_at = ?
+             WHERE id = ?`
+        )
+        .bind(quotaLimit, quotaRemaining, timestamp, usedToday, day, timestamp, timestamp, id)
+        .run();
+    return usedToday;
+}
+
+/**
+ * Park an account until the next UTC day. The token is still fine - only the
+ * free quota is gone - so `status` stays `ok` and the daily cron keeps renewing
+ * it.
+ */
+export async function markCaptionExhausted(env, id, until = nextUtcMidnight()) {
+    const timestamp = nowIso();
+    await requireDatabase(env)
+        .prepare(
+            `UPDATE trancy_account SET exhausted_until = ?, quota_remaining = 0,
+                 quota_checked_at = ?, updated_at = ? WHERE id = ?`
+        )
+        .bind(until, timestamp, timestamp, id)
+        .run();
+}
+
+export async function readCaptionCache(env, videoId, target) {
+    const row = await requireDatabase(env)
+        .prepare("SELECT video_id, target, account_id, payload, sentence_count, created_at FROM trancy_caption WHERE video_id = ? AND target = ?")
+        .bind(videoId, target)
+        .first();
+    return row || null;
+}
+
+export async function writeCaptionCache(env, { videoId, target, accountId = "", payload, sentenceCount = 0 }) {
+    await requireDatabase(env)
+        .prepare(
+            `INSERT OR REPLACE INTO trancy_caption
+                 (video_id, target, account_id, payload, sentence_count, created_at)
+             VALUES (?, ?, ?, ?, ?, ?)`
+        )
+        .bind(videoId, target, accountId, payload, sentenceCount, nowIso())
+        .run();
+}
+
 export function normalizeIncomingToken(raw) {
     return normalizeTrancyToken(raw);
 }

@@ -6,6 +6,8 @@
  * DELETE /api/trancy/accounts/:id          — forget an account
  * POST   /api/trancy/accounts/refresh      — probe every account now
  * POST   /api/trancy/accounts/:id/refresh  — probe one account
+ * POST   /api/trancy/captions             — generate YouTube AI subtitles within the daily quota
+ * GET    /api/trancy/captions/:videoId    — cached subtitles only, never spends quota
  * POST   /api/trancy/relay                — forward a request with a pooled token
  *
  * Writes and relays share the provider guard (`src/utils/admin.js`): the relay
@@ -13,6 +15,7 @@
  */
 
 import { relayTrancyRequest, TRANCY_API_ORIGIN, TRANCY_PROFILE_PATH } from "../trancy/api.js";
+import { normalizeCaptionRequest, readCachedCaptions, requestYoutubeCaptions } from "../trancy/captions.js";
 import {
     accountView,
     addTrancyAccount,
@@ -293,6 +296,96 @@ async function handleAccounts(request, env, segments) {
     });
 }
 
+/**
+ * `POST /api/trancy/captions {videoId, target}` spends quota, so it sits behind
+ * the same guard as the relay. The cache read (`GET`) does not spend anything
+ * and stays open, which is what makes retrying a finished video free.
+ */
+async function handleCaptions(request, env, segments) {
+    if (request.method === "GET") {
+        const videoId = String(segments[3] || "");
+        const target = new URL(request.url).searchParams.get("target") || "en";
+        const normalized = normalizeCaptionRequest({ videoId, target });
+        if (normalized.error) {
+            return errorResponse(normalized.error, {
+                status: 400,
+                type: "invalid_request_error",
+                param: "videoId",
+                code: "invalid_caption_request"
+            });
+        }
+        const cached = await readCachedCaptions(env, normalized);
+        if (!cached) {
+            return errorResponse("这个视频还没有缓存，需要先 POST 生成", {
+                status: 404,
+                type: "invalid_request_error",
+                param: "videoId",
+                code: "caption_not_cached"
+            });
+        }
+        return jsonResponse(cached);
+    }
+
+    if (request.method !== "POST") {
+        return errorResponse("只支持 POST /api/trancy/captions 和 GET /api/trancy/captions/:videoId", {
+            status: 405,
+            type: "invalid_request_error",
+            param: "method",
+            code: "method_not_allowed"
+        });
+    }
+
+    const denied = requireAdmin(request, env, "Trancy 网关");
+    if (denied) {
+        return denied;
+    }
+
+    const body = await readJsonBody(request);
+    if (!body) {
+        return errorResponse("请求体必须是 JSON", {
+            status: 400,
+            type: "invalid_request_error",
+            param: "body",
+            code: "invalid_json"
+        });
+    }
+
+    const normalized = normalizeCaptionRequest({ videoId: body.videoId, target: body.target });
+    if (normalized.error) {
+        return errorResponse(normalized.error, {
+            status: 400,
+            type: "invalid_request_error",
+            param: "videoId",
+            code: "invalid_caption_request"
+        });
+    }
+
+    const result = await requestYoutubeCaptions(env, normalized);
+    if (!result.ok) {
+        const status = result.reason === "no_account" || result.reason === "no_caption_quota" ? 503 : 502;
+        return jsonResponse({
+            error: {
+                message: result.message,
+                type: "api_error",
+                param: "videoId",
+                code: result.reason
+            },
+            resetAt: result.resetAt,
+            tried: result.tried
+        }, { status });
+    }
+
+    return jsonResponse(result, {
+        headers: {
+            "X-Trancy-Account": result.account.id,
+            "X-Trancy-Cached": result.cached ? "1" : "0",
+            "X-Quota-Limit": String(result.quota.limit),
+            "X-Quota-Remaining": String(result.quota.remaining),
+            "Access-Control-Expose-Headers": "X-Trancy-Account, X-Trancy-Cached, X-Quota-Limit, X-Quota-Remaining"
+        }
+    });
+}
+
 function relayTargetError(path) {
     if (!path) {
         return "缺少 path，例如 /2/dictionary?text=hello&target=zh-CN";
@@ -423,6 +516,9 @@ export async function handleTrancy(request, env = {}) {
     try {
         if (segments.length >= 3 && segments[2] === "accounts") {
             return await handleAccounts(request, env, segments);
+        }
+        if (segments[2] === "captions" && segments.length >= 3 && segments.length <= 4) {
+            return await handleCaptions(request, env, segments);
         }
         if (segments.length === 3 && segments[2] === "relay") {
             return await handleRelay(request, env);

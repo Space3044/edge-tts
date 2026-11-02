@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { bytesToBase64, importEncryptionKey, decryptSecret } from "../src/secrets/crypto.js";
+import { normalizeCaptionRequest, requestYoutubeCaptions } from "../src/trancy/captions.js";
 import { handleTrancy } from "../src/routes/trancy.js";
 import {
     addTrancyAccount,
@@ -21,8 +22,13 @@ import { maskTrancyToken, normalizeTrancyToken, parseTrancyToken } from "../src/
  */
 function createFakeD1() {
     const rows = new Map();
+    const captions = new Map();
 
     function selectRows(sql, params) {
+        if (/FROM trancy_caption/.test(sql)) {
+            return Array.from(captions.values())
+                .filter(row => row.video_id === params[0] && row.target === params[1]);
+        }
         const all = Array.from(rows.values());
         if (/ORDER BY created_at/.test(sql)) {
             return all.sort((a, b) => String(a.created_at).localeCompare(String(b.created_at)));
@@ -34,9 +40,15 @@ function createFakeD1() {
             return all.filter(row => row.user_id === params[0] && params[0]);
         }
         if (/WHERE status = \?/.test(sql)) {
-            const now = String(params[1] || "");
+            // The candidates query binds (status, now [, now]) and may also ask
+            // for `exhausted_until`; the plain picker only binds (status, now).
+            const cooldownNow = String(params[1] || "");
+            const exhaustedNow = String(params[2] || cooldownNow);
+            const wantsExhausted = /exhausted_until/.test(sql);
             return all
-                .filter(row => row.status === params[0] && (!row.cooldown_until || row.cooldown_until <= now))
+                .filter(row => row.status === params[0])
+                .filter(row => !row.cooldown_until || row.cooldown_until <= cooldownNow)
+                .filter(row => !wantsExhausted || !row.exhausted_until || row.exhausted_until <= exhaustedNow)
                 .sort((a, b) => {
                     const aUsed = a.last_used_at ? 1 : 0;
                     const bUsed = b.last_used_at ? 1 : 0;
@@ -49,6 +61,7 @@ function createFakeD1() {
 
     return {
         rows,
+        captions,
         prepare(sql) {
             const statement = String(sql);
             return {
@@ -65,6 +78,18 @@ function createFakeD1() {
                     return found.length ? { ...found[0] } : null;
                 },
                 async run() {
+                    if (/^INSERT (OR REPLACE )?INTO trancy_caption/.test(statement)) {
+                        const columns = splitList(statement.match(/\(([\s\S]*?)\)\s*VALUES/)[1]);
+                        const values = splitList(statement.match(/VALUES\s*\(([\s\S]*)\)\s*$/)[1]);
+                        const row = {};
+                        let cursor = 0;
+                        values.forEach((expression, index) => {
+                            row[columns[index]] = expression === "?" ? this._params[cursor++] : literal(expression);
+                        });
+                        captions.set(`${row.video_id}|${row.target}`, row);
+                        return { success: true, meta: { changes: 1 } };
+                    }
+
                     if (/^INSERT INTO trancy_account/.test(statement)) {
                         const columns = splitList(statement.match(/\(([\s\S]*?)\)\s*VALUES/)[1]);
                         const values = splitList(statement.match(/VALUES\s*\(([\s\S]*)\)\s*$/)[1]);
@@ -614,6 +639,148 @@ const env = { DB: createFakeD1(), SECRETS_ENCRYPTION_KEY: encryptionKey, ADMIN_T
     const lockedPayload = await locked.json();
     assert.equal(lockedPayload.writable, false);
     assert.equal(lockedPayload.passwordsVisible, false, "a locked deployment never echoes passwords");
+}
+
+// 13. YouTube captions: cache first, then quota-aware scheduling.
+{
+    // Fresh pool: two healthy accounts, both with room.
+    for (const row of Array.from(env.DB.rows.values())) env.DB.rows.delete(row.id);
+    // Adding probes the account, so the fake profile has to answer honestly or
+    // both accounts would be marked dead before the captions tests start.
+    const profileOk = fakeFetch(async (url, options) => {
+        const auth = String(options.headers?.Authorization || "").replace("Bearer ", "");
+        const payload = JSON.parse(Buffer.from(auth.split(".")[1], "base64url").toString());
+        return profileReply({
+            data: { id: payload.id, token: auth, email: `${payload.id}@example.com`, banned: false },
+            message: "ok"
+        });
+    });
+    await addTrancyAccount(env, { token: makeToken({ id: "acct-one", name: "one", iat: 1793620000 }), fetchImpl: profileOk });
+    await addTrancyAccount(env, { token: makeToken({ id: "acct-two", name: "two", iat: 1793620001 }), fetchImpl: profileOk });
+    for (const row of env.DB.rows.values()) {
+        row.last_used_at = "";
+    }
+
+    assert.ok(normalizeCaptionRequest({ videoId: "", target: "en" }).error);
+    assert.ok(normalizeCaptionRequest({ videoId: "abc", target: "en" }).error, "short ids are rejected");
+    assert.ok(normalizeCaptionRequest({ videoId: "npka43vhwNo", target: "not a lang" }).error);
+    assert.equal(normalizeCaptionRequest({ videoId: "npka43vhwNo", target: "en" }).error, null);
+
+    const captionCalls = [];
+    const captionFetch = fakeFetch(async (url) => {
+        captionCalls.push(String(url));
+        return new Response(JSON.stringify({
+            data: [
+                { start: 189, end: 649, text: "Hi, Neil.", sid: "youtube:npka43vhwNo:189:649" },
+                { start: 809, end: 1329, text: "Hi, Georgie.", sid: "youtube:npka43vhwNo:809:1329" }
+            ]
+        }), {
+            status: 200,
+            headers: { "Content-Type": "application/json", "x-quota-limit": "5", "x-quota-remaining": "3" }
+        });
+    });
+
+    const first = await requestYoutubeCaptions(env, { videoId: "npka43vhwNo", target: "en", fetchImpl: captionFetch });
+    assert.equal(first.ok, true);
+    assert.equal(first.cached, false, "the first request goes upstream");
+    assert.equal(first.sentenceCount, 2);
+    assert.equal(first.quota.limit, 5);
+    assert.equal(first.quota.remaining, 3, "quota headers are persisted for the scheduler");
+    assert.equal(captionCalls.length, 1);
+    const charged = Array.from(env.DB.rows.values()).find(row => row.id === first.account.id);
+    assert.equal(charged.day_used, 1, "the call is booked against the day");
+    assert.equal(charged.quota_remaining, 3);
+
+    // Second request for the same video must not spend anything.
+    const second = await requestYoutubeCaptions(env, { videoId: "npka43vhwNo", target: "en", fetchImpl: captionFetch });
+    assert.equal(second.ok, true);
+    assert.equal(second.cached, true, "a repeat is served from D1");
+    assert.equal(captionCalls.length, 1, "no upstream call for a cached video");
+    assert.equal(env.DB.captions.size, 1);
+
+    // Another language is a different entry, but the same account should be
+    // preferred less: the other account has fewer calls today.
+    const other = await requestYoutubeCaptions(env, { videoId: "npka43vhwNo", target: "zh-CN", fetchImpl: captionFetch });
+    assert.equal(other.ok, true);
+    assert.equal(env.DB.captions.size, 2);
+    assert.notEqual(other.account.id, first.account.id, "the account with fewer calls today is picked");
+
+    // Trancy says the daily limit is gone: park that account, not the pool.
+    // First account answers "daily limit", second one still has room.
+    let limitCalls = 0;
+    const limitFetch = fakeFetch(async () => {
+        limitCalls += 1;
+        if (limitCalls === 1) {
+            return new Response(JSON.stringify({ code: 403, message: "You've reached the daily limit of 5 AI subtitles for free users. Upgrade to premium for unlimited access." }), {
+                status: 200,
+                headers: { "Content-Type": "application/json", "x-quota-limit": "5", "x-quota-remaining": "0" }
+            });
+        }
+        return new Response(JSON.stringify({ data: [{ start: 0, end: 500, text: "ok" }] }), {
+            status: 200,
+            headers: { "Content-Type": "application/json", "x-quota-limit": "5", "x-quota-remaining": "2" }
+        });
+    });
+
+    const failover = await requestYoutubeCaptions(env, { videoId: "anotherVideoId", target: "en", fetchImpl: limitFetch });
+    assert.equal(failover.ok, true, "an exhausted account makes the scheduler try the next one");
+    assert.equal(limitCalls, 2, "the refusal is retried once on the next account");
+    const parked = Array.from(env.DB.rows.values()).filter(row => row.exhausted_until);
+    assert.equal(parked.length, 1, "exactly one account is parked until the next UTC day");
+    assert.match(parked[0].exhausted_until, /T00:00:00\.000Z$/, "the reset is the next UTC midnight");
+    assert.equal(parked[0].status, "ok", "an exhausted account keeps its status and token");
+
+    // Everything exhausted -> 503 shaped answer, never a fake success.
+    for (const row of env.DB.rows.values()) {
+        row.exhausted_until = new Date(Date.now() + 3600_000).toISOString();
+    }
+    const noneLeft = await requestYoutubeCaptions(env, { videoId: "yetAnotherVideo", target: "en", fetchImpl: captionFetch });
+    assert.equal(noneLeft.ok, false);
+    assert.equal(noneLeft.reason, "no_caption_quota");
+    assert.ok(noneLeft.resetAt);
+    assert.equal(captionCalls.length, 2, "an exhausted pool is not even called");
+}
+
+// 14. Caption HTTP surface: POST spends (guarded), GET only reads the cache.
+{
+    const call = (path, init = {}) => handleTrancy(new Request(`https://worker.example${path}`, init), env);
+    const adminHeaders = { Authorization: "Bearer admin-secret-token", "Content-Type": "application/json" };
+
+    const unauthorized = await call("/api/trancy/captions", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ videoId: "npka43vhwNo", target: "en" })
+    });
+    assert.equal(unauthorized.status, 401, "generating subtitles costs quota, so it is guarded");
+
+    const badVideo = await call("/api/trancy/captions", {
+        method: "POST",
+        headers: adminHeaders,
+        body: JSON.stringify({ videoId: "../../etc/passwd", target: "en" })
+    });
+    assert.equal(badVideo.status, 400);
+    assert.equal((await badVideo.json()).error.code, "invalid_caption_request");
+
+    const cached = await call("/api/trancy/captions/npka43vhwNo?target=en");
+    assert.equal(cached.status, 200, "reading the cache is free and open");
+    const cachedPayload = await cached.json();
+    assert.equal(cachedPayload.cached, true);
+    assert.equal(cachedPayload.data.length, 2);
+
+    const missing = await call("/api/trancy/captions/neverFetched?target=en");
+    assert.equal(missing.status, 404);
+    assert.equal((await missing.json()).error.code, "caption_not_cached");
+
+    // POOL_EXHAUSTED: POST answers 503 with the reset time instead of hanging.
+    const exhausted = await call("/api/trancy/captions", {
+        method: "POST",
+        headers: adminHeaders,
+        body: JSON.stringify({ videoId: "brandNewVideo", target: "en" })
+    });
+    assert.equal(exhausted.status, 503);
+    const exhaustedPayload = await exhausted.json();
+    assert.equal(exhaustedPayload.error.code, "no_caption_quota");
+    assert.ok(exhaustedPayload.resetAt);
 }
 
 console.log("Verified the Trancy multi-account gateway: token parsing, encrypted storage, LRU rotation, dead-token retirement, cron refresh and the guarded relay endpoint.");

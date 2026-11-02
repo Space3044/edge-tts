@@ -25,6 +25,7 @@ https://github.com/Space3044/edge-tts
 - 服务配置：转录服务的 endpoint、模型和 API Key 在页面里设置，API Key 用 `SECRETS_ENCRYPTION_KEY` 加密后存进 D1；页面只显示掩码尾巴，不回传明文。
 - 浏览器本地保存：AI 润色的 Base URL、API Key、模型和润色指令只保存在当前浏览器本地。
 - Trancy 多账号网关：单独一个 Gateway 标签页管理多个 Trancy 账号，支持**邮箱密码登录 / 注册 / 粘贴 token** 三种添加方式；token 加密存进 D1、密码明文保存（为了一键重新登录），Cloudflare cron 每天调 `/1/user/profile` 自动续期，转发接口按最近最少使用轮换账号并自动摘掉失效 token。
+- YouTube 字幕调度：`POST /api/trancy/captions` 按账号的每日 AI 字幕额度（免费号 5 个视频/天）挑账号生成字幕，同视频同语言走 D1 缓存不再花额度，额度耗尽的账号停泊到次日 UTC 零点。
 - 多语言界面：支持中文、英文、日文、韩文、西班牙文、法文、德文、俄文。
 
 ## 项目结构
@@ -37,7 +38,7 @@ https://github.com/Space3044/edge-tts
 │   ├── routes/                      # speech、transcriptions、polish、providers、trancy、favicon
 │   ├── edge/                        # Edge TTS 端点、签名、SSML、合成逻辑
 │   ├── secrets/                     # API Key 加解密（AES-GCM）与 D1 配置读写
-│   ├── trancy/                      # Trancy token 解析、账号存取与轮换、上游调用
+│   ├── trancy/                      # Trancy token 解析、账号存取与轮换、字幕调度、上游调用
 │   ├── frontend/                    # 页面、样式、客户端脚本、声音库、多语言、favicon
 │   └── utils/                       # CORS、文本切分、写权限判定等工具
 ├── migrations/                      # D1 迁移（provider_config、trancy_account 两张表）
@@ -459,6 +460,45 @@ crons = ["17 3 * * *"]
 npx wrangler dev index.js --local --test-scheduled
 curl "http://127.0.0.1:8787/__scheduled?cron=17+3+*+*+*"
 ```
+
+### YouTube 字幕调度（AI 字幕额度）
+
+目标是这个接口，它决定了整个池子的调度方式：
+
+```text
+GET https://api.trancy.org/3/youtube/captions/{videoId}?target=en&source=audio
+Authorization: Bearer {token}
+```
+
+实测契约：
+
+- **同步**：一次请求直接返回整段字幕（`data` 是句子数组，带词级时间戳），没有 job id、不需要轮询。
+- **额度**：免费号每个账号每天只能生成少量 AI 字幕（页面上写 5 个/天）。响应头带 `x-quota-limit` / `x-quota-remaining`。
+- **额度用完不返回 429**：`200 {"code":403,"message":"You've reached the daily limit of 5 AI subtitles for free users..."}`，和鉴权失败一样靠 body 判定。
+- 同一视频重复请求会被上游缓存，实测不扣额度——但仍然不该依赖它，所以网关自己也会缓存。
+
+接口：
+
+```text
+POST /api/trancy/captions            # {"videoId":"npka43vhwNo","target":"en"}，花额度，需要写权限
+GET  /api/trancy/captions/:videoId   # ?target=en，只读本地缓存，永远不花额度
+```
+
+`POST` 的返回体是 `{data:[...], cached, account, quota:{limit,remaining}, usedToday, sentenceCount}`，同时把 `X-Trancy-Account` / `X-Trancy-Cached` / `X-Quota-*` 放进响应头。调度规则按优先级：
+
+1. **同视频不花第二次额度**：`trancy_caption` 按 `(video_id, target)` 缓存，命中直接返回 `cached: true`。
+2. **刚说过「没额度」的账号不再问**：`exhausted_until` 停在下一个 UTC 零点，token 和 `status=ok` 保持不变（cron 照常续期）。
+3. **先花最空的账号**：本地 `day_used`（按 UTC 日）优先，其次上游 `x-quota-remaining`，最后 LRU。
+
+没有一个账号能用时返回 `503`：
+
+```json
+{"error":{"code":"no_caption_quota","message":"所有账号今天的 AI 字幕额度都用完了"},
+ "resetAt":"2026-11-03T00:00:00.000Z",
+ "tried":["acc@example.com: daily_limit"]}
+```
+
+`tried` 会写清每个被咨询账号的失败原因，`resetAt` 是下一个 UTC 零点。
 
 ### 文本 AI 润色
 

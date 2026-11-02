@@ -77,6 +77,15 @@ const CLIENT_SCRIPT_TEMPLATE = `\n    const VOICES = __VOICECRAFT_VOICES__;\n   
       // The title is already the email, so the meta line starts at the token.
       var bits = [];
       if (account.tokenTail) bits.push(account.tokenTail);
+      // AI-subtitle quota: the numbers that decide whether this account is worth
+      // a request today (five videos per free account per day upstream).
+      if (account.quotaLimit > 0 || account.quotaRemaining >= 0) {
+        bits.push(t('trancy.quota') + ' ' + (account.quotaRemaining < 0 ? '?' : account.quotaRemaining) + '/' + (account.quotaLimit > 0 ? account.quotaLimit : '?'));
+      }
+      if (account.usedToday > 0) bits.push(t('trancy.today') + ' ' + account.usedToday);
+      if (account.exhaustedUntil && new Date(account.exhaustedUntil).getTime() > Date.now()) {
+        bits.push(t('trancy.quotaOut') + ' ' + trancyTimeLabel(account.exhaustedUntil));
+      }
       bits.push(t('trancy.checked') + ' ' + trancyTimeLabel(account.lastCheckedAt));
       if (account.tokenIssuedAt) bits.push(t('trancy.issued') + ' ' + trancyTimeLabel(account.tokenIssuedAt));
       if (account.useCount) bits.push(t('trancy.uses') + ' ' + account.useCount);

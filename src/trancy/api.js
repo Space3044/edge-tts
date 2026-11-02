@@ -18,6 +18,7 @@ export const TRANCY_API_ORIGIN = "https://api.trancy.org";
 export const TRANCY_PROFILE_PATH = "/1/user/profile";
 export const TRANCY_LOGIN_PATH = "/1/login";
 export const TRANCY_SIGNUP_PATH = "/1/signup";
+export const TRANCY_CAPTION_VERSION = "3";
 const REQUEST_TIMEOUT_MS = 15000;
 
 function timeoutSignal() {
@@ -162,6 +163,61 @@ export async function fetchTrancyProfile(token, { fetchImpl = fetch } = {}) {
             aiEngine: profile.AIEngineActive === true || profile.stripeAIEngineActive === true
         }
     };
+}
+
+/**
+ * `GET /3/youtube/captions/{videoId}?target=en&source=audio`
+ *
+ * Synchronous: the whole transcript (sentences plus word timings) comes back in
+ * one response, no job id, no polling. What makes it interesting is that each
+ * free account may only do a handful a day, and the refusal is shaped like
+ * every other Trancy error - HTTP 200 with `{"code":403,"message":"You've
+ * reached the daily limit of 5 AI subtitles for free users..."}`. The response
+ * headers `x-quota-limit` / `x-quota-remaining` are the only structured signal,
+ * so both are read and handed back for the scheduler to persist.
+ */
+export async function fetchYoutubeCaptions({ token, videoId, target = "en", fetchImpl = fetch } = {}) {
+    const url = `${TRANCY_API_ORIGIN}/${TRANCY_CAPTION_VERSION}/youtube/captions/${encodeURIComponent(videoId)}`
+        + `?target=${encodeURIComponent(target)}&source=audio`;
+
+    let response;
+    try {
+        response = await fetchImpl(url, {
+            method: "GET",
+            headers: {
+                Authorization: `Bearer ${token}`,
+                "x-locale": "en",
+                Accept: "application/json"
+            },
+            signal: timeoutSignal()
+        });
+    } catch (error) {
+        return { ok: false, reason: "network", message: String(error?.message || error), sentences: null, quota: { limit: -1, remaining: -1 } };
+    }
+
+    const limit = Number(response.headers.get("x-quota-limit"));
+    const remaining = Number(response.headers.get("x-quota-remaining"));
+    const quota = {
+        limit: Number.isFinite(limit) ? limit : -1,
+        remaining: Number.isFinite(remaining) ? remaining : -1
+    };
+
+    const payload = await readJson(response);
+
+    if (!response.ok) {
+        return { ok: false, reason: `http_${response.status}`, message: payload?.message || "", sentences: null, quota };
+    }
+
+    if (Array.isArray(payload?.data)) {
+        return { ok: true, reason: null, message: "ok", sentences: payload.data, quota };
+    }
+
+    const message = String(payload?.message || "");
+    if (payload?.code === 403 || /daily limit/i.test(message)) {
+        return { ok: false, reason: "daily_limit", message, sentences: null, quota };
+    }
+
+    return { ok: false, reason: "rejected", message: message || "Trancy 没有返回字幕", sentences: null, quota };
 }
 
 /**
