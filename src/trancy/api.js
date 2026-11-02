@@ -197,11 +197,13 @@ export async function fetchYoutubeCaptions({ token, videoId, target = "en", sour
         return { ok: false, reason: "network", message: String(error?.message || error), sentences: null, quota: { limit: -1, remaining: -1 } };
     }
 
-    const limit = Number(response.headers.get("x-quota-limit"));
-    const remaining = Number(response.headers.get("x-quota-remaining"));
+    const rawLimit = response.headers.get("x-quota-limit");
+    const rawRemaining = response.headers.get("x-quota-remaining");
+    const limit = rawLimit !== null && rawLimit !== "" && Number.isFinite(Number(rawLimit)) ? Number(rawLimit) : -1;
+    const remaining = rawRemaining !== null && rawRemaining !== "" && Number.isFinite(Number(rawRemaining)) ? Number(rawRemaining) : -1;
     const quota = {
-        limit: Number.isFinite(limit) ? limit : -1,
-        remaining: Number.isFinite(remaining) ? remaining : -1
+        limit,
+        remaining
     };
 
     const payload = await readJson(response);

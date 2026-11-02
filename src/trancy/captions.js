@@ -124,7 +124,8 @@ export async function requestYoutubeCaptions(env, { videoId, target = "en", sour
         if (result.ok) {
             const usedToday = await recordCaptionUsage(env, account.id, {
                 quotaLimit: result.quota.limit,
-                quotaRemaining: result.quota.remaining
+                quotaRemaining: result.quota.remaining,
+                source
             });
             return {
                 ok: true,

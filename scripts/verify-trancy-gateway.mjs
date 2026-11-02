@@ -582,6 +582,25 @@ const env = { DB: createFakeD1(), SECRETS_ENCRYPTION_KEY: encryptionKey };
     assert.equal(json3.source, "json3");
     assert.equal(new URL(captionCalls[1]).searchParams.get("source"), "json3", "json3 is forwarded to Trancy");
 
+    // json3 without quota headers (the real Trancy behavior): does not corrupt quota to 0 and does not count against AI day_used.
+    const json3NoHeaderFetch = fakeFetch(async () => new Response(JSON.stringify({
+        data: [{ start: 0, end: 500, text: "unmetered native subtitle" }]
+    }), {
+        status: 200,
+        headers: { "Content-Type": "application/json" }
+    }));
+    const json3NoHeaders = await requestYoutubeCaptions(env, {
+        videoId: "noHeadersVideo",
+        target: "en",
+        source: "json3",
+        fetchImpl: json3NoHeaderFetch
+    });
+    assert.equal(json3NoHeaders.ok, true);
+    assert.equal(json3NoHeaders.quota.limit, -1, "missing limit header yields -1, never 0");
+    assert.equal(json3NoHeaders.quota.remaining, -1, "missing remaining header yields -1, never 0");
+    const json3Account = Array.from(env.DB.rows.values()).find(row => row.id === json3NoHeaders.account.id);
+    assert.ok(json3Account.quota_remaining !== 0, "json3 does not overwrite remaining quota to 0");
+
     // Same video again: a second generation, because no transcript is kept.
     const again = await requestYoutubeCaptions(env, { videoId: "npka43vhwNo", target: "en", fetchImpl: captionFetch });
     assert.equal(again.ok, true);
