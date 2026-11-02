@@ -65,12 +65,11 @@ GET https://api.trancy.org/3/youtube/captions/{videoId}?target=en&source=audio
 - 占位超过 90 秒视为 owner 已死（Worker 被回收、超时），下一个请求直接接管，避免永久卡死。
 - `GET /api/trancy/captions/:videoId` 命中占位行时同样回 `202`，语义是「正在生成」而不是「不存在」。
 
-### 6. 下游用窄钥匙，不用运维钥匙
+### 6. 鉴权不是这里的事
 
-`ADMIN_TOKEN` 能删账号、能读明文密码，把它发给下游等于把账号池交出去。所以新增
-`TRANCY_API_TOKEN`：只被 `captions` 与 `relay` 两个入口接受，管理接口一律不认它
-（`GET /api/trancy/accounts` 在只有它的时候仍是 `passwordsVisible: false`）。
-没配这个变量时行为与之前完全一致，老部署不受影响。
+网关不做应用层鉴权：`/api/*` 整体挂在 Cloudflare Access 后面，`TRANCY_API_TOKEN` 之类的窄钥匙
+已经删除，下游改用 Access Service Token。理由与被删掉的 relay 记在
+[收窄网关](../../simplification/2026-11-02-access-only-auth-and-drop-relay.md)。
 
 ### 7. 额度要对人可见
 
@@ -86,9 +85,9 @@ GET https://api.trancy.org/3/youtube/captions/{videoId}?target=en&source=audio
 
 ### 8. 接口收口
 
-`POST /api/trancy/captions` 花额度，走写权限守卫；`GET /api/trancy/captions/:videoId`
-只读缓存、不花额度，所以保持开放。`videoId` 与 `target` 都做白名单校验，
-避免把网关变成任意路径代理。
+只有两个入口：`POST /api/trancy/captions`（花额度）与 `GET /api/trancy/captions/:videoId`
+（只读缓存）。`target` 可省略、默认 `en`，下游只要知道 videoId；
+`videoId` / `target` 仍然做白名单校验。
 
 ## Alternatives considered
 

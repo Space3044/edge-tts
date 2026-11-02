@@ -2,26 +2,20 @@
  * Provider configuration API.
  *
  * GET  /api/providers            — browser-safe status (no plaintext keys)
- * PUT  /api/providers/:provider  — write endpoint/model/key, guarded by ADMIN_TOKEN
+ * PUT  /api/providers/:provider  — write endpoint/model/key
  *
- * The guard is a bearer token held in the Worker secret `ADMIN_TOKEN`: the UI
- * asks for it once and keeps it in sessionStorage. When the secret is missing,
- * writes are refused instead of silently falling back to "anyone can write".
+ * There is no application-level gate: `/api/*` is expected to sit behind a
+ * Cloudflare Access application (see README), and the Worker holds no token of
+ * its own. The key itself is encrypted before it reaches D1.
  */
 
 import { PROVIDER_DEFAULTS, isSupportedProvider, listProviderStatus, normalizeProviderName, saveProviderConfig } from "../secrets/store.js";
-import { requireAdmin as requireAdminGuard, writeMode } from "../utils/admin.js";
 import { errorResponse, jsonResponse } from "../utils/response.js";
 
 const MAX_ENDPOINT_LENGTH = 300;
 const MAX_MODEL_LENGTH = 120;
 const MAX_API_KEY_LENGTH = 500;
 
-// The guard is shared with the Trancy account API (src/utils/admin.js); only
-// the wording of the refusal names this subject.
-function requireAdmin(request, env) {
-    return requireAdminGuard(request, env, "Provider 配置");
-}
 
 function validateEndpoint(value) {
     const endpoint = String(value ?? "").trim();
@@ -70,8 +64,6 @@ export async function handleProviders(request, env = {}) {
             return jsonResponse({
                 providers,
                 defaults: PROVIDER_DEFAULTS,
-                writable: writeMode(request, env) !== "locked",
-                writeMode: writeMode(request, env),
                 encryptionReady: true
             });
         } catch (error) {
@@ -91,11 +83,6 @@ export async function handleProviders(request, env = {}) {
                 param: "provider",
                 code: "unknown_provider"
             });
-        }
-
-        const denied = requireAdmin(request, env);
-        if (denied) {
-            return denied;
         }
 
         let body;

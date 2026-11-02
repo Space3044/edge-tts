@@ -43,7 +43,7 @@ const encryptionKey = bytesToBase64(crypto.getRandomValues(new Uint8Array(32)));
 const env = {
   DB: createFakeD1(),
   SECRETS_ENCRYPTION_KEY: encryptionKey,
-  ADMIN_TOKEN: "admin-secret-token"
+  /* access is Cloudflare Access' job; the Worker holds no token */
 };
 
 // 1. Envelope round trip, AAD binding, and masking.
@@ -149,7 +149,7 @@ const env = {
 
 // 5. A missing encryption key blocks writes and never silently stores plaintext.
 {
-  const noKeyEnv = { DB: createFakeD1(), ADMIN_TOKEN: "admin-secret-token" };
+  const noKeyEnv = { DB: createFakeD1() };
   await assert.rejects(
     () => saveProviderConfig(noKeyEnv, "openai", { apiKey: "sk-live-abcdef1234" }),
     /SECRETS_ENCRYPTION_KEY/,
@@ -181,7 +181,7 @@ const env = {
   const routeEnv = {
     DB: createFakeD1(),
     SECRETS_ENCRYPTION_KEY: encryptionKey,
-    ADMIN_TOKEN: "admin-secret-token"
+    /* access is Cloudflare Access' job; the Worker holds no token */
   };
 
   const publicRead = await handleProviders(
@@ -190,83 +190,29 @@ const env = {
   );
   assert.equal(publicRead.status, 200);
   const readBody = await publicRead.json();
-  assert.equal(readBody.writable, true);
   assert.equal(readBody.providers.length, 3);
   assert.deepEqual(readBody.providers.map(entry => entry.provider), ["openai", "elevenlabs", "google"]);
+  assert.ok(
+    !("writable" in readBody) && !("writeMode" in readBody),
+    "the API no longer reports a write mode; Access owns authorisation"
+  );
 
-  // ADMIN_TOKEN configured -> bearer required, on any host.
+  // No application-level gate: a plain PUT is accepted from anywhere. That is
+  // only safe because /api/* is behind Cloudflare Access in production.
   const anonymousWrite = await handleProviders(
     new Request("https://voicecraft.example.com/api/providers/openai", {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ apiKey: "sk-live-abcdef1234" })
+      body: JSON.stringify({ apiKey: "sk-anonymous" })
     }),
     routeEnv
   );
-  assert.equal(anonymousWrite.status, 401);
-
-  const wrongToken = await handleProviders(
-    new Request("https://voicecraft.example.com/api/providers/openai", {
-      method: "PUT",
-      headers: { "Content-Type": "application/json", Authorization: "Bearer nope" },
-      body: JSON.stringify({ apiKey: "sk-live-abcdef1234" })
-    }),
-    routeEnv
-  );
-  assert.equal(wrongToken.status, 401);
-  assert.equal(routeEnv.DB.rows.size, 0, "rejected writes must not touch D1");
-
-  // No token, not local, no Access opt-in -> locked with a clear code.
-  const lockedEnv = { DB: createFakeD1(), SECRETS_ENCRYPTION_KEY: encryptionKey };
-  const locked = await handleProviders(
-    new Request("https://voicecraft.example.com/api/providers/openai", {
-      method: "PUT",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ apiKey: "sk-live-abcdef1234" })
-    }),
-    lockedEnv
-  );
-  assert.equal(locked.status, 403);
-  assert.equal((await locked.json()).error.code, "write_not_configured");
-  assert.equal(lockedEnv.DB.rows.size, 0);
-
-  // Local development is open so `wrangler dev` needs no configuration.
-  const localEnv = { DB: createFakeD1(), SECRETS_ENCRYPTION_KEY: encryptionKey };
-  const localWrite = await handleProviders(
-    new Request("http://127.0.0.1:8787/api/providers/openai", {
-      method: "PUT",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ apiKey: "sk-local" })
-    }),
-    localEnv
-  );
-  assert.equal(localWrite.status, 200);
-  assert.equal((await localWrite.json()).provider.configured, true);
-
-  const localRead = await handleProviders(
-    new Request("http://localhost:8787/api/providers", { method: "GET" }),
-    localEnv
-  );
-  const localReadBody = await localRead.json();
-  assert.equal(localReadBody.writeMode, "local-dev");
-  assert.equal(localReadBody.writable, true);
-
-  // Production behind Cloudflare Access: opt in once with CF_ACCESS_TRUSTED=1.
-  const accessEnv = { DB: createFakeD1(), SECRETS_ENCRYPTION_KEY: encryptionKey, CF_ACCESS_TRUSTED: "1" };
-  const accessWrite = await handleProviders(
-    new Request("https://voicecraft.example.com/api/providers/openai", {
-      method: "PUT",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ apiKey: "sk-access" })
-    }),
-    accessEnv
-  );
-  assert.equal(accessWrite.status, 200);
+  assert.equal(anonymousWrite.status, 200, "the Worker does not gate writes itself any more");
 
   const authorized = await handleProviders(
     new Request("https://voicecraft.example.com/api/providers/openai", {
       method: "PUT",
-      headers: { "Content-Type": "application/json", Authorization: "Bearer admin-secret-token" },
+      headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         endpoint: "https://asr.example.com/v1",
         model: "whisper-1",
@@ -291,7 +237,7 @@ const env = {
   const badEndpoint = await handleProviders(
     new Request("https://voicecraft.example.com/api/providers/google", {
       method: "PUT",
-      headers: { "Content-Type": "application/json", Authorization: "Bearer admin-secret-token" },
+      headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ endpoint: "file:///etc/passwd" })
     }),
     routeEnv
@@ -301,7 +247,7 @@ const env = {
   const unknownProvider = await handleProviders(
     new Request("https://voicecraft.example.com/api/providers/nope", {
       method: "PUT",
-      headers: { "Content-Type": "application/json", Authorization: "Bearer admin-secret-token" },
+      headers: { "Content-Type": "application/json" },
       body: JSON.stringify({})
     }),
     routeEnv

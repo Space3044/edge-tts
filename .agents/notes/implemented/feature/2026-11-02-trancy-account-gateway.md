@@ -86,14 +86,10 @@ token 仍然加密：页面只显示尾巴，密文跨行不可解密。
 池子最终服务的是 YouTube AI 字幕那一个接口，它按「每日视频数」计费，
 所以调度规则、缓存与额度账本单独记在
 [字幕调度按每日额度分配](2026-11-02-trancy-caption-scheduler.md) 里。
-`/api/trancy/relay` 保留给别的接口和临时排查用。
 
-### 转发接口收口
-
-只有一个入口 `POST /api/trancy/relay { method, path, body }`，`path` 必须匹配 `^/[0-9]{1,2}/...`
-并二次校验解析后的 origin 仍是 `api.trancy.org`，所以它不能被当成通用代理。
-它和 Provider 配置共用 `src/utils/admin.js` 的写权限（`ADMIN_TOKEN` / `CF_ACCESS_TRUSTED=1` / 本地放行），
-默认拒绝：转发会烧掉账号额度，不能裸奔。
+通用转发（`/api/trancy/relay`）和「只有写权限才能看密码」的收口都已删除，
+见 [收窄网关](../../simplification/2026-11-02-access-only-auth-and-drop-relay.md)：
+鉴权只留在 Cloudflare Access，Worker 不再有 `ADMIN_TOKEN` 之类的自研开关。
 
 ### 密钥与视图
 

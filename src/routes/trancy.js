@@ -8,13 +8,13 @@
  * POST   /api/trancy/accounts/:id/refresh  — probe one account
  * POST   /api/trancy/captions             — generate YouTube AI subtitles within the daily quota
  * GET    /api/trancy/captions/:videoId    — cached subtitles only, never spends quota
- * POST   /api/trancy/relay                — forward a request with a pooled token
  *
- * Writes and relays share the provider guard (`src/utils/admin.js`): the relay
- * spends the operator's Trancy quota and can leak data, so it is never open.
+ * Authentication is Cloudflare Access' job: the whole `/api/*` surface is meant
+ * to sit behind an Access application, so the Worker checks no token of its own.
+ * That is only acceptable because of what sits behind it (see README):
+ * `POST /captions` spends real quota and `GET /accounts` returns the passwords.
  */
 
-import { relayTrancyRequest, TRANCY_API_ORIGIN, TRANCY_PROFILE_PATH } from "../trancy/api.js";
 import {
     normalizeCaptionRequest,
     readCachedCaptions,
@@ -28,25 +28,16 @@ import {
     deleteTrancyAccount,
     listTrancyAccounts,
     loginTrancyAccount,
-    pickTrancyAccount,
-    recordTrancyUsage,
     refreshAllTrancyAccounts,
     refreshTrancyAccount,
     reloginTrancyAccount,
     normalizeIncomingToken
 } from "../trancy/store.js";
-import { requireAdmin, requireTrancyClient, writeMode } from "../utils/admin.js";
-import { makeCORSHeaders } from "../utils/cors.js";
 import { errorResponse, jsonResponse } from "../utils/response.js";
 
 const MAX_TOKEN_LENGTH = 4000;
 const MAX_EMAIL_LENGTH = 200;
 const MAX_PASSWORD_LENGTH = 200;
-const MAX_RELAY_ATTEMPTS = 2;
-const RELAY_METHODS = ["GET", "POST", "PUT", "PATCH", "DELETE"];
-// Anything on api.trancy.org, but nothing that could be turned into a
-// different host: `/1/...`, `/2/...`, `/3/...`, `/4/...` only.
-const RELAY_PATH_PATTERN = /^\/[0-9]{1,2}\/[A-Za-z0-9._~!$&'()*+,;=:@%/-]*(\?[^\s#]*)?$/;
 
 function segmentsOf(request) {
     return new URL(request.url).pathname.split("/").filter(Boolean);
@@ -64,17 +55,9 @@ async function handleAccounts(request, env, segments) {
     // /api/trancy/accounts
     if (segments.length === 3) {
         if (request.method === "GET") {
-            const mode = writeMode(request, env);
-            // Passwords are plaintext in D1 by design; they are only echoed to
-            // callers that already hold write access, so a locked deployment
-            // never leaks them through the read-only list.
-            const includePasswords = !requireAdmin(request, env, "Trancy 账号");
-            const accounts = await listTrancyAccounts(env, { includePasswords });
+            const accounts = await listTrancyAccounts(env, { includePasswords: true });
             return jsonResponse({
                 accounts,
-                writable: mode !== "locked",
-                writeMode: mode,
-                passwordsVisible: includePasswords,
                 // The panel needs a denominator before the first caption call,
                 // and it must be the same number the scheduler assumes.
                 defaultDailyLimit: TRANCY_DEFAULT_DAILY_LIMIT
@@ -82,10 +65,6 @@ async function handleAccounts(request, env, segments) {
         }
 
         if (request.method === "POST") {
-            const denied = requireAdmin(request, env, "Trancy 账号");
-            if (denied) {
-                return denied;
-            }
 
             const body = await readJsonBody(request);
             if (!body) {
@@ -148,10 +127,6 @@ async function handleAccounts(request, env, segments) {
                 code: "method_not_allowed"
             });
         }
-        const denied = requireAdmin(request, env, "Trancy 账号");
-        if (denied) {
-            return denied;
-        }
 
         const body = await readJsonBody(request);
         if (!body) {
@@ -213,10 +188,6 @@ async function handleAccounts(request, env, segments) {
                 code: "method_not_allowed"
             });
         }
-        const denied = requireAdmin(request, env, "Trancy 账号");
-        if (denied) {
-            return denied;
-        }
         const body = await readJsonBody(request);
         const minAgeMinutes = Number.isFinite(Number(body?.minAgeMinutes)) ? Math.max(0, Number(body.minAgeMinutes)) : 10;
         const result = await refreshAllTrancyAccounts(env, { minAgeMinutes });
@@ -226,10 +197,6 @@ async function handleAccounts(request, env, segments) {
     // /api/trancy/accounts/:id, /:id/refresh and /:id/login
     if (segments.length === 4 || (segments.length === 5 && (segments[4] === "refresh" || segments[4] === "login"))) {
         const id = String(segments[3] || "");
-        const denied = requireAdmin(request, env, "Trancy 账号");
-        if (denied) {
-            return denied;
-        }
 
         if (segments.length === 5 && segments[4] === "login") {
             if (request.method !== "POST") {
@@ -306,9 +273,11 @@ async function handleAccounts(request, env, segments) {
 }
 
 /**
- * `POST /api/trancy/captions {videoId, target}` spends quota, so it sits behind
- * the same guard as the relay. The cache read (`GET`) does not spend anything
- * and stays open, which is what makes retrying a finished video free.
+ * `POST /api/trancy/captions {videoId?}` spends quota. `GET /captions/:videoId`
+ * only reads the cache, so retrying a finished video costs nothing.
+ *
+ * `target` is optional and defaults to `en`: downstream only has to know the
+ * video id.
  */
 async function handleCaptions(request, env, segments) {
     if (request.method === "GET") {
@@ -350,10 +319,6 @@ async function handleCaptions(request, env, segments) {
         });
     }
 
-    const denied = requireTrancyClient(request, env);
-    if (denied) {
-        return denied;
-    }
 
     const body = await readJsonBody(request);
     if (!body) {
@@ -407,126 +372,6 @@ async function handleCaptions(request, env, segments) {
     });
 }
 
-function relayTargetError(path) {
-    if (!path) {
-        return "缺少 path，例如 /2/dictionary?text=hello&target=zh-CN";
-    }
-    if (!RELAY_PATH_PATTERN.test(path)) {
-        return "path 必须是 api.trancy.org 上的绝对路径，例如 /1/user/profile";
-    }
-    try {
-        // Belt and braces: even a matched pattern must stay on the Trancy API
-        // origin, so nothing here can be pointed at another host.
-        const resolved = new URL(path, `${TRANCY_API_ORIGIN}/`);
-        if (resolved.origin !== TRANCY_API_ORIGIN) {
-            return "path 必须指向 api.trancy.org";
-        }
-    } catch {
-        return "path 无法解析";
-    }
-    return null;
-}
-
-async function handleRelay(request, env) {
-    if (request.method !== "POST") {
-        return errorResponse("只支持 POST /api/trancy/relay", {
-            status: 405,
-            type: "invalid_request_error",
-            param: "method",
-            code: "method_not_allowed"
-        });
-    }
-
-    const denied = requireTrancyClient(request, env);
-    if (denied) {
-        return denied;
-    }
-
-    const body = await readJsonBody(request);
-    const path = String(body?.path || TRANCY_PROFILE_PATH);
-    const targetError = relayTargetError(path);
-    if (targetError) {
-        return errorResponse(targetError, {
-            status: 400,
-            type: "invalid_request_error",
-            param: "path",
-            code: "invalid_relay_path"
-        });
-    }
-
-    const method = String(body?.method || "GET").toUpperCase();
-    if (!RELAY_METHODS.includes(method)) {
-        return errorResponse(`不支持的 method：${method}`, {
-            status: 400,
-            type: "invalid_request_error",
-            param: "method",
-            code: "invalid_relay_method"
-        });
-    }
-
-    const tried = [];
-    for (let attempt = 0; attempt < MAX_RELAY_ATTEMPTS; attempt += 1) {
-        const account = await pickTrancyAccount(env);
-        if (!account) {
-            return errorResponse(
-                tried.length
-                    ? `所有 Trancy 账号都不可用（${tried.join(", ")}）`
-                    : "没有可用的 Trancy 账号：先在 Trancy 面板里添加一个 token",
-                { status: 503, type: "api_error", code: "no_trancy_account" }
-            );
-        }
-        tried.push(account.email || account.name || account.id);
-
-        const result = await relayTrancyRequest({
-            token: account.token,
-            method,
-            path,
-            body: body?.body
-        });
-
-        if (result.tokenInvalid) {
-            // Same failure mode as the profile probe: 200 + data:null means the
-            // credential is gone. Classify it once, then try another account.
-            await refreshTrancyAccount(env, account.id).catch(() => null);
-            continue;
-        }
-
-        if (!result.ok) {
-            await recordTrancyUsage(env, account.id, { ok: false, cooldownMinutes: 2 }).catch(() => null);
-            const headers = {
-                ...makeCORSHeaders(),
-                "Access-Control-Expose-Headers": "X-Trancy-Account, X-Trancy-Email, X-Quota-Limit, X-Quota-Remaining"
-            };
-            return new Response(result.text || JSON.stringify({ error: { message: result.reason } }), {
-                status: result.status || 502,
-                headers: { "Content-Type": result.contentType, ...headers }
-            });
-        }
-
-        await recordTrancyUsage(env, account.id, { ok: true }).catch(() => null);
-        const headers = {
-            ...makeCORSHeaders(),
-            "Access-Control-Expose-Headers": "X-Trancy-Account, X-Trancy-Email, X-Quota-Limit, X-Quota-Remaining",
-            "X-Trancy-Account": account.id,
-            "X-Trancy-Email": encodeURIComponent(account.email || ""),
-            "Content-Type": result.contentType || "application/json"
-        };
-        if (result.quota?.limit) {
-            headers["X-Quota-Limit"] = result.quota.limit;
-        }
-        if (result.quota?.remaining) {
-            headers["X-Quota-Remaining"] = result.quota.remaining;
-        }
-        return new Response(result.text, { status: 200, headers });
-    }
-
-    return errorResponse(`所有 Trancy 账号都拒绝了这次请求（${tried.join(", ")}），已标记为需要更新 token`, {
-        status: 503,
-        type: "api_error",
-        code: "trancy_token_rejected"
-    });
-}
-
 export async function handleTrancy(request, env = {}) {
     if (request.method === "OPTIONS") {
         return new Response(null, { status: 204 });
@@ -540,9 +385,6 @@ export async function handleTrancy(request, env = {}) {
         }
         if (segments[2] === "captions" && segments.length >= 3 && segments.length <= 4) {
             return await handleCaptions(request, env, segments);
-        }
-        if (segments.length === 3 && segments[2] === "relay") {
-            return await handleRelay(request, env);
         }
         return errorResponse("未知的 Trancy 接口", {
             status: 404,

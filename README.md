@@ -40,7 +40,7 @@ https://github.com/Space3044/edge-tts
 │   ├── secrets/                     # API Key 加解密（AES-GCM）与 D1 配置读写
 │   ├── trancy/                      # Trancy token 解析、账号存取与轮换、字幕调度、上游调用
 │   ├── frontend/                    # 页面、样式、客户端脚本、声音库、多语言、favicon
-│   └── utils/                       # CORS、文本切分、写权限判定等工具
+│   └── utils/                       # CORS、文本切分等工具
 ├── migrations/                      # D1 迁移（provider_config、trancy_account 两张表）
 ├── scripts/                         # 验证脚本
 ├── docs/                            # 设计和实现说明
@@ -56,7 +56,7 @@ https://github.com/Space3044/edge-tts
 首次运行前要先建本地 D1 并写好 `.dev.vars`：
 
 ```bash
-cp .dev.vars.example .dev.vars        # 填入 SECRETS_ENCRYPTION_KEY 和 ADMIN_TOKEN
+cp .dev.vars.example .dev.vars        # 填入 SECRETS_ENCRYPTION_KEY
 npx wrangler d1 migrations apply voicecraft --local
 npx wrangler dev index.js --local --port 8787
 ```
@@ -110,16 +110,22 @@ npx wrangler d1 create voicecraft
 npx wrangler d1 migrations apply voicecraft --remote
 
 npx wrangler secret put SECRETS_ENCRYPTION_KEY   # base64 的 32 字节
-npx wrangler secret put ADMIN_TOKEN              # 可选：不用 Access 时才需要
+# 不需要任何鉴权密钥：/api/* 交给 Cloudflare Access
 ```
 
 - `SECRETS_ENCRYPTION_KEY` 只用于加解密，不参与鉴权；换掉它会导致已保存的密钥无法解密，需要重新填写。
-- 谁能写 Provider 配置由环境决定：本地 `localhost` / `127.0.0.1` / `*.local` 直接放行；线上如果 `/api/*` 已由 Cloudflare Access 保护，设置 `CF_ACCESS_TRUSTED=1` 即可；其他情况设置 `ADMIN_TOKEN` 并用 `Authorization: Bearer` 发送（配置了 `ADMIN_TOKEN` 时它以最高优先级生效）。三种都不满足时写接口返回 `403 write_not_configured`，不会默默放开。
+- **鉴权全部交给 Cloudflare Access**：Worker 自己不校验任何 token。`/api/*` 必须挂 Access 策略（见下一节），因为 `GET /api/trancy/accounts` 会回明文密码、`POST /api/trancy/captions` 会花账号额度。裸部署到公网等于把这些直接暴露出去。
 - 除密钥外的变量都不写入仓库，`wrangler.toml` 里也不出现明文。
 
 ## Cloudflare Access
 
-如果需要只保护语音转文字功能，可以在 Cloudflare Zero Trust 里为同一个 Worker 域名添加 Access Application，并把策略路径限制到：
+**这是本项目唯一的鉴权层。** 在 Cloudflare Zero Trust 里为 Worker 域名添加 Access Application，路径至少覆盖全部 API：
+
+```text
+/api/*
+```
+
+再按需要收窄页面：如果只想公开文字转语音、把语音转文字藏起来，可以改成：
 
 ```text
 /transcription*
@@ -370,21 +376,20 @@ mp3, wav, m4a, flac, aac, ogg, webm, amr, 3gp
 
 ```text
 GET /api/providers              # 公开，只返回 endpoint、模型、是否已配置和掩码尾巴
-PUT /api/providers/:provider    # 需要 Authorization: Bearer $ADMIN_TOKEN
+PUT /api/providers/:provider    # 由 Cloudflare Access 保护（Worker 自身不校验 token）
 ```
 
 `provider` 取值 `openai`、`elevenlabs`、`google`。请求示例：
 
 ```bash
 curl -X PUT "https://your-worker.example.com/api/providers/openai" \
-  -H "Authorization: Bearer $ADMIN_TOKEN" \
   -H "Content-Type: application/json" \
   -d '{"endpoint":"https://api.openai.com/v1","model":"whisper-1","apiKey":"sk-..."}'
 ```
 
 - `apiKey` 留空表示保留已保存的密钥，传 `"clearApiKey": true` 才会清空。
 - 响应只包含 `configured`、`keySource`（`db` / `env` / `none`）和 `keyTail`（例如 `••••a1b2`），不会回传明文。
-- 写权限按环境判定：本地开发直接放行；`CF_ACCESS_TRUSTED=1` 表示 `/api/*` 由 Cloudflare Access 保护；否则需要 `ADMIN_TOKEN`。都不满足时返回 `write_not_configured`，页面里的设置面板变成只读。
+- 写接口不做应用层校验：只要请求能穿过 Cloudflare Access 就被接受。Access 是唯一的一道门，务必确认 `/api/*` 已覆盖。
 
 ### Trancy 多账号网关
 
@@ -408,7 +413,7 @@ curl -X PUT "https://your-worker.example.com/api/providers/openai" \
 数据与密钥：
 
 - 存在 D1 的 `trancy_account` 表；**token 用 `SECRETS_ENCRYPTION_KEY` 做 AES-256-GCM 加密**，`aad` 绑定 `trancy:<行 id>`，密文跨行复制解不开。
-- **密码按明文保存**（`trancy_account.password`）：它是一键「重新登录」的前提，Trancy 掉 token 后不用再翻 cookie。密码只会回传给通过写权限校验的请求——`locked` 环境或匿名的 `GET /api/trancy/accounts` 只会看到 `hasPassword: true` 和空字符串。
+- **密码按明文保存**（`trancy_account.password`）：它是一键「重新登录」的前提，Trancy 掉 token 后不用再翻 cookie。`GET /api/trancy/accounts` 会把密码原样返回，所以这个接口必须在 Cloudflare Access 后面。
 - 页面用**邮箱**作为账号标识（还没探测过的账号退回 JWT 里的名字），并显示 token 尾巴（`••••a1b2c3`）、会员状态、最近检查时间和密码（点击可复制）。没有额外的备注名要填。
 - 同一个 Trancy 用户重复添加只更新那一行（按 JWT 里的 `id` 判重），等同于「换 token 复活」。
 
@@ -423,26 +428,11 @@ POST   /api/trancy/accounts/:id/login    # 用保存的密码重新登录（toke
 POST   /api/trancy/accounts/:id/refresh  # 立刻探测单个账号
 POST   /api/trancy/accounts/refresh      # 立刻探测全部（默认跳过 10 分钟内查过的）
 DELETE /api/trancy/accounts/:id          # 删除账号
-POST   /api/trancy/relay                 # 用池子里的账号转发一次请求
 ```
 
-除 `GET /api/trancy/accounts` 外，其余接口和 Provider 配置共用同一套写权限（`ADMIN_TOKEN` / `CF_ACCESS_TRUSTED=1` / 本地放行），都不满足时一律拒绝——转发接口会消耗账号额度，不能裸奔。
+这些接口都不做应用层鉴权，全部依赖 Cloudflare Access 覆盖 `/api/*`。
 
-转发示例（响应体是 Trancy 原样返回的 JSON，账号信息放在响应头）：
-
-```bash
-curl -X POST "https://your-worker.example.com/api/trancy/relay" \
-  -H "Authorization: Bearer $ADMIN_TOKEN" \
-  -H "Content-Type: application/json" \
-  -d '{"method":"GET","path":"/2/dictionary?text=serendipity&target=zh-CN&native=en"}' \
-  -D-
-# X-Trancy-Email: someone@example.com
-# X-Quota-Limit / X-Quota-Remaining: 上游给了才透传
-```
-
-- `path` 必须是 `api.trancy.org` 上的绝对路径（`/1/`、`/2/`、`/3/`、`/4/` 开头），不能指向别的主机。
-- 选账号规则是「最久没被用过的可用账号」；`dead`、`banned` 或处于失败冷却中的账号不会被选中；响应头 `X-Trancy-Account`（id）和 `X-Trancy-Email` 指出这次是谁出的力。
-- 上游返回 `data:null` 时，网关把该账号标成 `dead`，并在同一次请求里换下一个账号重试一次。
+转发接口（`/api/trancy/relay`）已删除：下游只需要字幕，多一个通用代理就是多一个要防护的面。
 
 自动续期（每天一次）：
 
@@ -480,7 +470,7 @@ Authorization: Bearer {token}
 接口：
 
 ```text
-POST /api/trancy/captions            # {"videoId":"npka43vhwNo","target":"en"}，花额度，需要写权限
+POST /api/trancy/captions            # {"videoId":"npka43vhwNo"}，花额度；target 可省略，默认 en
 GET  /api/trancy/captions/:videoId   # ?target=en，只读本地缓存，永远不花额度
 ```
 
@@ -503,10 +493,10 @@ GET  /api/trancy/captions/:videoId   # ?target=en，只读本地缓存，永远�
 给下游程序调用：
 
 - 入口就是上面两个：`POST /api/trancy/captions` 生成/取结果，`GET /api/trancy/captions/:videoId` 只读缓存。
-- 鉴权有两种，别把管理用的钥匙交给下游：
-  - `TRANCY_API_TOKEN`：只对 `captions` 和 `relay` 生效，**不能**管理账号、**看不到**明文密码。下游程序用这个。
-  - `ADMIN_TOKEN` / `CF_ACCESS_TRUSTED=1` / 本地 host：运维用，管理接口也走它。
-  - 两个都没配、也不是本地/Access 时，写接口返回 `403 write_not_configured`。
+- 鉴权只有一层：Cloudflare Access。下游程序要么用 Access 的 Service Token
+  （请求头 `CF-Access-Client-Id` / `CF-Access-Client-Secret`），要么把 Worker 放在自用域名后面。
+  Worker 里不再有任何自己的 token 逻辑。
+- **`target` 可以省略**，默认 `en`；下游只要知道 videoId。
 - **同一个视频并发只会生成一次**：生成权是 D1 里的一行占位记录（`ON CONFLICT DO NOTHING`），
   抢不到的那个立刻拿到 `202 {"pending":true,"retryAfterMs":1500}` + `Retry-After`，
   拿到后轮询 `GET`（或重发 `POST`）即可，**不会多花一次额度**。占位记录 90 秒没人完成会被下一个请求接管。
@@ -517,15 +507,16 @@ GET  /api/trancy/captions/:videoId   # ?target=en，只读本地缓存，永远�
 ```bash
 # 1) 发起（或者直接命中缓存）
 curl -s -X POST "$GW/api/trancy/captions" \
-  -H "Authorization: Bearer $TRANCY_API_TOKEN" \
+  -H "CF-Access-Client-Id: $ACCESS_CLIENT_ID" \
+  -H "CF-Access-Client-Secret: $ACCESS_CLIENT_SECRET" \
   -H "Content-Type: application/json" \
-  -d '{"videoId":"npka43vhwNo","target":"en"}'
+  -d '{"videoId":"npka43vhwNo"}'
 # 200 → {"data":[...],"cached":false,...}
 # 202 → 别的请求正在生成，等 1~2 秒重试
 # 503 → {"error":{"code":"no_caption_quota"},"resetAt":"...","tried":[...]}
 
 # 2) 只读缓存（不花额度，可以随便重试）
-curl -s "$GW/api/trancy/captions/npka43hwNo?target=en"
+curl -s "$GW/api/trancy/captions/npka43vhwNo?target=en"
 ```
 
 面板上的额度显示：
@@ -588,7 +579,7 @@ curl -X POST "https://your-worker.example.com/v1/text/polish" \
 
 1. 切换到 Speech to Text。
 2. 上传音频文件，或在 `Audio URL` 里粘贴公开音频 URL。
-3. 展开 Provider settings，为本机要用的引擎填好 endpoint、模型和 API Key（首次保存时输入 `ADMIN_TOKEN`，只存在 sessionStorage）；选择 ElevenLabs 时还可以设置语言和音频事件标记。
+3. 展开 Provider settings，为本机要用的引擎填好 endpoint、模型和 API Key（写接口由 Cloudflare Access 保护）；选择 ElevenLabs 时还可以设置语言和音频事件标记。
 4. 点击转录。
 5. ElevenLabs 结果可在纯文本、句子时间戳和词级时间戳之间切换。
 6. 点击句子或词的时间戳会播放上传音频的对应片段。
@@ -608,7 +599,7 @@ AI 润色流程：
 2. 填写 OpenAI 兼容接口 Base URL、API Key 和模型。
 3. 输入文本后点击 AI 润色图标。
 
-AI 润色的 Base URL、API Key、模型和润色指令会保存在浏览器本地 `localStorage`，不会写入仓库。转录服务的配置则相反：endpoint / 模型 / API Key 保存在 Worker 的 D1 里，其中 API Key 是加密后的密文，`ADMIN_TOKEN` 只留在当前标签页的 `sessionStorage`。
+AI 润色的 Base URL、API Key、模型和润色指令会保存在浏览器本地 `localStorage`，不会写入仓库。转录服务的配置则相反：endpoint / 模型 / API Key 保存在 Worker 的 D1 里，其中 API Key 是加密后的密文，写接口靠 Cloudflare Access 挡外部访问。
 
 ## 验证
 
@@ -642,7 +633,7 @@ git diff --check
 - 项目需要 D1 存服务配置；没有 D1 binding 时设置接口会返回明确错误，页面里的 Provider settings 不可写。
 - 更换 `SECRETS_ENCRYPTION_KEY` 会让已保存的 API Key 无法解密，需要在页面里重新填写一次。
 - Trancy token 没有 `exp`，不续期会在一个未测出的窗口后失效，所以 `wrangler.toml` 里的 cron 是这条链路的一部分：关掉 cron，账号迟早会变成 `dead`（有密码就点一次重新登录，没有密码只能重贴 token）。部署前记得执行 `npx wrangler d1 migrations apply voicecraft --remote`。
-- Trancy 的密码在 D1 里是**明文**，谁拿到数据库或 `ADMIN_TOKEN` 就等于拿到这些账号。请只在 Access 保护或仅自己可访问的部署上启用这个功能，不要把这个 Worker 变成公开的账号池。
+- Trancy 的密码在 D1 里是**明文**，谁拿到数据库或穿过 Access 就等于拿到这些账号。`/api/*` 必须挂 Access，否则 `GET /api/trancy/accounts` 会把密码直接吐给任何访问者。
 - 轮换多个账号等于把免费额度拆给不同账号，这类用法通常违反服务的服务条款；风控或封号在网关里表现为 `status=banned` 或上游 `data:null`，不要把它放在关键路径上。
 
 ## 开源协议

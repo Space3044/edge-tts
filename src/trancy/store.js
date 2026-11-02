@@ -461,7 +461,9 @@ export async function loginTrancyAccount(env, { email = "", password = "", mode 
         ok: true,
         reason: null,
         message: "ok",
-        account: accountView(row, { tokenTail: maskTrancyToken(token), includePassword: false })
+        // Same shape as the list: no route hides the password any more, Access
+        // is the only gate.
+        account: accountView(row, { tokenTail: maskTrancyToken(token), includePassword: true })
     };
 }
 
@@ -525,34 +527,7 @@ export async function refreshAllTrancyAccounts(env, { minAgeMinutes = 0, limit =
     };
 }
 
-/**
- * Least-recently-used usable account. Never returns an account whose token
- * Trancy already rejected, nor one inside a failure cooldown.
- */
-export async function pickTrancyAccount(env) {
-    const row = await requireDatabase(env)
-        .prepare(
-            `SELECT ${SELECT_COLUMNS} FROM trancy_account
-              WHERE status = ? AND (cooldown_until = '' OR cooldown_until <= ?)
-                AND (exhausted_until = '' OR exhausted_until <= ?)
-              ORDER BY (last_used_at = '') DESC, last_used_at ASC
-              LIMIT 1`
-        )
-        .bind(TRANCY_STATUS.ok, nowIso(), nowIso())
-        .first();
-
-    if (!row) {
-        return null;
-    }
-
-    const { token, error } = await decryptToken(env, row);
-    if (!token) {
-        return null;
-    }
-    return { id: row.id, email: String(row.email || ""), name: String(row.name || ""), token, tokenError: error };
-}
-
-/** Bookkeeping for the relay: keep `last_used_at` ordered, count failures. */
+/** Bookkeeping for a failed caption attempt: keep `last_used_at` ordered, count failures. */
 export async function recordTrancyUsage(env, id, { ok = true, cooldownMinutes = 0 } = {}) {
     const timestamp = nowIso();
     if (ok) {

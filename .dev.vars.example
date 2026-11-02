@@ -7,24 +7,13 @@
 # Changing this value makes existing rows undecryptable: re-save the keys afterwards.
 SECRETS_ENCRYPTION_KEY=3MA8dqfnN1veywbjKPVE9hDwIq2Ra5TXvsTThon+SEc=
 
-# Who may write provider settings?
+# Authorisation is Cloudflare Access' job.
 #
-# - localhost / 127.0.0.1 / *.local: open by default, nothing to configure.
-# - production behind Cloudflare Access (protecting /api/*): set
-#   CF_ACCESS_TRUSTED=1 once and rely on Access for authentication.
-# - anywhere else: set ADMIN_TOKEN and send it as a Bearer token.
-#
-# ADMIN_TOKEN wins over the other two when present.
-# ADMIN_TOKEN=change-me
-# CF_ACCESS_TRUSTED=1
-
-# Optional: a narrow key for downstream programs.
-#
-# ADMIN_TOKEN doubles as the operator key - it can delete accounts and read the
-# plaintext passwords. A service that only needs subtitles should get this one
-# instead: it is accepted by POST /api/trancy/captions and POST /api/trancy/relay
-# and by nothing else.
-# TRANCY_API_TOKEN=
+# There is no token in this Worker: /api/* is expected to sit behind an Access
+# application, and that includes the endpoints that spend Trancy quota
+# (POST /api/trancy/captions) and the ones that return the stored passwords
+# (GET /api/trancy/accounts). Local `wrangler dev` has no Access in front, so
+# everything is reachable there - which is fine, it is your own machine.
 
 # Optional fallbacks, used when D1 has no key for that provider.
 # OPENAI_API_KEY=

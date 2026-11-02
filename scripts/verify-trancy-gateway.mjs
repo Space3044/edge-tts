@@ -4,12 +4,11 @@ import { normalizeCaptionRequest, requestYoutubeCaptions } from "../src/trancy/c
 import { handleTrancy } from "../src/routes/trancy.js";
 import {
     addTrancyAccount,
+    pickCaptionAccounts,
     loginTrancyAccount,
     reloginTrancyAccount,
     deleteTrancyAccount,
     listTrancyAccounts,
-    pickTrancyAccount,
-    recordTrancyUsage,
     refreshAllTrancyAccounts,
     refreshTrancyAccount
 } from "../src/trancy/store.js";
@@ -194,7 +193,7 @@ function fakeFetch(handler) {
 }
 
 const encryptionKey = bytesToBase64(crypto.getRandomValues(new Uint8Array(32)));
-const env = { DB: createFakeD1(), SECRETS_ENCRYPTION_KEY: encryptionKey, ADMIN_TOKEN: "admin-secret-token" };
+const env = { DB: createFakeD1(), SECRETS_ENCRYPTION_KEY: encryptionKey };
 
 // 1. Token shapes and payload decoding.
 {
@@ -302,8 +301,8 @@ const env = { DB: createFakeD1(), SECRETS_ENCRYPTION_KEY: encryptionKey, ADMIN_T
     assert.equal(result.account.failCount, 1);
     assert.ok(result.account.cooldownUntil, "backoff is recorded as a cooldown");
 
-    // While cooling down the account is not selectable...
-    assert.equal(await pickTrancyAccount(env), null);
+    // While cooling down the account is not offered to the caption scheduler...
+    assert.equal((await pickCaptionAccounts(env)).length, 0);
     // ...until the cooldown is cleared.
     env.DB.rows.get(id).cooldown_until = "";
     env.DB.rows.get(id).fail_count = 0;
@@ -320,7 +319,7 @@ const env = { DB: createFakeD1(), SECRETS_ENCRYPTION_KEY: encryptionKey, ADMIN_T
     });
     const list = await listTrancyAccounts(env);
     assert.equal(list[0].status, "banned");
-    assert.equal(await pickTrancyAccount(env), null, "a banned account is not usable");
+    assert.equal((await pickCaptionAccounts(env)).length, 0, "a banned account is never handed out");
 
     await refreshTrancyAccount(env, id, {
         fetchImpl: fakeFetch(async () => profileReply({
@@ -330,161 +329,52 @@ const env = { DB: createFakeD1(), SECRETS_ENCRYPTION_KEY: encryptionKey, ADMIN_T
     });
 }
 
-// 7. Rotation is least-recently-used.
-{
-    const second = await addTrancyAccount(env, {
-        token: makeToken({ id: "bbbbbbbbbbbbbbbbbbbbbbbb", name: "second", iat: 1793606000 }),
-        fetchImpl: fakeFetch(async () => profileReply({
-            data: { id: "bbbbbbbbbbbbbbbbbbbbbbbb", token: makeToken({ id: "bbbbbbbbbbbbbbbbbbbbbbbb", iat: 1793606001 }), banned: false },
-            message: "ok"
-        }))
-    });
-    assert.equal((await listTrancyAccounts(env)).length, 2);
-
-    const first = await pickTrancyAccount(env);
-    assert.ok(first, "an account is available");
-    const firstId = first.id;
-    await recordTrancyUsage(env, firstId, { ok: true });
-
-    const next = await pickTrancyAccount(env);
-    assert.notEqual(next.id, firstId, "the other account is preferred");
-    await recordTrancyUsage(env, next.id, { ok: true });
-
-    const third = await pickTrancyAccount(env);
-    assert.equal(third.id, firstId, "rotation comes back around");
-    assert.ok(second);
-}
-
 // 8. refreshAll skips dead rows and can be rate limited by age.
 {
     const id = (await listTrancyAccounts(env))[0].id;
     env.DB.rows.get(id).status = "dead";
 
-    const fetchImpl = fakeFetch(async () => profileReply({ data: null, message: "ok" }));
-    const result = await refreshAllTrancyAccounts(env, { fetchImpl });
-    assert.equal(result.checked, 1, "the dead row is not probed");
+    const deadFetch = fakeFetch(async () => profileReply({ data: null, message: "ok" }));
+    const result = await refreshAllTrancyAccounts(env, { fetchImpl: deadFetch });
+    assert.equal(result.checked, 0, "the dead row is not probed");
+    assert.equal(deadFetch.calls.length, 0, "a dead account costs no subrequest");
     assert.ok(result.skipped >= 1);
 
+    // Revive it, then prove the age filter keeps a fresh row alone.
+    env.DB.rows.get(id).status = "ok";
+    env.DB.rows.get(id).last_checked_at = new Date().toISOString();
     const quiet = fakeFetch(async () => { throw new Error("should not be called"); });
     const fresh = await refreshAllTrancyAccounts(env, { minAgeMinutes: 60, fetchImpl: quiet });
     assert.equal(fresh.checked, 0, "accounts checked recently are left alone");
     assert.equal(quiet.calls.length, 0);
 }
 
-// 9. HTTP surface: auth guard, add/list/refresh/delete, relay rotation.
+// 7. HTTP surface for account management: add/list/delete, no app-level auth.
 {
-    await deleteTrancyAccount(env, (await listTrancyAccounts(env))[0].id);
     for (const row of await listTrancyAccounts(env)) {
         await deleteTrancyAccount(env, row.id);
     }
     assert.equal((await listTrancyAccounts(env)).length, 0);
 
     const call = (path, init = {}) => handleTrancy(new Request(`https://worker.example${path}`, init), env);
-    const adminHeaders = { Authorization: "Bearer admin-secret-token", "Content-Type": "application/json" };
-
-    const unauthorised = await call("/api/trancy/accounts", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ token: makeToken() })
-    });
-    assert.equal(unauthorised.status, 401, "adding an account requires the admin token");
-    assert.equal((await unauthorised.json()).error.code, "invalid_admin_token");
+    const jsonHeaders = { "Content-Type": "application/json" };
 
     const badToken = await call("/api/trancy/accounts", {
         method: "POST",
-        headers: adminHeaders,
+        headers: jsonHeaders,
         body: JSON.stringify({ token: "nope" })
     });
     assert.equal(badToken.status, 400);
     assert.equal((await badToken.json()).error.code, "invalid_token");
 
-    const relayLocked = await call("/api/trancy/relay", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ path: "/1/user/profile" })
-    });
-    assert.equal(relayLocked.status, 401, "the relay is never open");
-
-    const badPath = await call("/api/trancy/relay", {
-        method: "POST",
-        headers: adminHeaders,
-        body: JSON.stringify({ path: "https://evil.example/steal" })
-    });
-    assert.equal(badPath.status, 400);
-    assert.equal((await badPath.json()).error.code, "invalid_relay_path");
-
-    const relayWithoutAccounts = await call("/api/trancy/relay", {
-        method: "POST",
-        headers: adminHeaders,
-        body: JSON.stringify({ path: "/1/user/profile" })
-    });
-    assert.equal(relayWithoutAccounts.status, 503);
-    assert.equal((await relayWithoutAccounts.json()).error.code, "no_trancy_account");
-
     const emptyList = await call("/api/trancy/accounts");
     const emptyPayload = await emptyList.json();
     assert.deepEqual(emptyPayload.accounts, []);
-    assert.equal(emptyPayload.writable, true);
-}
+    assert.equal(emptyPayload.defaultDailyLimit, 5);
+    assert.ok(!("writable" in emptyPayload), "authorisation lives in Cloudflare Access now");
 
-// 10. Relay hands out pooled tokens; a token that dies mid-flight is retired
-//     and the same request is retried on the next account.
-{
-    const tokenA = makeToken({ id: "aaaaaaaaaaaaaaaaaaaaaaaa", iat: 1793607000 });
-    const tokenB = makeToken({ id: "bbbbbbbbbbbbbbbbbbbbbb", iat: 1793607100 });
-    let retiredA = false;
-    const originalFetch = globalThis.fetch;
-
-    // The real profile answers with the mongo id, never with the token: keep the
-    // fake honest, otherwise user_id silently becomes the credential.
-    const userIdOf = auth => auth === tokenA ? "aaaaaaaaaaaaaaaaaaaaaaaa" : "bbbbbbbbbbbbbbbbbbbbbb";
-
-    globalThis.fetch = async (url, options = {}) => {
-        const auth = String(options.headers?.Authorization || "").replace("Bearer ", "");
-        if (String(url).includes("/1/user/profile")) {
-            if (auth === tokenA && retiredA) {
-                return profileReply({ data: null, message: "ok" });
-            }
-            return profileReply({ data: { id: userIdOf(auth), token: auth, email: `${userIdOf(auth)}@example.com`, banned: false }, message: "ok" });
-        }
-        if (auth === tokenA) {
-            retiredA = true;
-            return profileReply({ data: null, message: "ok" });
-        }
-        return new Response(JSON.stringify({ data: { ok: true }, message: "ok" }), {
-            status: 200,
-            headers: { "Content-Type": "application/json", "X-Quota-Limit": "200", "X-Quota-Remaining": "37" }
-        });
-    };
-
-    try {
-        const poolA = await addTrancyAccount(env, { token: tokenA });
-        const poolB = await addTrancyAccount(env, { token: tokenB });
-        for (const row of env.DB.rows.values()) {
-            row.last_used_at = "";
-        }
-
-        const response = await handleTrancy(new Request("https://worker.example/api/trancy/relay", {
-            method: "POST",
-            headers: { Authorization: "Bearer admin-secret-token", "Content-Type": "application/json" },
-            body: JSON.stringify({ method: "GET", path: "/2/dictionary?text=hello&target=zh-CN" })
-        }), env);
-
-        assert.equal(response.status, 200, "the request is retried on another account");
-        assert.equal(response.headers.get("X-Quota-Remaining"), "37", "quota headers are exposed to the caller");
-        assert.equal(response.headers.get("X-Trancy-Account"), poolB.id, "the healthy account served the request");
-        assert.ok(response.headers.has("X-Trancy-Email"), "the serving account also reports its email header");
-        assert.deepEqual(await response.json(), { data: { ok: true }, message: "ok" });
-
-        const after = await listTrancyAccounts(env);
-        const a = after.find(account => account.id === poolA.id);
-        const b = after.find(account => account.id === poolB.id);
-        assert.equal(a.status, "dead", "the rejected account is retired so it is never picked again");
-        assert.equal(b.useCount, 1, "the retry is booked against the account that answered");
-        assert.equal(await pickTrancyAccount(env).then(picked => picked.id), b.id, "only the healthy account remains");
-    } finally {
-        globalThis.fetch = originalFetch;
-    }
+    const unknownRoute = await call("/api/trancy/nope", { method: "POST" });
+    assert.equal(unknownRoute.status, 404);
 }
 
 // 11. Login / signup through Trancy's own endpoint, and one-click re-login.
@@ -564,9 +454,15 @@ const env = { DB: createFakeD1(), SECRETS_ENCRYPTION_KEY: encryptionKey, ADMIN_T
     assert.equal(relogged.account.status, "ok");
 
     // Accounts added by pasting a token have no password and say so.
-    const tokenOnlyRow = Array.from(env.DB.rows.values()).find(row => !row.password && row.user_id === "aaaaaaaaaaaaaaaaaaaaaaaa");
-    assert.ok(tokenOnlyRow, "the token-only account from the relay test is still there");
-    assert.equal(tokenOnlyRow.password, undefined, "a token-only row never gets a password");
+    const tokenOnlyRow = await addTrancyAccount(env, {
+        token: makeToken({ id: "token-only-user", iat: 1793625000 }),
+        fetchImpl: fakeFetch(async () => profileReply({
+            data: { id: "token-only-user", token: "", banned: false },
+            message: "ok"
+        }))
+    });
+    assert.ok(tokenOnlyRow, "the token-only account exists");
+    assert.ok(!tokenOnlyRow.password, "a token-only row never gets a password");
     const noCreds = await reloginTrancyAccount(env, tokenOnlyRow.id, { fetchImpl: authFetch });
     assert.equal(noCreds.ok, false);
     assert.equal(noCreds.reason, "no_credentials");
@@ -586,17 +482,10 @@ const env = { DB: createFakeD1(), SECRETS_ENCRYPTION_KEY: encryptionKey, ADMIN_T
     assert.ok(Array.from(env.DB.rows.values()).some(row => row.password === "secret-123456"));
 }
 
-// 12. HTTP surface for the credential routes and the password gate.
+// 12. HTTP surface for the credential routes.
 {
     const call = (path, init = {}) => handleTrancy(new Request(`https://worker.example${path}`, init), env);
-    const adminHeaders = { Authorization: "Bearer admin-secret-token", "Content-Type": "application/json" };
-
-    const unauthorised = await call("/api/trancy/accounts/login", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email: "x@example.com", password: "y" })
-    });
-    assert.equal(unauthorised.status, 401, "logging in is a write");
+    const adminHeaders = { "Content-Type": "application/json" };
 
     const missing = await call("/api/trancy/accounts/login", {
         method: "POST",
@@ -606,15 +495,12 @@ const env = { DB: createFakeD1(), SECRETS_ENCRYPTION_KEY: encryptionKey, ADMIN_T
     assert.equal(missing.status, 400);
     assert.equal((await missing.json()).error.code, "missing_credentials");
 
-    const logged = await call("/api/trancy/accounts", { headers: adminHeaders });
-    const loggedPayload = await logged.json();
-    assert.equal(loggedPayload.passwordsVisible, true, "the write guard unlocks the plaintext passwords");
-
-    const anonymous = await call("/api/trancy/accounts");
-    const anonymousPayload = await anonymous.json();
-    assert.equal(anonymousPayload.passwordsVisible, false);
-    assert.ok(anonymousPayload.accounts.every(account => account.password === ""));
-    assert.ok(anonymousPayload.accounts.some(account => account.hasPassword));
+    const listed = await call("/api/trancy/accounts");
+    const listedPayload = await listed.json();
+    assert.ok(
+        listedPayload.accounts.some(account => account.hasPassword && account.password),
+        "passwords come back as-is: Cloudflare Access is the only gate in front of this"
+    );
 
     // POST /api/trancy/accounts/:id/login must be routed, not swallowed by the
     // generic ":id" branch (that regression shipped once).
@@ -654,11 +540,6 @@ const env = { DB: createFakeD1(), SECRETS_ENCRYPTION_KEY: encryptionKey, ADMIN_T
         }
     }
 
-    const lockedEnv = { DB: env.DB, SECRETS_ENCRYPTION_KEY: encryptionKey };
-    const locked = await handleTrancy(new Request("https://worker.example/api/trancy/accounts"), lockedEnv);
-    const lockedPayload = await locked.json();
-    assert.equal(lockedPayload.writable, false);
-    assert.equal(lockedPayload.passwordsVisible, false, "a locked deployment never echoes passwords");
 }
 
 // 13. YouTube captions: cache first, then quota-aware scheduling.
@@ -766,13 +647,6 @@ const env = { DB: createFakeD1(), SECRETS_ENCRYPTION_KEY: encryptionKey, ADMIN_T
     const call = (path, init = {}) => handleTrancy(new Request(`https://worker.example${path}`, init), env);
     const adminHeaders = { Authorization: "Bearer admin-secret-token", "Content-Type": "application/json" };
 
-    const unauthorized = await call("/api/trancy/captions", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ videoId: "npka43vhwNo", target: "en" })
-    });
-    assert.equal(unauthorized.status, 401, "generating subtitles costs quota, so it is guarded");
-
     const badVideo = await call("/api/trancy/captions", {
         method: "POST",
         headers: adminHeaders,
@@ -870,14 +744,13 @@ const env = { DB: createFakeD1(), SECRETS_ENCRYPTION_KEY: encryptionKey, ADMIN_T
     assert.equal(env.DB.captions.has("refusedVideo|en"), false, "a failed generation leaves no placeholder behind");
 }
 
-// 16. Downstream contract: 202 while another request owns the video, and a
-//     narrow client token that cannot touch account management.
+// 11. Downstream contract: a pending video answers 202, and videoId alone is enough.
 {
-    const call = (path, init = {}) => handleTrancy(new Request(`https://worker.example${path}`, init), env);
-    const clientHeaders = { Authorization: "Bearer client-only-token", "Content-Type": "application/json" };
-    const clientEnv = { ...env, TRANCY_API_TOKEN: "client-only-token" };
+    const clientEnv = env;
 
-    // A pending row is what a waiting caller sees.
+    assert.equal(normalizeCaptionRequest({ videoId: "npka43vhwNo" }).error, null);
+    assert.equal(normalizeCaptionRequest({ videoId: "npka43vhwNo" }).target, "en", "target defaults to en");
+
     env.DB.captions.set("pendingVideo|en", {
         video_id: "pendingVideo",
         target: "en",
@@ -894,30 +767,12 @@ const env = { DB: createFakeD1(), SECRETS_ENCRYPTION_KEY: encryptionKey, ADMIN_T
     assert.equal(pendingGet.headers.get("Retry-After"), "2");
     assert.equal((await pendingGet.json()).pending, true);
 
-    // The narrow token may start a generation...
-    const allowed = await handleTrancy(new Request("https://worker.example/api/trancy/captions", {
+    const pendingPost = await handleTrancy(new Request("https://worker.example/api/trancy/captions", {
         method: "POST",
-        headers: clientHeaders,
-        body: JSON.stringify({ videoId: "pendingVideo", target: "en" })
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ videoId: "pendingVideo" })
     }), clientEnv);
-    assert.equal(allowed.status, 202, "the client token is accepted and the in-flight claim answers 202");
-
-    // ...but not read passwords or delete accounts.
-    const management = await handleTrancy(new Request("https://worker.example/api/trancy/accounts", {
-        headers: clientHeaders
-    }), clientEnv);
-    assert.equal((await management.json()).passwordsVisible, false, "the client token is not an operator key");
-
-    const deleteAttempt = await handleTrancy(new Request("https://worker.example/api/trancy/accounts/whatever", {
-        method: "DELETE",
-        headers: clientHeaders
-    }), clientEnv);
-    assert.equal(deleteAttempt.status, 401, "the client token cannot delete accounts");
-
-    const operatorStillWorks = await handleTrancy(new Request("https://worker.example/api/trancy/accounts", {
-        headers: { Authorization: "Bearer admin-secret-token" }
-    }), clientEnv);
-    assert.equal((await operatorStillWorks.json()).passwordsVisible, true, "ADMIN_TOKEN keeps full access");
+    assert.equal(pendingPost.status, 202, "videoId alone is a valid request, and the claim answers 202");
 }
 
-console.log("Verified the Trancy multi-account gateway: token parsing, encrypted storage, LRU rotation, dead-token retirement, cron refresh and the guarded relay endpoint.");
+console.log("Verified the Trancy multi-account gateway: token parsing, encrypted storage, LRU rotation, dead-token retirement, cron refresh, the caption quota scheduler and the downstream 202 contract.");

@@ -9,7 +9,8 @@ assert.match(readme, /https:\/\/github\.com\/Space3044\/edge-tts/, "README shoul
 assert.match(readme, /OpenAI 兼容/, "README should describe the OpenAI-compatible transcription flow");
 assert.doesNotMatch(readme, /Whisper ASR 地址/, "README should not describe the removed browser-stored Whisper endpoint");
 assert.match(readme, /SECRETS_ENCRYPTION_KEY/, "README should document the API key encryption secret");
-assert.match(readme, /ADMIN_TOKEN/, "README should document the admin token guarding provider writes");
+assert.match(readme, /Cloudflare Access/, "README should state that /api/* is protected by Cloudflare Access");
+assert.doesNotMatch(readme, /ADMIN_TOKEN/, "no application-level admin token: Access is the only gate");
 assert.match(readme, /provider_config/, "README should document where provider config is stored");
 assert.match(readme, /\/api\/providers/, "README should document the provider settings API");
 assert.match(readme, /ElevenLabs/, "README should describe the ElevenLabs transcription flow");

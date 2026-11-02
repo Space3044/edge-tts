@@ -107,13 +107,13 @@ assert.doesNotMatch(
 assert.doesNotMatch(
   clientSource,
   /ADMIN_TOKEN_STORAGE_KEY|voicecraft-admin-token|readAdminToken/,
-  "the frontend must not hold provider-write credentials; the Worker decides access",
+  "the frontend must not hold provider-write credentials; Cloudflare Access decides access",
 );
 
-assert.match(
+assert.doesNotMatch(
   clientSource,
-  /writeMode|writable/,
-  "frontend should reflect the server-reported write mode",
+  /writeMode|payload\.writable|provider\.readOnly/,
+  "no client-side write-mode state: Access owns authorisation end to end",
 );
 
 assert.doesNotMatch(
