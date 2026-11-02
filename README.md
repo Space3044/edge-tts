@@ -236,7 +236,7 @@ POST https://{region}.api.cognitive.microsoft.com
 启用它需要三样东西：
 
 1. 一个 **Speech 资源**（免费层 F0 每月 5 小时），并给你的账号在该资源上分配 `Cognitive Services Speech User` 角色；
-2. 一个 **Entra ID 应用注册**，redirect URI 填 `https://你的域名/api/microsoft/callback`；
+2. 一个 **Entra ID 应用注册**（免费）：redirect URI 填 `https://你的域名/api/microsoft/callback`，本地调试再加 `http://localhost:8787/api/microsoft/callback`。如果注册成「Web」平台就需要 client secret；注册成「移动和桌面应用程序」则用 PKCE、只填 client id 即可。**不要**复用 Thunderbird / Office / Azure CLI 这类第三方公开 client id——它们没有 Cognitive Services Speech 权限，授权会失败（AADSTS65001），而且是冒用别人的应用身份；`scripts/check-microsoft-oauth.mjs` 会直接挡住常见的那几个。
 3. 三个 Worker secret：`MICROSOFT_CLIENT_ID`、`MICROSOFT_CLIENT_SECRET`（confidential client，refresh token 90 天滑动）、`MICROSOFT_TENANT`（默认 `common`）。
 
 配好后可以先自检凭据（不需要浏览器）：

@@ -40,7 +40,7 @@ function stateCookie(value, maxAge) {
 
 export async function handleMicrosoftLogin(request, env) {
     if (!isMicrosoftOAuthConfigured(env)) {
-        return errorResponse("未配置 MICROSOFT_CLIENT_ID / MICROSOFT_CLIENT_SECRET", {
+        return errorResponse("未配置 MICROSOFT_CLIENT_ID", {
             status: 503,
             type: "api_error",
             code: "microsoft_oauth_not_configured"

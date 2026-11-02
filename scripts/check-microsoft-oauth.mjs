@@ -34,20 +34,63 @@ const clientId = String(env.MICROSOFT_CLIENT_ID || "").trim();
 const clientSecret = String(env.MICROSOFT_CLIENT_SECRET || "").trim();
 const tenant = String(env.MICROSOFT_TENANT || "").trim() || "common";
 
+// Well-known public client ids belong to their vendors. Using one would make the
+// consent screen say "Thunderbird" (etc.) and would request scopes that app never
+// declared, so it is both broken and impersonation.
+const THIRD_PARTY_CLIENT_IDS = {
+    "9e5f94bc-e8a4-4e73-b8be-63364c29d753": "Mozilla Thunderbird",
+    "d3590ed6-52b3-4102-aeff-aad2292ab01c": "Microsoft Office",
+    "1b730954-1685-4b74-9bfd-dac224a7b894": "Azure CLI",
+    "04b07795-8ddb-461a-bbee-02f9e1bf7b46": "Azure CLI (legacy)"
+};
+const owner = THIRD_PARTY_CLIENT_IDS[clientId.toLowerCase()];
+if (owner) {
+    fail(
+        `这个 client id 是 ${owner} 的公开应用，不是你的。\n` +
+        "  - 它的应用注册里没有声明 Cognitive Services Speech 权限，授权会失败（AADSTS65001 / invalid_scope）\n" +
+        "  - 也不该冒用别人的应用身份去拿令牌\n" +
+        "  请注册自己的应用（免费，约 2 分钟），见 README 的「Microsoft」一节。"
+    );
+}
+
 function fail(message) {
     console.error(`✘ ${message}`);
     process.exit(1);
 }
 
-if (!clientId || !clientSecret) {
+if (!clientId) {
     fail(
-        "未配置 MICROSOFT_CLIENT_ID / MICROSOFT_CLIENT_SECRET。\n" +
-        "  本地：把两个值加进 .dev.vars 再重跑；线上：npx wrangler secret put <名字>"
+        "未配置 MICROSOFT_CLIENT_ID。\n" +
+        "  本地：把它加进 .dev.vars 再重跑；线上：npx wrangler secret put MICROSOFT_CLIENT_ID"
     );
 }
 
 if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(clientId)) {
     fail(`MICROSOFT_CLIENT_ID 不像一个应用程序(客户端) ID：${clientId.slice(0, 12)}…`);
+}
+
+if (!clientSecret) {
+    // Public client: no secret to validate, so probe the authorize endpoint and
+    // read the AADSTS code it renders for an unknown app / tenant.
+    const url = new URL(`https://login.microsoftonline.com/${encodeURIComponent(tenant)}/oauth2/v2.0/authorize`);
+    url.searchParams.set("client_id", clientId);
+    url.searchParams.set("response_type", "code");
+    url.searchParams.set("redirect_uri", "http://localhost:8787/api/microsoft/callback");
+    url.searchParams.set("scope", "https://cognitiveservices.azure.com/.default offline_access");
+    url.searchParams.set("prompt", "none");
+
+    const page = await fetch(url).then(res => res.text()).catch(() => "");
+    if (/AADSTS700016|AADSTS90002/.test(page)) {
+        fail(
+            "client id 或 tenant 不被识别（AADSTS700016 / AADSTS90002）。\n" +
+            "  检查应用注册里的「应用程序(客户端) ID」和 MICROSOFT_TENANT 是否匹配"
+        );
+    }
+    console.log("✔ 没有配置 client secret：按公共客户端（PKCE）处理，client id 形状与租户都正常");
+    console.log("  若登录最后一步报 AADSTS7000218（需要 client secret），说明这个应用是 Web 平台，");
+    console.log("  去「证书和密码」新建一个 secret，填进 MICROSOFT_CLIENT_SECRET 再试。");
+    console.log("  下一步：Provider settings 填 region → 点「登录微软账号」。");
+    process.exit(0);
 }
 
 if (clientSecret.length < 20) {

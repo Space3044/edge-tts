@@ -160,10 +160,7 @@ export async function handleProviders(request, env = {}) {
                 defaults: PROVIDER_DEFAULTS,
                 writable: writeMode(request, env) !== "locked",
                 writeMode: writeMode(request, env),
-                microsoftOauth: Boolean(
-                    String(env?.MICROSOFT_CLIENT_ID || "").trim() &&
-                    String(env?.MICROSOFT_CLIENT_SECRET || "").trim()
-                ),
+                microsoftOauth: Boolean(String(env?.MICROSOFT_CLIENT_ID || "").trim()),
                 encryptionReady: true
             });
         } catch (error) {

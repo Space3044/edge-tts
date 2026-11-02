@@ -25,8 +25,10 @@ export function microsoftOAuthConfig(env) {
 }
 
 export function isMicrosoftOAuthConfigured(env) {
-    const { clientId, clientSecret } = microsoftOAuthConfig(env);
-    return Boolean(clientId && clientSecret);
+    // A public client (registered as "Mobile and desktop applications") uses
+    // PKCE without a secret, so the client id alone is enough.
+    const { clientId } = microsoftOAuthConfig(env);
+    return Boolean(clientId);
 }
 
 function base64UrlEncode(bytes) {
@@ -74,18 +76,19 @@ function tokenEndpoint(env) {
 
 async function requestToken(env, body) {
     const { clientId, clientSecret } = microsoftOAuthConfig(env);
-    if (!clientId || !clientSecret) {
-        throw new Error("MICROSOFT_CLIENT_ID / MICROSOFT_CLIENT_SECRET 未配置");
+    if (!clientId) {
+        throw new Error("MICROSOFT_CLIENT_ID 未配置");
+    }
+
+    const form = new URLSearchParams({ client_id: clientId, ...body });
+    if (clientSecret) {
+        form.set("client_secret", clientSecret);
     }
 
     const response = await fetch(tokenEndpoint(env), {
         method: "POST",
         headers: { "Content-Type": "application/x-www-form-urlencoded" },
-        body: new URLSearchParams({
-            client_id: clientId,
-            client_secret: clientSecret,
-            ...body
-        })
+        body: form
     });
 
     const raw = await response.text();
