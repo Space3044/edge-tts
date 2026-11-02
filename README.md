@@ -500,6 +500,12 @@ GET  /api/trancy/captions/:videoId   # ?target=en，只读本地缓存，永远�
 
 `tried` 会写清每个被咨询账号的失败原因，`resetAt` 是下一个 UTC 零点。
 
+面板上的额度显示：
+
+- 每个账号一行 `AI subtitles <剩余>/<每日上限> · today <今天已用>`；上限来自上游 `x-quota-limit`，账号还没请求过时按官方的 5 显示。
+- 顶部 `AI subtitles <池子剩余> / <池子容量> left` 是整池汇总，直接回答「今天还能做几个视频」。
+- 额度用完的账号会多一个 `QUOTA OUT` 徽章，并写出恢复时间（下一个 UTC 零点）。这种账号 `status` 仍是 `ok`，cron 照常续期。
+
 ### 文本 AI 润色
 
 接口：

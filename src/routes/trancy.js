@@ -15,7 +15,12 @@
  */
 
 import { relayTrancyRequest, TRANCY_API_ORIGIN, TRANCY_PROFILE_PATH } from "../trancy/api.js";
-import { normalizeCaptionRequest, readCachedCaptions, requestYoutubeCaptions } from "../trancy/captions.js";
+import {
+    normalizeCaptionRequest,
+    readCachedCaptions,
+    requestYoutubeCaptions,
+    TRANCY_DEFAULT_DAILY_LIMIT
+} from "../trancy/captions.js";
 import {
     accountView,
     addTrancyAccount,
@@ -68,7 +73,10 @@ async function handleAccounts(request, env, segments) {
                 accounts,
                 writable: mode !== "locked",
                 writeMode: mode,
-                passwordsVisible: includePasswords
+                passwordsVisible: includePasswords,
+                // The panel needs a denominator before the first caption call,
+                // and it must be the same number the scheduler assumes.
+                defaultDailyLimit: TRANCY_DEFAULT_DAILY_LIMIT
             });
         }
 

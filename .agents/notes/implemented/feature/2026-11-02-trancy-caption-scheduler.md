@@ -52,7 +52,19 @@ GET https://api.trancy.org/3/youtube/captions/{videoId}?target=en&source=audio
 区分「池子是空的」（`no_account`）和「池子今天花完了」（`no_caption_quota`），
 因为调用方对这两种情况的重试策略完全不同。
 
-### 5. 接口收口
+### 5. 额度要对人可见
+
+额度只能在响应头里看到，所以面板不能只显示「上次的结果」，要显示可决策的数字：
+
+- 每行 `AI subtitles <剩余>/<上限> · today <已用>`，未知时按官方 5 当分母
+  （`TRANCY_DEFAULT_DAILY_LIMIT`，由 `GET /api/trancy/accounts` 下发，避免前端另写一个 5）；
+- 顶部池子汇总 `<剩余> / <容量> left`；
+- 额度耗尽的账号加 `QUOTA OUT` 徽章 + 恢复时间。
+
+分母**不硬编码 5**：上游实测报 `x-quota-limit: 2`，所以有观测值时用观测值，没有才退回 5。
+这个数字只用于展示与「还剩多少」的估算，真正的拦截仍然是上游的 403。
+
+### 6. 接口收口
 
 `POST /api/trancy/captions` 花额度，走写权限守卫；`GET /api/trancy/captions/:videoId`
 只读缓存、不花额度，所以保持开放。`videoId` 与 `target` 都做白名单校验，

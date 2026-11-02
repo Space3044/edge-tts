@@ -36,6 +36,15 @@ const VIDEO_ID_PATTERN = /^[A-Za-z0-9_-]{6,20}$/;
 const TARGET_PATTERN = /^[A-Za-z]{2,3}(-[A-Za-z0-9]{2,8})*$/;
 const MAX_ACCOUNTS_PER_REQUEST = 3;
 
+/**
+ * What a free account gets per day, as documented by Trancy ("5 AI subtitles
+ * for free users"). Used only for display and for the "how much room is left"
+ * estimate before an account has answered once: the real numbers always come
+ * from `x-quota-limit` / `x-quota-remaining`, and an actual refusal parks the
+ * account regardless of what we think the limit is.
+ */
+export const TRANCY_DEFAULT_DAILY_LIMIT = 5;
+
 export function normalizeCaptionRequest({ videoId, target } = {}) {
     const video = String(videoId ?? "").trim();
     const language = String(target ?? "en").trim() || "en";

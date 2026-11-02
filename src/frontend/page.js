@@ -21,6 +21,7 @@ const TRANCY_PANEL = `<section class="trancy-panel" id="trancyContainer" style="
           </div>
           <div class="trancy-topbar-actions">
             <span class="trancy-summary" id="trancySummary"></span>
+            <span class="trancy-summary trancy-quota-summary" id="trancyQuotaSummary"></span>
             <button type="button" class="btn-secondary" id="trancyRefreshAllBtn"><span data-i18n="trancy.refreshAll">Refresh all</span></button>
           </div>
         </div>

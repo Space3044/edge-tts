@@ -32,7 +32,7 @@ const CLIENT_SCRIPT_TEMPLATE = `\n    const VOICES = __VOICECRAFT_VOICES__;\n   
     document.getElementById('transcriptionForm').addEventListener('submit', async function(event) { event.preventDefault(); const transcribeBtn = document.getElementById('transcribeBtn'); const transcriptionResult = document.getElementById('transcriptionResult'); const transcriptionLoading = document.getElementById('transcriptionLoading'); const transcriptionSuccess = document.getElementById('transcriptionSuccess'); const transcriptionError = document.getElementById('transcriptionError'); const audioSourceUrl = (document.getElementById('audioSourceUrl')?.value || '').trim(); if (!selectedAudioFile && !audioSourceUrl) { alert(t('error.audioSourceRequired')); return; } const isElevenLabs = currentSttEngine === 'elevenlabs'; transcriptionResult.style.display = 'block'; transcriptionLoading.style.display = 'block'; transcriptionSuccess.style.display = 'none'; transcriptionError.style.display = 'none'; transcribeBtn.disabled = true; transcribeBtn.textContent = t('status.transcribing'); document.getElementById('transcriptionProgressInfo').textContent = selectedAudioFile ? t('status.fileLabel') + ': ' + selectedAudioFile.name + ' (' + formatFileSize(selectedAudioFile.size) + ')' : t('stt.sourceUrl') + ': ' + audioSourceUrl; try { const formData = new FormData(); if (selectedAudioFile) { formData.append('file', selectedAudioFile); } else { formData.append('source_url', audioSourceUrl); } formData.append('engine', currentSttEngine); if (isElevenLabs) { formData.append('language', document.getElementById('elevenlabsLanguage').value); formData.append('tagAudioEvents', document.getElementById('elevenlabsTagAudioEvents').checked ? 'true' : 'false'); } const response = await fetch('/v1/audio/transcriptions', { method: 'POST', body: formData }); if (!response.ok) { const errorData = await response.json(); throw new Error(errorData.error && errorData.error.message ? errorData.error.message : '转录失败'); } const result = await response.json(); renderTranscriptionResult(result); transcriptionLoading.style.display = 'none'; transcriptionSuccess.style.display = 'block'; } catch (err) { transcriptionLoading.style.display = 'none'; transcriptionError.style.display = 'block'; transcriptionError.textContent = '错误: ' + err.message; } finally { transcribeBtn.disabled = false; transcribeBtn.textContent = t('action.transcribe'); } });
     document.getElementById('copyTranscriptionBtn').addEventListener('click', function() { const transcriptionText = document.getElementById('transcriptionText'); const button = this; const showCopied = function() { const originalText = button.textContent; button.textContent = t('action.copied'); setTimeout(function() { button.textContent = originalText; }, CONFIG.COPY_FEEDBACK); }; const fallbackCopy = function() { try { transcriptionText.select(); document.execCommand('copy'); showCopied(); } catch (err) { showToast(t('error.copyFailed')); } }; if (navigator.clipboard && navigator.clipboard.writeText) { navigator.clipboard.writeText(transcriptionText.value).then(showCopied).catch(fallbackCopy); } else { fallbackCopy(); } });
     document.getElementById('editTranscriptionBtn').addEventListener('click', function() { const transcriptionText = document.getElementById('transcriptionText'); setTranscriptionView('plain'); transcriptionText.readOnly = !transcriptionText.readOnly; this.textContent = transcriptionText.readOnly ? t('action.edit') : t('action.save'); if (!transcriptionText.readOnly) transcriptionText.focus(); });
-    document.getElementById('useForTtsBtn').addEventListener('click', function() { const transcriptionText = document.getElementById('transcriptionText').value; if (!transcriptionText.trim()) { alert('转录结果为空，无法转换为语音'); return; } switchMode('tts'); currentInputMethod = 'text'; document.getElementById('textInputTab').click(); document.getElementById('text').value = transcriptionText; document.getElementById('text').dispatchEvent(new Event('input', { bubbles: true })); document.getElementById('ttsWorkspace').scrollIntoView({ behavior: 'smooth' }); });\n    var trancyState = { accounts: [], writable: true, loadedAt: 0, addMode: 'login' };
+    document.getElementById('useForTtsBtn').addEventListener('click', function() { const transcriptionText = document.getElementById('transcriptionText').value; if (!transcriptionText.trim()) { alert('转录结果为空，无法转换为语音'); return; } switchMode('tts'); currentInputMethod = 'text'; document.getElementById('textInputTab').click(); document.getElementById('text').value = transcriptionText; document.getElementById('text').dispatchEvent(new Event('input', { bubbles: true })); document.getElementById('ttsWorkspace').scrollIntoView({ behavior: 'smooth' }); });\n    var trancyState = { accounts: [], writable: true, loadedAt: 0, addMode: 'login', defaultDailyLimit: 5 };
     var TRANCY_API_URL = '/api/trancy/accounts';
     function setTrancyStatus(message, tone) { var element = document.getElementById('trancyAddStatus'); if (!element) return; element.textContent = message || ''; if (tone) element.setAttribute('data-tone', tone); else element.removeAttribute('data-tone'); }
     function trancyTimeLabel(value) { if (!value) return t('trancy.never'); var date = new Date(value); if (isNaN(date.getTime())) return t('trancy.never'); return date.toLocaleString(); }
@@ -73,15 +73,21 @@ const CLIENT_SCRIPT_TEMPLATE = `\n    const VOICES = __VOICECRAFT_VOICES__;\n   
       var titleText = document.createElement('span'); titleText.className = 'trancy-account-title-text'; titleText.textContent = trancyAccountTitle(account); title.appendChild(titleText);
       var status = document.createElement('span'); status.className = 'trancy-badge trancy-badge-' + String(account.status || 'new').replace(/[^a-z0-9_-]/gi, ''); status.textContent = String(account.status || 'new'); title.appendChild(status);
       var plan = document.createElement('span'); plan.className = 'trancy-badge' + (account.premium ? ' trancy-badge-premium' : ''); plan.textContent = account.premium ? t('trancy.premium') : t('trancy.free'); title.appendChild(plan);
+      if (account.exhaustedUntil && new Date(account.exhaustedUntil).getTime() > Date.now()) {
+        var outOfQuota = document.createElement('span'); outOfQuota.className = 'trancy-badge trancy-badge-new'; outOfQuota.textContent = t('trancy.quotaBadge'); outOfQuota.title = t('trancy.quotaOut') + ' ' + trancyTimeLabel(account.exhaustedUntil); title.appendChild(outOfQuota);
+      }
       main.appendChild(title);
       // The title is already the email, so the meta line starts at the token.
       var bits = [];
       if (account.tokenTail) bits.push(account.tokenTail);
       // AI-subtitle quota: the numbers that decide whether this account is worth
       // a request today (five videos per free account per day upstream).
-      if (account.quotaLimit > 0 || account.quotaRemaining >= 0) {
-        bits.push(t('trancy.quota') + ' ' + (account.quotaRemaining < 0 ? '?' : account.quotaRemaining) + '/' + (account.quotaLimit > 0 ? account.quotaLimit : '?'));
-      }
+      // Before the first caption call the quota headers are unknown, so fall back
+      // to Trancy's documented free allowance; the numbers shown are always
+      // "left today / per day", which is the unit the scheduler spends.
+      var dailyLimit = account.quotaLimit > 0 ? account.quotaLimit : trancyState.defaultDailyLimit;
+      var quotaLeft = account.quotaRemaining >= 0 ? account.quotaRemaining : Math.max(0, dailyLimit - account.usedToday);
+      bits.push(t('trancy.quota') + ' ' + quotaLeft + '/' + dailyLimit);
       if (account.usedToday > 0) bits.push(t('trancy.today') + ' ' + account.usedToday);
       if (account.exhaustedUntil && new Date(account.exhaustedUntil).getTime() > Date.now()) {
         bits.push(t('trancy.quotaOut') + ' ' + trancyTimeLabel(account.exhaustedUntil));
@@ -141,6 +147,22 @@ const CLIENT_SCRIPT_TEMPLATE = `\n    const VOICES = __VOICECRAFT_VOICES__;\n   
         summary.appendChild(strong);
         summary.appendChild(document.createTextNode(' / ' + accounts.length + ' ' + t('trancy.usable')));
       }
+      var quotaSummary = document.getElementById('trancyQuotaSummary');
+      if (quotaSummary) {
+        var left = 0;
+        var capacity = 0;
+        accounts.forEach(function(account) {
+          var limit = account.quotaLimit > 0 ? account.quotaLimit : trancyState.defaultDailyLimit;
+          var available = account.quotaRemaining >= 0 ? account.quotaRemaining : Math.max(0, limit - account.usedToday);
+          capacity += limit;
+          left += available;
+        });
+        quotaSummary.innerHTML = '';
+        var leftStrong = document.createElement('b'); leftStrong.textContent = String(left);
+        quotaSummary.appendChild(document.createTextNode(t('trancy.quota') + ' '));
+        quotaSummary.appendChild(leftStrong);
+        quotaSummary.appendChild(document.createTextNode(' / ' + capacity + ' ' + t('trancy.quotaLeft')));
+      }
     }
     async function loadTrancyAccounts(force) {
       var list = document.getElementById('trancyAccountList');
@@ -154,6 +176,7 @@ const CLIENT_SCRIPT_TEMPLATE = `\n    const VOICES = __VOICECRAFT_VOICES__;\n   
         var payload = await response.json();
         trancyState.accounts = Array.isArray(payload.accounts) ? payload.accounts : [];
         trancyState.writable = payload.writable !== false;
+        if (Number(payload.defaultDailyLimit) > 0) trancyState.defaultDailyLimit = Number(payload.defaultDailyLimit);
         trancyState.loadedAt = Date.now();
         renderTrancyAccounts();
       } catch (err) { setTrancyStatus(t('trancy.loadFailed') + ': ' + err.message, 'error'); }
