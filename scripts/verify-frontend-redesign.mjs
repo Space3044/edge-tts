@@ -826,6 +826,8 @@ for (const key of [
   "provider.microsoftTitle",
   "provider.microsoftConnect",
   "provider.microsoftConnected",
+  "provider.microsoftNotConfigured",
+  "provider.microsoftLoginFailed",
   "provider.title",
   "provider.hint",
   "provider.save",
