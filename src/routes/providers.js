@@ -9,8 +9,7 @@
  * writes are refused instead of silently falling back to "anyone can write".
  */
 
-import { PROVIDER_DEFAULTS, clearMicrosoftTokens, isSupportedProvider, listProviderStatus, normalizeProviderName, saveProviderConfig } from "../secrets/store.js";
-import { handleMicrosoftLogin } from "./microsoft-auth.js";
+import { PROVIDER_DEFAULTS, clearMicrosoftTokens, isSupportedProvider, listProviderStatus, normalizeProviderName, saveMicrosoftTokens, saveProviderConfig } from "../secrets/store.js";
 import { errorResponse, jsonResponse } from "../utils/response.js";
 
 const MAX_ENDPOINT_LENGTH = 300;
@@ -179,29 +178,25 @@ export async function handleProviders(request, env = {}) {
             return denied;
         }
 
-        if (action === "login") {
-            return handleMicrosoftLogin(request, env);
+        if (action !== "clear-tokens") {
+            return errorResponse("只支持 POST /api/providers/microsoft/clear-tokens", {
+                status: 404,
+                type: "invalid_request_error",
+                param: "action",
+                code: "unknown_action"
+            });
         }
 
-        if (action === "logout") {
-            try {
-                await clearMicrosoftTokens(env);
-                const statuses = await listProviderStatus(env);
-                return jsonResponse({ provider: statuses.find(entry => entry.provider === "microsoft") });
-            } catch (error) {
-                return errorResponse(error instanceof Error ? error.message : "断开微软账号失败", {
-                    status: 500,
-                    code: "microsoft_logout_failed"
-                });
-            }
+        try {
+            await clearMicrosoftTokens(env);
+            const statuses = await listProviderStatus(env);
+            return jsonResponse({ provider: statuses.find(entry => entry.provider === "microsoft") });
+        } catch (error) {
+            return errorResponse(error instanceof Error ? error.message : "清除 Microsoft 令牌失败", {
+                status: 500,
+                code: "microsoft_clear_failed"
+            });
         }
-
-        return errorResponse("只支持 POST /api/providers/microsoft/login 和 /logout", {
-            status: 404,
-            type: "invalid_request_error",
-            param: "action",
-            code: "unknown_action"
-        });
     }
 
     if (request.method === "PUT" && segments.length === 3) {
@@ -271,6 +266,17 @@ export async function handleProviders(request, env = {}) {
             });
         }
 
+        const accessToken = typeof body?.accessToken === "string" ? body.accessToken.trim() : undefined;
+        const refreshToken = typeof body?.refreshToken === "string" ? body.refreshToken.trim() : undefined;
+        if ((accessToken || "").length > 8000 || (refreshToken || "").length > 8000) {
+            return errorResponse("Token 太长", {
+                status: 400,
+                type: "invalid_request_error",
+                param: "accessToken",
+                code: "invalid_token"
+            });
+        }
+
         try {
             const updated = await saveProviderConfig(env, provider, {
                 endpoint: endpoint.endpoint,
@@ -279,7 +285,11 @@ export async function handleProviders(request, env = {}) {
                 apiKey,
                 clearApiKey: body?.clearApiKey === true
             });
-            return jsonResponse({ provider: updated });
+            if (provider === "microsoft" && (accessToken !== undefined || refreshToken !== undefined)) {
+                await saveMicrosoftTokens(env, { accessToken, refreshToken });
+            }
+            const statuses = await listProviderStatus(env);
+            return jsonResponse({ provider: statuses.find(entry => entry.provider === provider) || updated });
         } catch (error) {
             console.error("保存 Provider 配置失败:", error);
             return errorResponse(error instanceof Error ? error.message : "保存 Provider 配置失败", {

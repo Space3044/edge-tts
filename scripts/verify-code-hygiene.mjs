@@ -70,8 +70,8 @@ assert.match(
 
 assert.doesNotMatch(
   transcriptionSource,
-  /resolveProvider\(env, "openai"\)[\s\S]*?console\.log\(/,
-  "provider resolution should not log secrets",
+  /console\.(log|error)\([^)]*(accessToken|apiKey|refreshToken)\b/,
+  "provider logs must never include token or key values",
 );
 
 assert.match(

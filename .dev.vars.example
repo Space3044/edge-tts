@@ -18,12 +18,11 @@ SECRETS_ENCRYPTION_KEY=3MA8dqfnN1veywbjKPVE9hDwIq2Ra5TXvsTThon+SEc=
 # ADMIN_TOKEN=change-me
 # CF_ACCESS_TRUSTED=1
 
-# Microsoft (Azure AI Speech) uses OAuth instead of an API key: register an app
-# in Entra ID, add https://<your-domain>/api/microsoft/callback as a redirect
-# URI, then paste the client id/secret here. MICROSOFT_TENANT defaults to
-# "common"; use your tenant id for a single-tenant app.
+# Microsoft (Azure AI Speech) tokens are pasted in the settings panel, not here.
+# MICROSOFT_CLIENT_ID is only needed to auto-renew an expired access token:
+# it must be the id of the app that issued the pasted refresh token.
 # MICROSOFT_CLIENT_ID=
-# MICROSOFT_CLIENT_SECRET=
+# MICROSOFT_CLIENT_SECRET=      # omit for public clients / PKCE-only apps
 # MICROSOFT_TENANT=common
 
 # Optional fallbacks, used when D1 has no key for that provider.

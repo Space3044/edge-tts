@@ -4,7 +4,6 @@ import { handleSpeech } from "./routes/speech.js";
 import { handleTextPolish } from "./routes/polish.js";
 import { handleAudioTranscription } from "./routes/transcriptions.js";
 import { handleProviders } from "./routes/providers.js";
-import { handleMicrosoftCallback } from "./routes/microsoft-auth.js";
 import { handleOptions, makeCORSHeaders } from "./utils/cors.js";
 
 async function handleRequest(request, env = {}) {
@@ -40,10 +39,6 @@ async function handleRequest(request, env = {}) {
 
     if (path === "/api/providers" || path.startsWith("/api/providers/")) {
         return handleProviders(request, env);
-    }
-
-    if (path === "/api/microsoft/callback") {
-        return handleMicrosoftCallback(request, env);
     }
 
     if (path === "/v1/text/polish") {

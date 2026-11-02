@@ -7,6 +7,7 @@
  */
 
 import { decryptSecret, encryptSecret, importEncryptionKey, maskSecret } from "./crypto.js";
+import { accessTokenExpiresAt, isAccessTokenExpired } from "../microsoft/oauth.js";
 
 export const PROVIDERS = ["openai", "elevenlabs", "google", "microsoft"];
 
@@ -59,7 +60,7 @@ async function readRows(env) {
         return new Map();
     }
     const { results } = await env.DB
-        .prepare("SELECT provider, endpoint, model, api_key_cipher, updated_at, region, refresh_token_cipher, token_updated_at FROM provider_config")
+        .prepare("SELECT provider, endpoint, model, api_key_cipher, updated_at, region, refresh_token_cipher, token_updated_at, access_token_cipher, access_token_expires_at FROM provider_config")
         .all();
     const rows = new Map();
     for (const row of results || []) {
@@ -69,6 +70,22 @@ async function readRows(env) {
 }
 
 const REFRESH_TOKEN_AAD = "microsoft:refresh_token";
+
+async function decryptAccessToken(row, env) {
+    const cipher = String(row?.access_token_cipher || "");
+    if (!cipher) {
+        return { accessToken: "", tokenError: null };
+    }
+    try {
+        const key = await importEncryptionKey(env?.SECRETS_ENCRYPTION_KEY);
+        return {
+            accessToken: await decryptSecret(cipher, { key, aad: REFRESH_TOKEN_AAD }),
+            tokenError: null
+        };
+    } catch (error) {
+        return { accessToken: "", tokenError: error instanceof Error ? error.message : String(error) };
+    }
+}
 
 async function decryptRefreshToken(row, env) {
     const cipher = String(row?.refresh_token_cipher || "");
@@ -152,7 +169,7 @@ export async function listProviderStatus(env) {
         const apiKey = stored.apiKey || fromEnv.apiKey;
 
         const region = String(row?.region || "").trim();
-        const connected = Boolean(String(row?.refresh_token_cipher || ""));
+        const connected = Boolean(String(row?.refresh_token_cipher || "") || String(row?.access_token_cipher || ""));
 
         statuses.push({
             provider,
@@ -165,6 +182,7 @@ export async function listProviderStatus(env) {
             region,
             connected,
             tokenUpdatedAt: row?.token_updated_at || null,
+            accessTokenExpiresAt: row?.access_token_expires_at || "",
             updatedAt: row?.updated_at || null,
             keyError: provider === "microsoft" ? null : stored.keyError
         });
@@ -202,8 +220,8 @@ export async function saveProviderConfig(env, provider, input = {}) {
     await db
         .prepare(
             `INSERT INTO provider_config
-                 (provider, endpoint, model, api_key_cipher, updated_at, region, refresh_token_cipher, token_updated_at)
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                 (provider, endpoint, model, api_key_cipher, updated_at, region, refresh_token_cipher, token_updated_at, access_token_cipher, access_token_expires_at)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
              ON CONFLICT(provider) DO UPDATE SET
                  endpoint = excluded.endpoint,
                  model = excluded.model,
@@ -211,7 +229,9 @@ export async function saveProviderConfig(env, provider, input = {}) {
                  updated_at = excluded.updated_at,
                  region = excluded.region,
                  refresh_token_cipher = excluded.refresh_token_cipher,
-                 token_updated_at = excluded.token_updated_at`
+                 token_updated_at = excluded.token_updated_at,
+                 access_token_cipher = excluded.access_token_cipher,
+                 access_token_expires_at = excluded.access_token_expires_at`
         )
         .bind(
             name,
@@ -221,7 +241,9 @@ export async function saveProviderConfig(env, provider, input = {}) {
             updatedAt,
             region,
             String(existing?.refresh_token_cipher || ""),
-            String(existing?.token_updated_at || "")
+            String(existing?.token_updated_at || ""),
+            String(existing?.access_token_cipher || ""),
+            String(existing?.access_token_expires_at || "")
         )
         .run();
 
@@ -230,14 +252,25 @@ export async function saveProviderConfig(env, provider, input = {}) {
 }
 
 /**
- * Microsoft account state: the refresh token is the only credential we keep.
- * Access tokens are minted per request and never stored.
+ * Microsoft account state.
+ *
+ * Tokens are pasted by the operator, so both may exist independently: an
+ * access token alone works until it expires, a refresh token enables renewal.
  */
 export async function getMicrosoftAccount(env) {
     const row = (await readRows(env)).get("microsoft");
-    const { refreshToken, tokenError } = await decryptRefreshToken(row, env);
+    const access = await decryptAccessToken(row, env);
+    const refresh = await decryptRefreshToken(row, env);
+    const tokenError = access.tokenError || refresh.tokenError;
+    const expiresAt = String(row?.access_token_expires_at || "");
+
     return {
-        refreshToken,
+        accessToken: access.accessToken,
+        accessTokenExpiresAt: expiresAt,
+        accessTokenExpired: access.accessToken
+            ? isAccessTokenExpired(access.accessToken)
+            : Boolean(expiresAt) && Date.parse(expiresAt) <= Date.now() + 60000,
+        refreshToken: refresh.refreshToken,
         tokenError,
         region: String(row?.region || "").trim(),
         endpoint: String(row?.endpoint || "").trim(),
@@ -245,27 +278,55 @@ export async function getMicrosoftAccount(env) {
     };
 }
 
-export async function saveMicrosoftRefreshToken(env, refreshToken) {
+/**
+ * Persist whichever tokens the operator pasted. `undefined` keeps the stored
+ * value, an empty string clears it.
+ */
+export async function saveMicrosoftTokens(env, { accessToken, refreshToken } = {}) {
     const db = requireDatabase(env);
-    const value = String(refreshToken || "").trim();
-    if (!value) {
-        throw new Error("不能保存空的 refresh token");
-    }
-
     const rows = await readRows(env);
     const existing = rows.get("microsoft");
-    const key = await importEncryptionKey(env?.SECRETS_ENCRYPTION_KEY);
-    const cipher = await encryptSecret(value, { key, aad: REFRESH_TOKEN_AAD });
+
+    let accessCipher = String(existing?.access_token_cipher || "");
+    let expiresAt = String(existing?.access_token_expires_at || "");
+    if (typeof accessToken === "string") {
+        const value = accessToken.trim();
+        if (value) {
+            const key = await importEncryptionKey(env?.SECRETS_ENCRYPTION_KEY);
+            accessCipher = await encryptSecret(value, { key, aad: REFRESH_TOKEN_AAD });
+            expiresAt = accessTokenExpiresAt(value);
+        } else {
+            accessCipher = "";
+            expiresAt = "";
+        }
+    }
+
+    let refreshCipher = String(existing?.refresh_token_cipher || "");
+    if (typeof refreshToken === "string") {
+        const value = refreshToken.trim();
+        if (value) {
+            const key = await importEncryptionKey(env?.SECRETS_ENCRYPTION_KEY);
+            refreshCipher = await encryptSecret(value, { key, aad: REFRESH_TOKEN_AAD });
+        } else {
+            refreshCipher = "";
+        }
+    }
+
     const now = new Date().toISOString();
+    const tokensChanged = accessCipher !== String(existing?.access_token_cipher || "")
+        || refreshCipher !== String(existing?.refresh_token_cipher || "");
+    const tokenUpdatedAt = tokensChanged ? now : String(existing?.token_updated_at || "");
 
     await db
         .prepare(
             `INSERT INTO provider_config
-                 (provider, endpoint, model, api_key_cipher, updated_at, region, refresh_token_cipher, token_updated_at)
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                 (provider, endpoint, model, api_key_cipher, updated_at, region, refresh_token_cipher, token_updated_at, access_token_cipher, access_token_expires_at)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
              ON CONFLICT(provider) DO UPDATE SET
                  refresh_token_cipher = excluded.refresh_token_cipher,
-                 token_updated_at = excluded.token_updated_at`
+                 token_updated_at = excluded.token_updated_at,
+                 access_token_cipher = excluded.access_token_cipher,
+                 access_token_expires_at = excluded.access_token_expires_at`
         )
         .bind(
             "microsoft",
@@ -274,12 +335,14 @@ export async function saveMicrosoftRefreshToken(env, refreshToken) {
             String(existing?.api_key_cipher || ""),
             String(existing?.updated_at || now),
             String(existing?.region || ""),
-            cipher,
-            now
+            refreshCipher,
+            tokenUpdatedAt,
+            accessCipher,
+            expiresAt
         )
         .run();
 
-    return { tokenUpdatedAt: now };
+    return { tokenUpdatedAt };
 }
 
 export async function clearMicrosoftTokens(env) {
@@ -287,7 +350,8 @@ export async function clearMicrosoftTokens(env) {
     await db
         .prepare(
             `UPDATE provider_config
-             SET refresh_token_cipher = '', token_updated_at = ''
+             SET refresh_token_cipher = '', token_updated_at = '',
+                 access_token_cipher = '', access_token_expires_at = ''
              WHERE provider = 'microsoft'`
         )
         .run();

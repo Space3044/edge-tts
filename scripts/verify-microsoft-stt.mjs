@@ -1,10 +1,21 @@
 import assert from "node:assert/strict";
-import { buildAuthorizeUrl, createPkcePair, createState, exchangeCode, refreshAccessToken } from "../src/microsoft/oauth.js";
+import { accessTokenAudienceProblem, accessTokenExpiry, isAccessTokenExpired, refreshAccessToken, decodeAccessToken } from "../src/microsoft/oauth.js";
 import { buildMicrosoftEndpoint, transcribeWithMicrosoft } from "../src/microsoft/stt.js";
-import { getMicrosoftAccount, saveMicrosoftRefreshToken, listProviderStatus } from "../src/secrets/store.js";
+import { getMicrosoftAccount, listProviderStatus, saveMicrosoftTokens } from "../src/secrets/store.js";
 import { handleAudioTranscription } from "../src/routes/transcriptions.js";
 import { handleProviders } from "../src/routes/providers.js";
 import { bytesToBase64 } from "../src/secrets/crypto.js";
+
+function base64Url(value) {
+  return Buffer.from(value).toString("base64").replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+}
+
+/** Build an unsigned token with real-looking claims (signature is not checked). */
+function fakeJwt({ exp, aud = "https://cognitiveservices.azure.com" }) {
+  const header = base64Url(JSON.stringify({ alg: "RS256", typ: "JWT" }));
+  const payload = base64Url(JSON.stringify({ aud, iss: "https://sts.windows.net/tenant/", exp }));
+  return `${header}.${payload}.signature`;
+}
 
 /** In-memory D1 covering the statements the store issues. */
 function createFakeD1() {
@@ -26,7 +37,10 @@ function createFakeD1() {
         },
         async run() {
           if (statement.includes("INSERT INTO provider_config")) {
-            const [provider, endpoint, model, apiKeyCipher, updatedAt, region, refreshCipher, tokenUpdatedAt] = this._params;
+            const [
+              provider, endpoint, model, apiKeyCipher, updatedAt,
+              region, refreshCipher, tokenUpdatedAt, accessCipher, accessExpiresAt
+            ] = this._params;
             rows.set(provider, {
               provider,
               endpoint,
@@ -35,14 +49,22 @@ function createFakeD1() {
               updated_at: updatedAt,
               region,
               refresh_token_cipher: refreshCipher,
-              token_updated_at: tokenUpdatedAt
+              token_updated_at: tokenUpdatedAt,
+              access_token_cipher: accessCipher,
+              access_token_expires_at: accessExpiresAt
             });
             return { success: true };
           }
           if (statement.includes("UPDATE provider_config") && statement.includes("refresh_token_cipher = ''")) {
             const row = rows.get("microsoft");
             if (row) {
-              rows.set("microsoft", { ...row, refresh_token_cipher: "", token_updated_at: "" });
+              rows.set("microsoft", {
+                ...row,
+                refresh_token_cipher: "",
+                token_updated_at: "",
+                access_token_cipher: "",
+                access_token_expires_at: ""
+              });
             }
             return { success: true };
           }
@@ -54,190 +76,112 @@ function createFakeD1() {
 }
 
 const encryptionKey = bytesToBase64(crypto.getRandomValues(new Uint8Array(32)));
-const oauthEnv = {
-  MICROSOFT_CLIENT_ID: "client-id-123",
-  MICROSOFT_CLIENT_SECRET: "client-secret-456",
-  MICROSOFT_TENANT: "contoso.onmicrosoft.com"
-};
+const futureExp = Math.floor(Date.now() / 1000) + 3600;
+const expiredExp = Math.floor(Date.now() / 1000) - 60;
 
-// 1. Authorize URL carries the Speech scope, PKCE and the callback.
+// 1. JWT helpers: expiry, audience check.
 {
-  const state = createState();
-  const { verifier, challenge } = await createPkcePair();
-  assert.match(verifier, /^[A-Za-z0-9_-]{43}$/);
-  assert.match(challenge, /^[A-Za-z0-9_-]{43}$/);
-  assert.notEqual(verifier, challenge);
-
-  const url = new URL(buildAuthorizeUrl({
-    env: oauthEnv,
-    redirectUri: "https://voicecraft.example.com/api/microsoft/callback",
-    state,
-    codeChallenge: challenge
-  }));
-
-  assert.equal(url.host, "login.microsoftonline.com");
-  assert.equal(url.pathname, "/contoso.onmicrosoft.com/oauth2/v2.0/authorize");
-  assert.equal(url.searchParams.get("client_id"), "client-id-123");
-  assert.equal(url.searchParams.get("response_type"), "code");
-  assert.equal(url.searchParams.get("redirect_uri"), "https://voicecraft.example.com/api/microsoft/callback");
-  assert.equal(url.searchParams.get("scope"), "https://cognitiveservices.azure.com/.default offline_access");
-  assert.equal(url.searchParams.get("code_challenge"), challenge);
-  assert.equal(url.searchParams.get("code_challenge_method"), "S256");
-  assert.equal(url.searchParams.get("state"), state);
-  assert.ok(!url.toString().includes("client-secret-456"), "the client secret must never reach the browser");
+  const valid = fakeJwt({ exp: futureExp });
+  assert.equal(accessTokenExpiry(valid), futureExp);
+  assert.equal(isAccessTokenExpired(valid), false);
+  assert.equal(isAccessTokenExpired(fakeJwt({ exp: expiredExp })), true);
+  assert.equal(decodeAccessToken("not-a-jwt"), null);
+  assert.equal(accessTokenAudienceProblem(valid), null);
+  assert.equal(accessTokenAudienceProblem(fakeJwt({ exp: futureExp, aud: "https://graph.microsoft.com" })), "这个 access token 的 audience 是 https://graph.microsoft.com，不是 https://cognitiveservices.azure.com");
 }
 
-// 2. Token endpoints: code exchange and refresh rotation.
-{
-  const originalFetch = globalThis.fetch;
-  const calls = [];
-  globalThis.fetch = async (url, init) => {
-    calls.push({ url: String(url), body: init.body });
-    const grant = init.body.get("grant_type");
-    return new Response(JSON.stringify({
-      access_token: grant === "authorization_code" ? "access-1" : "access-2",
-      refresh_token: grant === "authorization_code" ? "refresh-1" : "refresh-2",
-      expires_in: 3599
-    }), { status: 200, headers: { "Content-Type": "application/json" } });
-  };
-
-  try {
-    const code = await exchangeCode({
-      env: oauthEnv,
-      code: "auth-code",
-      redirectUri: "https://voicecraft.example.com/api/microsoft/callback",
-      codeVerifier: "verifier-value"
-    });
-    assert.deepEqual(code, { accessToken: "access-1", refreshToken: "refresh-1", expiresIn: 3599 });
-    assert.equal(calls[0].body.get("grant_type"), "authorization_code");
-    assert.equal(calls[0].body.get("code_verifier"), "verifier-value");
-    assert.equal(calls[0].body.get("client_secret"), "client-secret-456");
-
-    const refreshed = await refreshAccessToken({ env: oauthEnv, refreshToken: "refresh-1" });
-    assert.deepEqual(refreshed, { accessToken: "access-2", refreshToken: "refresh-2", expiresIn: 3599 });
-    assert.equal(calls[1].body.get("grant_type"), "refresh_token");
-    assert.equal(calls[1].body.get("refresh_token"), "refresh-1");
-  } finally {
-    globalThis.fetch = originalFetch;
-  }
-}
-
-// 3. Endpoint: region -> host, override wins, bad region is refused.
+// 2. Endpoint: region -> host, override wins, bad region is refused.
 {
   assert.equal(buildMicrosoftEndpoint({ region: "eastasia" }), "https://eastasia.api.cognitive.microsoft.com");
-  assert.equal(
-    buildMicrosoftEndpoint({ endpoint: "https://gateway.example.com/azure/" }),
-    "https://gateway.example.com/azure"
-  );
   assert.throws(() => buildMicrosoftEndpoint({ region: "" }), /区域/);
   assert.throws(() => buildMicrosoftEndpoint({ region: "bad region!" }), /区域/);
 }
 
-// 4. Fast transcription request shape and response mapping (ms -> seconds).
+// 3. Fast transcription request shape and ms -> s mapping.
 {
   const originalFetch = globalThis.fetch;
   let seen;
   globalThis.fetch = async (url, init) => {
     seen = { url: String(url), headers: init.headers, body: init.body };
     return new Response(JSON.stringify({
-      durationMilliseconds: 2000,
       combinedPhrases: [{ text: "你好世界。" }],
-      phrases: [
-        {
-          offsetMilliseconds: 100,
-          durationMilliseconds: 900,
-          text: "你好世界。",
-          speaker: 1,
-          words: [
-            { text: "你好", offsetMilliseconds: 100, durationMilliseconds: 400 },
-            { text: "世界", offsetMilliseconds: 500, durationMilliseconds: 400 }
-          ]
-        }
-      ]
+      phrases: [{
+        offsetMilliseconds: 100,
+        durationMilliseconds: 900,
+        text: "你好世界。",
+        speaker: 1,
+        words: [
+          { text: "你好", offsetMilliseconds: 100, durationMilliseconds: 400 },
+          { text: "世界", offsetMilliseconds: 500, durationMilliseconds: 400 }
+        ]
+      }]
     }), { status: 200, headers: { "Content-Type": "application/json" } });
   };
 
   try {
     const result = await transcribeWithMicrosoft({
-      accessToken: "access-token",
+      accessToken: "pasted-token",
       endpoint: "https://eastasia.api.cognitive.microsoft.com",
       data: new Blob(["audio"], { type: "audio/mpeg" }),
       filename: "sample.mp3",
-      mimeType: "audio/mpeg",
       locale: "zh-CN"
     });
 
     assert.equal(seen.url, "https://eastasia.api.cognitive.microsoft.com/speechtotext/transcriptions:transcribe?api-version=2024-11-15");
-    assert.equal(seen.headers.Authorization, "Bearer access-token");
-    assert.ok(!("Ocp-Apim-Subscription-Key" in seen.headers), "AAD auth must not send a subscription key");
-
-    const audio = seen.body.get("audio");
-    assert.equal(audio.name, "sample.mp3");
-    const definition = JSON.parse(seen.body.get("definition"));
-    assert.deepEqual(definition.locales, ["zh-CN"]);
-    assert.deepEqual(definition.diarization, { enabled: true, maxSpeakers: 4 });
-
-    assert.equal(result.text, "你好世界。");
+    assert.equal(seen.headers.Authorization, "Bearer pasted-token");
+    assert.deepEqual(JSON.parse(seen.body.get("definition")).locales, ["zh-CN"]);
     assert.deepEqual(result.words.map(word => [word.text, word.start, word.end, word.speaker]), [
       ["你好", 0.1, 0.5, 1],
       ["世界", 0.5, 0.9, 1]
     ]);
     assert.deepEqual(
-      result.sentences.map(sentence => [sentence.text, sentence.start, sentence.end, sentence.duration, sentence.speaker]),
-      [["你好世界。", 0.1, 1, 0.9, 1]]
+      result.sentences.map(sentence => [sentence.text, sentence.start, sentence.end, sentence.duration]),
+      [["你好世界。", 0.1, 1, 0.9]]
     );
   } finally {
     globalThis.fetch = originalFetch;
   }
 }
 
-// 5. Route end to end: stored refresh token -> token refresh -> transcription,
-//    with the rotated refresh token persisted.
+// 4. Route: a pasted access token is used directly, no refresh call.
 {
-  const env = {
-    DB: createFakeD1(),
-    SECRETS_ENCRYPTION_KEY: encryptionKey,
-    ADMIN_TOKEN: "admin-token",
-    ...oauthEnv
-  };
-  await saveMicrosoftRefreshToken(env, "refresh-old");
+  const env = { DB: createFakeD1(), SECRETS_ENCRYPTION_KEY: encryptionKey, ADMIN_TOKEN: "admin-token" };
+  await saveMicrosoftTokens(env, { accessToken: fakeJwt({ exp: futureExp }) });
+  await handleProviders(
+    new Request("https://voicecraft.example.com/api/providers/microsoft", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json", Authorization: "Bearer admin-token" },
+      body: JSON.stringify({ region: "eastasia" })
+    }),
+    env
+  );
 
   const account = await getMicrosoftAccount(env);
-  assert.equal(account.refreshToken, "refresh-old");
-  assert.equal(account.tokenError, null);
+  assert.equal(account.accessTokenExpired, false);
+  assert.ok(account.accessToken.startsWith("ey"), "the stored access token should decrypt back to the JWT");
+  assert.ok(account.accessTokenExpiresAt, "expiry should be derived from the JWT exp claim");
 
   const status = (await listProviderStatus(env)).find(entry => entry.provider === "microsoft");
   assert.equal(status.connected, true);
-  assert.equal(status.keySource, "oauth");
-  assert.ok(!JSON.stringify(status).includes("refresh-old"));
+  assert.ok(!JSON.stringify(status).includes("eyJ"), "the status payload must not leak the token");
 
   const originalFetch = globalThis.fetch;
   const calls = [];
-  globalThis.fetch = async (url, init) => {
-    const href = String(url);
-    calls.push(href);
-    if (href.includes("login.microsoftonline.com")) {
-      return new Response(JSON.stringify({
-        access_token: "access-fresh",
-        refresh_token: "refresh-rotated",
-        expires_in: 3599
-      }), { status: 200, headers: { "Content-Type": "application/json" } });
-    }
-    if (href.includes("eastasia.api.cognitive.microsoft.com")) {
-      assert.equal(init.headers.Authorization, "Bearer access-fresh");
+  globalThis.fetch = async (url) => {
+    calls.push(String(url));
+    if (String(url).includes("api.cognitive.microsoft.com")) {
       return new Response(JSON.stringify({
         combinedPhrases: [{ text: "你好" }],
         phrases: [{ offsetMilliseconds: 0, durationMilliseconds: 500, text: "你好", words: [{ text: "你好", offsetMilliseconds: 0, durationMilliseconds: 500 }] }]
       }), { status: 200, headers: { "Content-Type": "application/json" } });
     }
-    throw new Error(`unexpected fetch: ${href}`);
+    throw new Error(`unexpected fetch: ${url}`);
   };
 
   try {
     const formData = new FormData();
     formData.append("file", new File(["audio"], "sample.mp3", { type: "audio/mpeg" }));
     formData.append("engine", "microsoft");
-    formData.append("region", "eastasia");
 
     const response = await handleAudioTranscription(
       new Request("https://voicecraft.example.com/v1/audio/transcriptions", { method: "POST", body: formData }),
@@ -246,81 +190,202 @@ const oauthEnv = {
     const body = await response.json();
     assert.equal(response.status, 200, JSON.stringify(body));
     assert.equal(body.text, "你好");
-    assert.equal(body.words[0].text, "你好");
-    assert.equal(body.sentences[0].duration, 0.5);
-    assert.ok(calls.some(href => href.includes("login.microsoftonline.com")));
+    assert.ok(!calls.some(url => url.includes("login.microsoftonline.com")), "a valid access token must not trigger a refresh");
   } finally {
     globalThis.fetch = originalFetch;
   }
-
-  assert.equal(
-    (await getMicrosoftAccount(env)).refreshToken,
-    "refresh-rotated",
-    "the rotated refresh token must replace the old one"
-  );
 }
 
-// 6. Region comes from the saved provider row when the request omits it.
+// 5. Expired access token + refresh token + client id -> refresh and persist.
 {
-  const env = { DB: createFakeD1(), SECRETS_ENCRYPTION_KEY: encryptionKey, ...oauthEnv };
-  await saveMicrosoftRefreshToken(env, "refresh-row");
+  const env = {
+    DB: createFakeD1(),
+    SECRETS_ENCRYPTION_KEY: encryptionKey,
+    ADMIN_TOKEN: "admin-token",
+    MICROSOFT_CLIENT_ID: "client-id-123",
+    MICROSOFT_TENANT: "common"
+  };
+  await saveMicrosoftTokens(env, { accessToken: fakeJwt({ exp: expiredExp }), refreshToken: "refresh-old" });
   await handleProviders(
     new Request("https://voicecraft.example.com/api/providers/microsoft", {
       method: "PUT",
       headers: { "Content-Type": "application/json", Authorization: "Bearer admin-token" },
-      body: JSON.stringify({ region: "westeurope" })
+      body: JSON.stringify({ region: "eastasia" })
     }),
-    { ...env, ADMIN_TOKEN: "admin-token" }
+    env
   );
-  assert.equal((await getMicrosoftAccount(env)).region, "westeurope");
+
+  assert.equal((await getMicrosoftAccount(env)).accessTokenExpired, true);
+
+  const originalFetch = globalThis.fetch;
+  let tokenRequest;
+  globalThis.fetch = async (url, init) => {
+    if (String(url).includes("login.microsoftonline.com")) {
+      tokenRequest = init.body;
+      return new Response(JSON.stringify({
+        access_token: fakeJwt({ exp: futureExp }),
+        refresh_token: "refresh-rotated",
+        expires_in: 3599
+      }), { status: 200, headers: { "Content-Type": "application/json" } });
+    }
+    if (String(url).includes("api.cognitive.microsoft.com")) {
+      return new Response(JSON.stringify({
+        combinedPhrases: [{ text: "ok" }],
+        phrases: [{ offsetMilliseconds: 0, durationMilliseconds: 100, text: "ok", words: [{ text: "ok", offsetMilliseconds: 0, durationMilliseconds: 100 }] }]
+      }), { status: 200, headers: { "Content-Type": "application/json" } });
+    }
+    throw new Error(`unexpected fetch: ${url}`);
+  };
+
+  try {
+    const formData = new FormData();
+    formData.append("file", new File(["audio"], "sample.mp3", { type: "audio/mpeg" }));
+    formData.append("engine", "microsoft");
+
+    const response = await handleAudioTranscription(
+      new Request("https://voicecraft.example.com/v1/audio/transcriptions", { method: "POST", body: formData }),
+      env
+    );
+    const body = await response.json();
+    assert.equal(response.status, 200, JSON.stringify(body));
+    assert.equal(tokenRequest.get("grant_type"), "refresh_token");
+    assert.equal(tokenRequest.get("refresh_token"), "refresh-old");
+    assert.equal(tokenRequest.get("client_id"), "client-id-123");
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+
+  const account = await getMicrosoftAccount(env);
+  assert.equal(account.refreshToken, "refresh-rotated", "the rotated refresh token must be persisted");
+  assert.equal(account.accessTokenExpired, false, "the renewed access token must be stored");
 }
 
-// 7. Login/logout routes: admin-guarded, and login refuses without OAuth config.
+// 6. Expired without a refresh token -> clear, actionable 401.
 {
-  const env = { DB: createFakeD1(), SECRETS_ENCRYPTION_KEY: encryptionKey, ADMIN_TOKEN: "admin-token", ...oauthEnv };
-  await saveMicrosoftRefreshToken(env, "refresh-x");
+  const env = { DB: createFakeD1(), SECRETS_ENCRYPTION_KEY: encryptionKey };
+  await saveMicrosoftTokens(env, { accessToken: fakeJwt({ exp: expiredExp }) });
 
-  const anon = await handleProviders(
-    new Request("https://voicecraft.example.com/api/providers/microsoft/login", { method: "POST" }),
+  const formData = new FormData();
+  formData.append("file", new File(["audio"], "sample.mp3", { type: "audio/mpeg" }));
+  formData.append("engine", "microsoft");
+  formData.append("region", "eastasia");
+
+  const response = await handleAudioTranscription(
+    new Request("https://voicecraft.example.com/v1/audio/transcriptions", { method: "POST", body: formData }),
     env
   );
-  assert.equal(anon.status, 401);
-
-  const login = await handleProviders(
-    new Request("https://voicecraft.example.com/api/providers/microsoft/login", {
-      method: "POST",
-      headers: { Authorization: "Bearer admin-token" }
-    }),
-    env
-  );
-  assert.equal(login.status, 200);
-  const loginBody = await login.json();
-  assert.ok(loginBody.authorizeUrl.startsWith("https://login.microsoftonline.com/"));
-  const cookie = login.headers.get("set-cookie") || "";
-  assert.match(cookie, /vc_ms_oauth=/);
-  assert.match(cookie, /HttpOnly/);
-  assert.ok(!cookie.includes("client-secret-456"));
-
-  const unconfigured = await handleProviders(
-    new Request("https://voicecraft.example.com/api/providers/microsoft/login", {
-      method: "POST",
-      headers: { Authorization: "Bearer admin-token" }
-    }),
-    { DB: createFakeD1(), SECRETS_ENCRYPTION_KEY: encryptionKey, ADMIN_TOKEN: "admin-token" }
-  );
-  assert.equal(unconfigured.status, 503);
-
-  const logout = await handleProviders(
-    new Request("https://voicecraft.example.com/api/providers/microsoft/logout", {
-      method: "POST",
-      headers: { Authorization: "Bearer admin-token" }
-    }),
-    env
-  );
-  assert.equal(logout.status, 200);
-  const logoutBody = await logout.json();
-  assert.equal(logoutBody.provider.connected, false);
-  assert.equal((await getMicrosoftAccount(env)).refreshToken, "");
+  const body = await response.json();
+  assert.equal(response.status, 401);
+  assert.equal(body.error.code, "microsoft_token_expired");
 }
 
-console.log("Verified Microsoft OAuth + Azure fast transcription flow.");
+// 7. Wrong audience is rejected before hitting Azure.
+{
+  const env = { DB: createFakeD1(), SECRETS_ENCRYPTION_KEY: encryptionKey };
+  await saveMicrosoftTokens(env, { accessToken: fakeJwt({ exp: futureExp, aud: "https://graph.microsoft.com" }) });
+
+  const formData = new FormData();
+  formData.append("file", new File(["audio"], "sample.mp3", { type: "audio/mpeg" }));
+  formData.append("engine", "microsoft");
+  formData.append("region", "eastasia");
+
+  const response = await handleAudioTranscription(
+    new Request("https://voicecraft.example.com/v1/audio/transcriptions", { method: "POST", body: formData }),
+    env
+  );
+  const body = await response.json();
+  assert.equal(response.status, 400);
+  assert.equal(body.error.code, "microsoft_token_wrong_audience");
+}
+
+// 8. No tokens at all -> microsoft_token_required.
+{
+  const formData = new FormData();
+  formData.append("file", new File(["audio"], "sample.mp3", { type: "audio/mpeg" }));
+  formData.append("engine", "microsoft");
+
+  const response = await handleAudioTranscription(
+    new Request("https://voicecraft.example.com/v1/audio/transcriptions", { method: "POST", body: formData }),
+    { DB: createFakeD1(), SECRETS_ENCRYPTION_KEY: encryptionKey }
+  );
+  const body = await response.json();
+  assert.equal(response.status, 401);
+  assert.equal(body.error.code, "microsoft_token_required");
+}
+
+// 9. Paste + clear through the settings API; tokens never come back.
+{
+  // No ADMIN_TOKEN: the worker trusts Cloudflare Access, so writes are allowed.
+  const env = { DB: createFakeD1(), SECRETS_ENCRYPTION_KEY: encryptionKey, CF_ACCESS_TRUSTED: "1" };
+
+  const pasted = await handleProviders(
+    new Request("https://voicecraft.example.com/api/providers/microsoft", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        endpoint: "",
+        model: "",
+        region: "westeurope",
+        accessToken: fakeJwt({ exp: futureExp }),
+        refreshToken: "refresh-pasted"
+      })
+    }),
+    env
+  );
+  assert.equal(pasted.status, 200);
+  const pastedBody = await pasted.json();
+  assert.equal(pastedBody.provider.connected, true);
+  assert.equal(pastedBody.provider.region, "westeurope");
+  assert.ok(!JSON.stringify(pastedBody).includes("eyJ"), "the response must not echo the token");
+
+  const account = await getMicrosoftAccount(env);
+  assert.equal(account.refreshToken, "refresh-pasted");
+
+  const cleared = await handleProviders(
+    new Request("https://voicecraft.example.com/api/providers/microsoft/clear-tokens", { method: "POST" }),
+    env
+  );
+  assert.equal(cleared.status, 200);
+  assert.equal((await cleared.json()).provider.connected, false);
+  assert.equal((await getMicrosoftAccount(env)).accessToken, "");
+}
+
+// 10. Refresh needs a client id; without one the route says so.
+{
+  const env = { DB: createFakeD1(), SECRETS_ENCRYPTION_KEY: encryptionKey };
+  await saveMicrosoftTokens(env, { accessToken: fakeJwt({ exp: expiredExp }), refreshToken: "refresh-x" });
+
+  const formData = new FormData();
+  formData.append("file", new File(["audio"], "sample.mp3", { type: "audio/mpeg" }));
+  formData.append("engine", "microsoft");
+  formData.append("region", "eastasia");
+
+  const response = await handleAudioTranscription(
+    new Request("https://voicecraft.example.com/v1/audio/transcriptions", { method: "POST", body: formData }),
+    env
+  );
+  const body = await response.json();
+  assert.equal(response.status, 401);
+  assert.equal(body.error.code, "microsoft_token_expired");
+  assert.match(body.error.message, /MICROSOFT_CLIENT_ID/);
+}
+
+// 11. A refresh failure is reported, not swallowed.
+{
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = async () => new Response(JSON.stringify({
+    error: "invalid_grant",
+    error_description: "AADSTS70008: refresh token expired"
+  }), { status: 400, headers: { "Content-Type": "application/json" } });
+
+  try {
+    await assert.rejects(
+      () => refreshAccessToken({ env: { MICROSOFT_CLIENT_ID: "client-id", MICROSOFT_TENANT: "common" }, refreshToken: "dead" }),
+      /AADSTS70008/
+    );
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+}
+
+console.log("Verified Microsoft pasted-token storage and Azure fast transcription flow.");

@@ -1,8 +1,8 @@
 import { errorResponse, jsonResponse } from "../utils/response.js";
 import { transcribe as transcribeWithElevenLabs } from "../elevenlabs/stt.js";
 import { transcribeWithGoogle } from "../google/stt.js";
-import { getMicrosoftAccount, saveMicrosoftRefreshToken, resolveProvider } from "../secrets/store.js";
-import { refreshAccessToken } from "../microsoft/oauth.js";
+import { getMicrosoftAccount, saveMicrosoftTokens, resolveProvider } from "../secrets/store.js";
+import { accessTokenAudienceProblem, canRefreshMicrosoftToken, refreshAccessToken } from "../microsoft/oauth.js";
 import { buildMicrosoftEndpoint, transcribeWithMicrosoft } from "../microsoft/stt.js";
 
 const MAX_AUDIO_FILE_SIZE = 50 * 1024 * 1024;
@@ -738,29 +738,59 @@ async function handleMicrosoftTranscription(formData, env) {
         });
     }
 
-    if (!account.refreshToken) {
-        return errorResponse("Microsoft 尚未登录：请在服务配置里连接微软账号", {
+    if (!account.accessToken && !account.refreshToken) {
+        return errorResponse("Microsoft 未配置令牌：请在服务配置里粘贴 access token", {
             status: 401,
             type: "authentication_error",
-            code: "microsoft_login_required"
+            code: "microsoft_token_required"
         });
     }
 
-    let accessToken;
-    try {
-        const tokens = await refreshAccessToken({ env, refreshToken: account.refreshToken });
-        accessToken = tokens.accessToken;
-        // Entra ID rotates refresh tokens; persist the new one so the old value
-        // does not age out.
-        if (tokens.refreshToken && tokens.refreshToken !== account.refreshToken) {
-            await saveMicrosoftRefreshToken(env, tokens.refreshToken);
+    let accessToken = account.accessToken;
+    let renewed = false;
+
+    if (!accessToken || account.accessTokenExpired) {
+        if (!account.refreshToken) {
+            return errorResponse("Microsoft access token 已过期，请在服务配置里粘贴新的 access token", {
+                status: 401,
+                type: "authentication_error",
+                code: "microsoft_token_expired"
+            });
         }
-    } catch (error) {
-        console.error("Microsoft token refresh failed:", error);
-        return errorResponse(
-            "微软授权已失效，请在服务配置里重新登录微软账号",
-            { status: 401, type: "authentication_error", code: "microsoft_login_required" }
-        );
+        if (!canRefreshMicrosoftToken(env)) {
+            return errorResponse("Microsoft access token 已过期，且未配置 MICROSOFT_CLIENT_ID，无法自动续期，请粘贴新的 access token", {
+                status: 401,
+                type: "authentication_error",
+                code: "microsoft_token_expired"
+            });
+        }
+
+        try {
+            const tokens = await refreshAccessToken({ env, refreshToken: account.refreshToken });
+            accessToken = tokens.accessToken;
+            renewed = true;
+            // Entra ID rotates the refresh token; keep whichever value came back.
+            await saveMicrosoftTokens(env, {
+                accessToken: tokens.accessToken,
+                refreshToken: tokens.refreshToken || account.refreshToken
+            });
+        } catch (error) {
+            console.error("Microsoft token refresh failed:", error);
+            return errorResponse(
+                "微软 refresh token 已失效，请在服务配置里粘贴新的 access token / refresh token",
+                { status: 401, type: "authentication_error", code: "microsoft_token_expired" }
+            );
+        }
+    }
+
+    const audienceProblem = accessTokenAudienceProblem(accessToken);
+    if (audienceProblem) {
+        return errorResponse(audienceProblem, {
+            status: 400,
+            type: "invalid_request_error",
+            param: "accessToken",
+            code: "microsoft_token_wrong_audience"
+        });
     }
 
     let base;
@@ -821,6 +851,9 @@ async function handleMicrosoftTranscription(formData, env) {
             mimeType,
             locale
         });
+        if (renewed) {
+            console.log("Microsoft access token renewed from the stored refresh token");
+        }
         const words = normalizeElevenLabsWords(result);
         const sentences = Array.isArray(result.sentences) && result.sentences.length
             ? result.sentences
@@ -836,7 +869,7 @@ async function handleMicrosoftTranscription(formData, env) {
         return jsonResponse({ text, sentences, words });
     } catch (error) {
         const message = error instanceof Error ? error.message : "Microsoft 转录失败";
-        if (message.includes("重新登录")) {
+        if (message.includes("access token") || message.includes("重新登录")) {
             return errorResponse(message, {
                 status: 401,
                 type: "authentication_error",

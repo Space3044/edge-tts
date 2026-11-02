@@ -1,22 +1,22 @@
 /**
- * Entra ID (Microsoft identity platform) authorization-code flow.
+ * Microsoft token helpers.
  *
- * The Worker is a confidential client: it holds the client secret, exchanges
- * the code for tokens, and keeps only the refresh token (encrypted, in D1).
- * Access tokens are minted on demand and never written anywhere.
+ * The user pastes an access token (and optionally a refresh token) into the
+ * settings panel; there is no redirect flow. The access token is a JWT whose
+ * `exp` and `aud` claims we read to decide whether it is still usable and
+ * whether it was minted for Cognitive Services at all.
  *
- * Scope `https://cognitiveservices.azure.com/.default` yields a token whose
- * audience is the Cognitive Services resource, which is what Azure Speech
- * accepts as `Authorization: Bearer <token>`.
+ * Refreshing still needs the client id of the app that issued the token, so it
+ * only runs when `MICROSOFT_CLIENT_ID` is configured; otherwise the panel
+ * simply asks for a new access token when the old one expires.
  */
 
 const AUTHORIZE_HOST = "https://login.microsoftonline.com";
 const SPEECH_SCOPE = "https://cognitiveservices.azure.com/.default";
-const SCOPES = `${SPEECH_SCOPE} offline_access`;
-
+export const SPEECH_AUDIENCE = "https://cognitiveservices.azure.com";
 export const DEFAULT_TENANT = "common";
 
-export function microsoftOAuthConfig(env) {
+export function microsoftTokenConfig(env) {
     return {
         clientId: String(env?.MICROSOFT_CLIENT_ID || "").trim(),
         clientSecret: String(env?.MICROSOFT_CLIENT_SECRET || "").trim(),
@@ -24,60 +24,73 @@ export function microsoftOAuthConfig(env) {
     };
 }
 
-export function isMicrosoftOAuthConfigured(env) {
-    // A public client (registered as "Mobile and desktop applications") uses
-    // PKCE without a secret, so the client id alone is enough.
-    const { clientId } = microsoftOAuthConfig(env);
-    return Boolean(clientId);
+export function canRefreshMicrosoftToken(env) {
+    return Boolean(microsoftTokenConfig(env).clientId);
 }
 
-function base64UrlEncode(bytes) {
-    let binary = "";
-    for (const byte of bytes) {
-        binary += String.fromCharCode(byte);
+function decodeBase64Url(value) {
+    const normalized = String(value).replace(/-/g, "+").replace(/_/g, "/");
+    const padded = normalized + "=".repeat((4 - (normalized.length % 4)) % 4);
+    const binary = atob(padded);
+    const bytes = new Uint8Array(binary.length);
+    for (let index = 0; index < binary.length; index += 1) {
+        bytes[index] = binary.charCodeAt(index);
     }
-    return btoa(binary).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+    return new TextDecoder().decode(bytes);
 }
 
-export function createState() {
-    return base64UrlEncode(crypto.getRandomValues(new Uint8Array(16)));
-}
-
-/** PKCE S256 pair: the verifier stays in an HttpOnly cookie, the challenge goes out. */
-export async function createPkcePair() {
-    const verifier = base64UrlEncode(crypto.getRandomValues(new Uint8Array(32)));
-    const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(verifier));
-    return { verifier, challenge: base64UrlEncode(new Uint8Array(digest)) };
-}
-
-export function buildAuthorizeUrl({ env, redirectUri, state, codeChallenge }) {
-    const { clientId, tenant } = microsoftOAuthConfig(env);
-    if (!clientId) {
-        throw new Error("MICROSOFT_CLIENT_ID 未配置");
+/** Returns the JWT payload, or null when the value is not a JWT. */
+export function decodeAccessToken(token) {
+    const parts = String(token || "").split(".");
+    if (parts.length !== 3) {
+        return null;
     }
-
-    const url = new URL(`${AUTHORIZE_HOST}/${encodeURIComponent(tenant)}/oauth2/v2.0/authorize`);
-    url.searchParams.set("client_id", clientId);
-    url.searchParams.set("response_type", "code");
-    url.searchParams.set("redirect_uri", redirectUri);
-    url.searchParams.set("response_mode", "query");
-    url.searchParams.set("scope", SCOPES);
-    url.searchParams.set("state", state);
-    url.searchParams.set("code_challenge", codeChallenge);
-    url.searchParams.set("code_challenge_method", "S256");
-    url.searchParams.set("prompt", "select_account");
-    return url.toString();
+    try {
+        return JSON.parse(decodeBase64Url(parts[1]));
+    } catch {
+        return null;
+    }
 }
 
-function tokenEndpoint(env) {
-    const { tenant } = microsoftOAuthConfig(env);
-    return `${AUTHORIZE_HOST}/${encodeURIComponent(tenant)}/oauth2/v2.0/token`;
+/** Epoch seconds from `exp`, or null when the token has no readable expiry. */
+export function accessTokenExpiry(token) {
+    const payload = decodeAccessToken(token);
+    const exp = Number(payload?.exp);
+    return Number.isFinite(exp) && exp > 0 ? exp : null;
+}
+
+/**
+ * Reject a token that was issued for another resource (Graph, Outlook, ...)
+ * before it reaches Azure and comes back as a confusing 401.
+ */
+export function accessTokenAudienceProblem(token) {
+    const payload = decodeAccessToken(token);
+    if (!payload) {
+        return null;
+    }
+    const audience = payload.aud;
+    const values = Array.isArray(audience) ? audience : [audience];
+    const usable = values.some(value => String(value || "").replace(/\/$/, "") === SPEECH_AUDIENCE);
+    return usable ? null : `这个 access token 的 audience 是 ${values.join(", ") || "(空)"}，不是 ${SPEECH_AUDIENCE}`;
+}
+
+export function isAccessTokenExpired(token, nowSeconds = Math.floor(Date.now() / 1000), skewSeconds = 60) {
+    const exp = accessTokenExpiry(token);
+    if (exp === null) {
+        return false;
+    }
+    return exp - skewSeconds <= nowSeconds;
+}
+
+export function accessTokenExpiresAt(token) {
+    const exp = accessTokenExpiry(token);
+    return exp === null ? "" : new Date(exp * 1000).toISOString();
 }
 
 async function requestToken(env, body) {
-    const { clientId, clientSecret } = microsoftOAuthConfig(env);
+    const { clientId, clientSecret, tenant } = microsoftTokenConfig(env);
     if (!clientId) {
-        throw new Error("MICROSOFT_CLIENT_ID 未配置");
+        throw new Error("未配置 MICROSOFT_CLIENT_ID，无法刷新 Microsoft access token");
     }
 
     const form = new URLSearchParams({ client_id: clientId, ...body });
@@ -85,11 +98,14 @@ async function requestToken(env, body) {
         form.set("client_secret", clientSecret);
     }
 
-    const response = await fetch(tokenEndpoint(env), {
-        method: "POST",
-        headers: { "Content-Type": "application/x-www-form-urlencoded" },
-        body: form
-    });
+    const response = await fetch(
+        `${AUTHORIZE_HOST}/${encodeURIComponent(tenant)}/oauth2/v2.0/token`,
+        {
+            method: "POST",
+            headers: { "Content-Type": "application/x-www-form-urlencoded" },
+            body: form
+        }
+    );
 
     const raw = await response.text();
     let payload;
@@ -103,22 +119,10 @@ async function requestToken(env, body) {
         const detail = String(payload?.error_description || payload?.error || raw).slice(0, 300);
         throw new Error(`微软令牌接口拒绝请求（${response.status}）：${detail}`);
     }
-
     if (!payload.access_token) {
         throw new Error("微软令牌接口没有返回 access_token");
     }
 
-    return payload;
-}
-
-export async function exchangeCode({ env, code, redirectUri, codeVerifier }) {
-    const payload = await requestToken(env, {
-        grant_type: "authorization_code",
-        code,
-        redirect_uri: redirectUri,
-        code_verifier: codeVerifier,
-        scope: SCOPES
-    });
     return {
         accessToken: payload.access_token,
         refreshToken: payload.refresh_token || "",
@@ -127,18 +131,13 @@ export async function exchangeCode({ env, code, redirectUri, codeVerifier }) {
 }
 
 /**
- * Rotate the refresh token. Entra ID may return a new refresh token; the
- * caller must persist it, otherwise the old one can age out.
+ * Rotate the refresh token. Entra ID may return a new refresh token; the caller
+ * must persist it, otherwise the old one can age out.
  */
 export async function refreshAccessToken({ env, refreshToken }) {
-    const payload = await requestToken(env, {
+    return requestToken(env, {
         grant_type: "refresh_token",
-        refresh_token: refreshToken,
-        scope: SCOPES
+        refresh_token: String(refreshToken || ""),
+        scope: `${SPEECH_SCOPE} offline_access`
     });
-    return {
-        accessToken: payload.access_token,
-        refreshToken: payload.refresh_token || refreshToken,
-        expiresIn: Number(payload.expires_in) || 3600
-    };
 }

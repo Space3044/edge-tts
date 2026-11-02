@@ -226,26 +226,38 @@ Google 的 endpoint、模型和密钥同样在 Provider settings 里配置：end
 npx wrangler secret put GEMINI_API_KEY   # 可选，D1 里保存过密钥就不需要
 ```
 
-Microsoft 用的是 **OAuth 登录**而不是 API Key：Worker 走 Entra ID 授权码流程拿到 access token（audience 是 Cognitive Services），refresh token 加密存在 D1，access token 每次现换、不落库。转录走 Azure 的 Fast transcription 接口：
+Microsoft 用的是 **access token**（不是 API Key，也没有登录回调）：在 Provider settings 里把令牌粘进来，Worker 用 `SECRETS_ENCRYPTION_KEY` 加密后存进 D1。转录走 Azure 的 Fast transcription 接口：
 
 ```text
 POST https://{region}.api.cognitive.microsoft.com
      /speechtotext/transcriptions:transcribe?api-version=2024-11-15
 ```
 
-启用它需要三样东西：
+需要的令牌：
 
-1. 一个 **Speech 资源**（免费层 F0 每月 5 小时），并给你的账号在该资源上分配 `Cognitive Services Speech User` 角色；
-2. 一个 **Entra ID 应用注册**（免费）：redirect URI 填 `https://你的域名/api/microsoft/callback`，本地调试再加 `http://localhost:8787/api/microsoft/callback`。如果注册成「Web」平台就需要 client secret；注册成「移动和桌面应用程序」则用 PKCE、只填 client id 即可。**不要**复用 Thunderbird / Office / Azure CLI 这类第三方公开 client id——它们没有 Cognitive Services Speech 权限，授权会失败（AADSTS65001），而且是冒用别人的应用身份；`scripts/check-microsoft-oauth.mjs` 会直接挡住常见的那几个。
-3. 三个 Worker secret：`MICROSOFT_CLIENT_ID`、`MICROSOFT_CLIENT_SECRET`（confidential client，refresh token 90 天滑动）、`MICROSOFT_TENANT`（默认 `common`）。
+| 字段 | 是否必填 | 说明 |
+| --- | --- | --- |
+| `Region` | 必填 | Azure 区域，例如 `eastasia`，用来拼 `https://{region}.api.cognitive.microsoft.com` |
+| `Access token` | 至少填一个 | audience 必须是 `https://cognitiveservices.azure.com`；Worker 会读 JWT 的 `exp` 判断是否过期，token 不是给 Cognitive Services 的直接拒绝 |
+| `Refresh token` | 可选 | 填了才能自动续期；access token 过期后 Worker 会用它换新的（并保存轮换后的 refresh token） |
 
-配好后可以先自检凭据（不需要浏览器）：
+自动续期需要发起续期的应用 id，因此还要配一个 Worker secret（不配就只能手动更新 access token）：
+
+```bash
+npx wrangler secret put MICROSOFT_CLIENT_ID    # 签发这批 token 的应用
+npx wrangler secret put MICROSOFT_CLIENT_SECRET  # 公共客户端/纯 PKCE 可留空
+npx wrangler secret put MICROSOFT_TENANT       # 默认 common
+```
+
+另外仍然需要 Azure 里的 **Speech 资源**（免费层 F0 每月 5 小时），签发令牌的账号要在该资源上有 `Cognitive Services Speech User` 角色。**不要**复用 Thunderbird / Office / Azure CLI 这类第三方公开 client id——它们的应用没有声明 Speech 权限，续期会失败（AADSTS65001），而且是冒用别人的应用身份。
+
+配了 `MICROSOFT_CLIENT_ID` 的话可以先自检续期凭据：
 
 ```bash
 node scripts/check-microsoft-oauth.mjs
 ```
 
-之后在 Provider settings 里填 Azure 区域（例如 `eastasia`），点「登录微软账号」完成一次授权即可。本地调试请访问 `http://localhost:8787`——Entra 接受 `http://localhost` 的 redirect URI，但不接受 `http://127.0.0.1`。refresh token 失效时页面会显示「未连接」，转录接口返回 `microsoft_login_required`，重新登录一次就好。
+之后在 Provider settings 里填 region 和令牌，点「保存」即可；状态会显示「有效期至 …」。令牌泄漏或失效时点「清除令牌」，再粘贴新的。refresh token 失效时页面会显示「未连接」，转录接口返回 `microsoft_login_required`，重新登录一次就好。
 
 没有可用密钥时，Google 引擎会返回明确的 `google_not_configured` 错误。
 
@@ -303,7 +315,7 @@ URL 模式的行为：
 - `engine=elevenlabs`：Worker 把 URL 原样交给 ElevenLabs 的 `source_url`，不在 Worker 端下载，ElevenLabs 的 2GB URL 上限生效。
 - `engine=openai`（别名 `whisper`）：Worker 自己下载音频（跟随最多 5 次重定向，每一跳都重新校验），再按 OpenAI 的 `file` 字段转发到 `{endpoint}/audio/transcriptions`；沿用 50MB 上限。
 - `engine=google`：Worker 自己下载音频后上传到 Gemini Files API，再调用配置的模型；密钥来自 D1 或 `GEMINI_API_KEY`。
-- `engine=microsoft`：Worker 自己下载音频后以 multipart 传给 Azure Fast transcription；凭据是 OAuth access token，没有密钥可填。
+- `engine=microsoft`：Worker 自己下载音频后以 multipart 传给 Azure Fast transcription；凭据是 Provider settings 里保存的 access token（过期且配了 refresh token 时自动续期）。
 - 只允许 `http://` / `https://` 的公开地址；本机、内网、云元数据地址会被拒绝。URL 里不能带用户名或密码。
 - 文件上传仍是 50MB 上限；粘贴 URL 时前端不再要求先选文件。
 

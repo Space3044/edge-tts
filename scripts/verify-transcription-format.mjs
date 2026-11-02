@@ -121,7 +121,7 @@ await transcribeWithMockedOpenAi("text/plain; charset=utf-8");
   }
 }
 
-// The Microsoft engine is real, but it needs a connected account: without one
+// The Microsoft engine is real, but it needs a pasted token: without one
 // it must fail loudly instead of running the OpenAI path.
 {
   const formData = new FormData();
@@ -137,7 +137,7 @@ await transcribeWithMockedOpenAi("text/plain; charset=utf-8");
   );
   const body = await response.json();
   assert.equal(response.status, 401);
-  assert.equal(body.error.code, "microsoft_login_required");
+  assert.equal(body.error.code, "microsoft_token_required");
 }
 
 console.log("Verified readable OpenAI transcription formatting.");
