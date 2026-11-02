@@ -210,6 +210,18 @@ assert.match(
 
 assert.match(
   source,
+  /module\.createAnnotation\(\{ theme: 'auto'/,
+  "development annotation should mount collapsed and only activate on user click",
+);
+
+assert.doesNotMatch(
+  source,
+  /module\.init\(/,
+  "development annotation must not use init(), which force-enables autoActivate",
+);
+
+assert.match(
+  source,
   /grid-template-columns:200px minmax\(0,1fr\)/,
   "sentence timestamp rows should reserve enough width for mm:ss.mmm ranges",
 );
