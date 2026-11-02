@@ -10,10 +10,24 @@ const SOURCE_URL_FIELDS = ["source_url", "url"];
 const AUDIO_EXTENSION_PATTERN = /\.(mp3|wav|m4a|flac|aac|ogg|webm|amr|3gp)$/i;
 const MAX_PROMPT_LENGTH = 1000;
 const OPENAI_LANGUAGE_PATTERN = /^[A-Za-z]{2,3}$/;
-// `whisper-1` is the only model that answers `verbose_json` with `segments` and
-// word-level granularities; the gpt-4o-transcribe family only supports
-// `json`/`text`, so asking for verbose_json there would fail the request.
-const VERBOSE_JSON_MODEL_PATTERN = /whisper/i;
+/**
+ * Which models answer `verbose_json` (and therefore word timings).
+ *
+ * Per the API reference, `AudioResponseFormat` says: for `gpt-4o-transcribe` and
+ * `gpt-4o-mini-transcribe` the only supported format is `json`; for
+ * `gpt-4o-transcribe-diarize` it is `json` / `text` / `diarized_json`. Everything
+ * else (`whisper-1`, `gpt-transcribe`, `gpt-live-transcribe`, `gpt-realtime-whisper`,
+ * future names) does support it, so this is an *exclusion* check rather than an
+ * allow-list that would silently drop timings for a model we have not heard of.
+ */
+const NO_VERBOSE_JSON_MODEL_PATTERN = /^gpt-4o(-mini)?-transcribe/i;
+/** `prompt` is rejected by the diarize model, per the same reference. */
+const NO_PROMPT_MODEL_PATTERN = /-diarize\b/i;
+/**
+ * Models the upstream already refused `verbose_json` for, remembered per isolate
+ * so the fallback below costs one probe per model rather than one per request.
+ */
+const verboseJsonRejectedModels = new Set();
 const ELEVENLABS_TIMESTAMP_GRANULARITIES = ["word", "character"];
 const MAX_SPEAKERS = 32;
 const ALLOWED_AUDIO_TYPES = [
@@ -650,21 +664,25 @@ async function handleOpenAiTranscription(formData, env) {
         });
     }
 
-    // Word timings only exist in `verbose_json`, and only whisper-1 accepts it.
+    // Word timings only exist in `verbose_json`, which the gpt-4o transcription
+    // models do not accept; the capability table above decides, and a rejected
+    // `verbose_json` (or a model from the future) falls back once at runtime.
     const wantsTimestamps = readBooleanField(formData.get("timestamps"), true);
-    const supportsVerboseJson = VERBOSE_JSON_MODEL_PATTERN.test(model);
+    const supportsVerboseJson = !NO_VERBOSE_JSON_MODEL_PATTERN.test(model)
+        && !verboseJsonRejectedModels.has(model);
+    const useVerboseJson = wantsTimestamps && supportsVerboseJson;
 
     const apiFormData = new FormData();
     apiFormData.append("file", audioBlob, audioName);
     apiFormData.append("model", model);
-    apiFormData.append("response_format", wantsTimestamps && supportsVerboseJson ? "verbose_json" : "json");
-    if (wantsTimestamps && supportsVerboseJson) {
+    apiFormData.append("response_format", useVerboseJson ? "verbose_json" : "json");
+    if (useVerboseJson) {
         apiFormData.append("timestamp_granularities[]", "word");
     }
     if (language.language) {
         apiFormData.append("language", language.language);
     }
-    if (prompt.prompt) {
+    if (prompt.prompt && !NO_PROMPT_MODEL_PATTERN.test(model)) {
         apiFormData.append("prompt", prompt.prompt);
     }
     if (temperature.temperature !== null) {
@@ -676,11 +694,29 @@ async function handleOpenAiTranscription(formData, env) {
         headers.Authorization = `Bearer ${apiKey}`;
     }
 
-    const apiResponse = await fetch(transcriptionUrl, {
+    const send = () => fetch(transcriptionUrl, {
         method: "POST",
         headers,
         body: apiFormData
     });
+
+    let apiResponse = await send();
+
+    // Belt and braces for a model the capability table does not know about: a
+    // rejected `verbose_json` is a validation error (nothing was transcribed and
+    // nothing was billed), so retrying once as plain `json` is free and turns a
+    // hard failure into "text without timings".
+    if (!apiResponse.ok && useVerboseJson && (apiResponse.status === 400 || apiResponse.status === 422)) {
+        const rejectedText = await apiResponse.clone().text().catch(() => "");
+        if (/verbose_json|response_format|timestamp/i.test(rejectedText)) {
+            verboseJsonRejectedModels.add(model);
+            console.warn(`OpenAI model ${model} rejected verbose_json; falling back to json for this isolate.`);
+            apiFormData.delete("timestamp_granularities[]");
+            apiFormData.set("response_format", "json");
+            await apiResponse.text().catch(() => "");
+            apiResponse = await send();
+        }
+    }
 
     if (!apiResponse.ok) {
         const errorText = await apiResponse.text();

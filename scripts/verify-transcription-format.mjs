@@ -248,4 +248,107 @@ await transcribeWithMockedOpenAi("text/plain; charset=utf-8");
   }
 }
 
+// Word timings are not a whisper-1 privilege: any model that accepts
+// verbose_json gets them. `gpt-transcribe` does, per the API reference.
+{
+  const originalFetch = globalThis.fetch;
+  const sent = new Map();
+  globalThis.fetch = async (url, init) => {
+    for (const [key, value] of init.body.entries()) sent.set(key, value);
+    return new Response(JSON.stringify({
+      text: "Hi.",
+      segments: [{ id: 1, start: 0, end: 0.5, text: "Hi.", compression_ratio: 1.1 }],
+      words: [{ word: "Hi.", start: 0, end: 0.5 }]
+    }), { status: 200, headers: { "Content-Type": "application/json" } });
+  };
+  try {
+    const formData = new FormData();
+    formData.append("file", new File(["audio"], "sample.mp3", { type: "audio/mpeg" }));
+    formData.append("endpoint", "https://asr.example.com/v1");
+    formData.append("model", "gpt-transcribe");
+
+    const response = await handleAudioTranscription(
+      new Request("https://voicecraft.example.com/v1/audio/transcriptions", { method: "POST", body: formData })
+    );
+    const body = await response.json();
+    assert.equal(response.status, 200);
+    assert.equal(sent.get("response_format"), "verbose_json", "gpt-transcribe supports verbose_json too");
+    assert.equal(sent.get("timestamp_granularities[]"), "word");
+    assert.equal(body.words.length, 1);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+}
+
+// The diarize model takes neither verbose_json nor `prompt`.
+{
+  const originalFetch = globalThis.fetch;
+  const sent = new Map();
+  globalThis.fetch = async (url, init) => {
+    for (const [key, value] of init.body.entries()) sent.set(key, value);
+    return new Response(JSON.stringify({ text: "ok" }), {
+      status: 200, headers: { "Content-Type": "application/json" }
+    });
+  };
+  try {
+    const formData = new FormData();
+    formData.append("file", new File(["audio"], "sample.mp3", { type: "audio/mpeg" }));
+    formData.append("endpoint", "https://asr.example.com/v1");
+    formData.append("model", "gpt-4o-transcribe-diarize");
+    formData.append("prompt", "should be dropped");
+
+    await handleAudioTranscription(
+      new Request("https://voicecraft.example.com/v1/audio/transcriptions", { method: "POST", body: formData })
+    );
+    assert.equal(sent.get("response_format"), "json");
+    assert.equal(sent.has("timestamp_granularities[]"), false);
+    assert.equal(sent.has("prompt"), false, "the diarize model rejects prompt");
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+}
+
+// A model the table does not know rejects verbose_json once, then the handler
+// retries as json; the rejection is remembered so later calls skip the probe.
+{
+  const originalFetch = globalThis.fetch;
+  const attempts = [];
+  let model = "some-future-transcribe";
+  globalThis.fetch = async (url, init) => {
+    const format = init.body.get("response_format");
+    attempts.push(format);
+    if (format === "verbose_json") {
+      return new Response(JSON.stringify({
+        error: { message: "response_format 'verbose_json' is not supported for this model", type: "invalid_request_error" }
+      }), { status: 400, headers: { "Content-Type": "application/json" } });
+    }
+    return new Response(JSON.stringify({ text: "fallback ok" }), {
+      status: 200, headers: { "Content-Type": "application/json" }
+    });
+  };
+  try {
+    const makeRequest = () => {
+      const formData = new FormData();
+      formData.append("file", new File(["audio"], "sample.mp3", { type: "audio/mpeg" }));
+      formData.append("endpoint", "https://asr.example.com/v1");
+      formData.append("model", model);
+      return handleAudioTranscription(
+        new Request("https://voicecraft.example.com/v1/audio/transcriptions", { method: "POST", body: formData })
+      );
+    };
+
+    const first = await makeRequest();
+    assert.equal(first.status, 200);
+    assert.deepEqual(await first.json(), { text: "fallback ok" });
+    assert.deepEqual(attempts, ["verbose_json", "json"], "one rejected probe, then a json retry");
+
+    attempts.length = 0;
+    const second = await makeRequest();
+    assert.equal(second.status, 200);
+    assert.deepEqual(attempts, ["json"], "the rejected model is remembered for this isolate");
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+}
+
 console.log("Verified readable OpenAI transcription formatting.");

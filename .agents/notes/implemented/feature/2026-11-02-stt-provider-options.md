@@ -22,12 +22,22 @@ Status: implemented
 ### OpenAI
 
 - `language`（ISO-639-1 两字母，校验后小写）、`prompt`（≤1000 字符）、`temperature`（0–1）。
-- `timestamps`（默认 `true`）决定要不要词级时间戳。**格式按模型选**：
-  模型名含 `whisper` 时发 `response_format=verbose_json` + `timestamp_granularities[]=word`，
+- `timestamps`（默认 `true`）决定要不要词级时间戳。**格式按模型能力选**：
+  发 `response_format=verbose_json` + `timestamp_granularities[]=word`，
   响应解析成 `{text, sentences, words}`（`segments` → sentences，`words` → 词项，
-  形状与 ElevenLabs 一致，前端不用改渲染逻辑）；
-  `gpt-4o-transcribe` 这类只支持 `json`/`text` 的模型自动退回 `json` 并只回 `text`。
-  这条不能靠「先试 verbose_json，失败再退」——那会把一次真实转写变成两次计费。
+  形状与 ElevenLabs 一致，前端不用改渲染逻辑）。
+
+  能力表来自 API reference，而不是模型名里的关键词：`AudioResponseFormat` 写明
+  `gpt-4o-transcribe` / `gpt-4o-mini-transcribe` 只支持 `json`，
+  `gpt-4o-transcribe-diarize` 支持 `json`/`text`/`diarized_json`；
+  其余（`whisper-1`、`gpt-transcribe`、`gpt-live-transcribe`、`gpt-realtime-whisper`）
+  都支持 `verbose_json`，因此代码用**排除式**判断（`^gpt-4o(-mini)?-transcribe`），
+  未知的新模型默认按「支持」处理。早先的 `/whisper/i` 白名单是错的：
+  它会把 `gpt-transcribe` 静默降级成纯文本。
+- 兜底：如果上游仍拒绝 `verbose_json`（400/422 且错误里提到
+  `verbose_json`/`response_format`/`timestamp`），说明能力表过时了。这类校验错误
+  不产生转写、不计费，所以自动重试一次 `json`，并把该模型记在当前 isolate 的
+  `Set` 里，之后直接走 `json`——每次部署最多付一次探测。
 
 ### ElevenLabs
 
@@ -57,8 +67,10 @@ Status: implemented
 ## Alternatives considered
 
 - **OpenAI 一律 `verbose_json`**：`gpt-4o-transcribe` 会直接 400，等于把「换个更便宜的模型」变成故障。
-- **`timestamps=true` 时先试 `verbose_json`，失败再退回 `json`**：一次转写成功一次失败，
-  上游按两次计费，且失败那次可能已经产生了内容。
+- **把 `whisper` 当作词级时间戳的白名单**：第一版就是这么写的，实测文档后是错的——
+  `gpt-transcribe` 等新模型同样支持 `verbose_json`，用名字猜测会把它们降级。
+- **`timestamps=true` 时无条件先试 `verbose_json`**：对已知不支持的模型（`gpt-4o-transcribe*`）
+  等于每次多一次必然失败的请求；只在「能力表没有答案」时才由兜底逻辑触发。
 - **把 `prompt` 也发给 Google**：Gemini 的转写提示字段名与语义未确认，发了多半是被忽略或报错。
 - **不暴露 `diarize`，只加 `numSpeakers`**：说话人数只在开启 diarize 时有意义，
   不给出开关就等于让「单人音频」永远被强行分段。
@@ -78,7 +90,10 @@ Status: implemented
 
 - `scripts/verify-transcription-format.mjs`：`language` 小写转发、`prompt`/`temperature` 透传、
   `whisper-1` 得到 `verbose_json` + `timestamp_granularities[]=word` 并返回 `sentences`/`words`、
-  `gpt-4o-transcribe` 退回 `json` 且只回 `text`、三个非法值各自 400 且**一次上游请求都没发**。
+  `gpt-4o-transcribe` 退回 `json` 且只回 `text`、三个非法值各自 400 且**一次上游请求都没发**；
+  另有三条针对能力表：`gpt-transcribe` 也拿到 `verbose_json`（证明不是 whisper 专属）、
+  `gpt-4o-transcribe-diarize` 用 `json` 且丢掉 `prompt`、
+  未知模型先吃一次 400 再自动以 `json` 重试并记住。
 - `scripts/verify-elevenlabs-stt.mjs`：`diarize=false` / `numSpeakers=3` /
   `timestampsGranularity=character` 正确映射成 `diarize` / `num_speakers` / `timestamps_granularity`；
   越界值返回 400 且不发请求。
