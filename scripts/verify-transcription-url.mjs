@@ -117,7 +117,8 @@ try {
   assert.equal(openaiFile.name, "audio.mp3");
   assert.equal(openaiFile.size, AUDIO_BYTES.length);
   assert.equal(openaiCall.init.body.get("model"), "whisper-1");
-  assert.equal(openaiCall.init.body.get("response_format"), "json");
+  assert.equal(openaiCall.init.body.get("response_format"), "verbose_json");
+  assert.equal(openaiCall.init.body.get("timestamp_granularities[]"), "word");
 
   reset();
   redirectSource = true;

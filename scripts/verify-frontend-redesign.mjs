@@ -874,7 +874,7 @@ assert.doesNotMatch(
 
 assert.doesNotMatch(
   HTML_PAGE,
-  /<label><span data-i18n="stt\.language">/,
+  /<label><span data-i18n="stt\.language">[^<]*<\/span><select[^>]*id="elevenlabsLanguage"/,
   "ElevenLabs language selector should not show a separate language label",
 );
 

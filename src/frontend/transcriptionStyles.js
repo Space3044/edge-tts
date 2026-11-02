@@ -213,6 +213,13 @@ export const TRANSCRIPTION_STYLES = `
       padding:12px;
       text-align:center;
     }
+    .stt-prompt-field, .stt-wide {
+      grid-column:1 / -1;
+    }
+    .stt-prompt-field .compact-textarea {
+      height:64px;
+      min-height:64px;
+    }
     .elevenlabs-grid {
       display:grid;
       grid-template-columns:repeat(2,minmax(0,1fr));

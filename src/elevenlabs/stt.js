@@ -98,6 +98,9 @@ export async function transcribe({
     filename,
     languageCode = "auto",
     tagAudioEvents = true,
+    diarize = true,
+    numSpeakers = null,
+    timestampsGranularity = "",
     apiKey = "",
     modelId = DEFAULT_STT_MODEL_ID,
     timeoutMs = 1800000,
@@ -105,8 +108,14 @@ export async function transcribe({
 }) {
     const formData = new FormData();
     formData.append("model_id", modelId || DEFAULT_STT_MODEL_ID);
-    formData.append("diarize", "true");
+    formData.append("diarize", String(diarize !== false).toLowerCase());
     formData.append("tag_audio_events", String(tagAudioEvents).toLowerCase());
+    if (Number.isInteger(numSpeakers) && numSpeakers > 0) {
+        formData.append("num_speakers", String(numSpeakers));
+    }
+    if (timestampsGranularity) {
+        formData.append("timestamps_granularity", String(timestampsGranularity).toLowerCase());
+    }
 
     if (sourceUrl) {
         formData.append("source_url", String(sourceUrl).trim());

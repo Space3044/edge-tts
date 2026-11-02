@@ -20,7 +20,7 @@ https://github.com/Space3044/edge-tts
 - 声音库：内置 114 个 Microsoft Edge TTS 声音，支持按语言、性别、名称、地区和 voice ID 搜索。
 - 参数调节：支持语速、音调和语音风格，语速和音调可双击恢复默认值。
 - 生成结果：生成后的 MP3 可在线播放和下载。
-- 语音转文字：上传音频或粘贴公开音频 URL，可使用 OpenAI 兼容转录接口、ElevenLabs Scribe 或 Google Gemini Transcribe；后两者都支持句子时间戳和词级时间戳查看。
+- 语音转文字：上传音频或粘贴公开音频 URL，可使用 OpenAI 兼容转录接口、ElevenLabs Scribe 或 Google Gemini Transcribe；三家都能给出句子级时间戳，词级时间戳见各引擎说明。
 - AI 润色：调用 OpenAI 兼容接口润色输入文本。
 - 服务配置：转录服务的 endpoint、模型和 API Key 在页面里设置，API Key 用 `SECRETS_ENCRYPTION_KEY` 加密后存进 D1；页面只显示掩码尾巴，不回传明文。
 - 浏览器本地保存：AI 润色的 Base URL、API Key、模型和润色指令只保存在当前浏览器本地。
@@ -282,7 +282,7 @@ curl -X POST "https://your-worker.example.com/v1/audio/transcriptions" \
 URL 模式的行为：
 
 - `engine=elevenlabs`：Worker 把 URL 原样交给 ElevenLabs 的 `source_url`，不在 Worker 端下载，ElevenLabs 的 2GB URL 上限生效。
-- `engine=openai`（别名 `whisper`）：Worker 自己下载音频（跟随最多 5 次重定向，每一跳都重新校验），再按 OpenAI 的 `file` 字段转发到 `{endpoint}/audio/transcriptions`；沿用 50MB 上限。
+- `engine=openai`（别名 `whisper`）：Worker 自己下载音频（跟随最多 5 次重定向，每一跳都重新校验），再按 OpenAI 的 `file` 字段转发到 `{endpoint}/audio/transcriptions`；沿用 50MB 上限。请求会带上 `language` / `prompt` / `temperature`（如果提供了），并默认要词级时间戳：模型名含 `whisper` 时用 `response_format=verbose_json` + `timestamp_granularities[]=word`，返回 `text` + `sentences` + `words`；`gpt-4o-transcribe` 这类只支持 `json`/`text` 的模型会自动退回纯文本，不会因为格式不支持而失败。
 - `engine=google`：Worker 自己下载音频后上传到 Gemini Files API，再调用配置的模型；密钥来自 D1 或 `GEMINI_API_KEY`。
 - 只允许 `http://` / `https://` 的公开地址；本机、内网、云元数据地址会被拒绝。URL 里不能带用户名或密码。
 - 文件上传仍是 50MB 上限；粘贴 URL 时前端不再要求先选文件。
@@ -361,8 +361,14 @@ ElevenLabs 响应示例：
 | `endpoint` | string | 否 | 该引擎的 endpoint 覆盖值，默认取 D1 / 环境变量 / 内置默认；OpenAI 补 `/audio/transcriptions`，Google 用来拼 Files / Interactions 地址 |
 | `model` | string | 否 | 该引擎的模型覆盖值，默认取 D1 配置 |
 | `apiKey` | string | 否 | 仅 OpenAI 引擎支持单次覆盖；默认使用保存在 D1 的密钥 |
-| `language` | string | ElevenLabs 可选 | ElevenLabs 官方语言代码，默认 `auto` 自动检测。常用值：`eng`、`zho`、`jpn`、`kor`、`spa`、`fra`、`deu`、`rus` |
-| `tagAudioEvents` | string | ElevenLabs 可选 | 是否标记笑声、掌声等音频事件，传 `true` 或 `false` |
+| `language` | string | OpenAI / ElevenLabs 可选 | OpenAI 用 ISO-639-1 两字母代码（`en`、`zh`、`ja`）；ElevenLabs 用官方三字母代码（`eng`、`zho`、`jpn`、`kor`、`spa`、`fra`、`deu`、`rus`）。留空或 `auto` 表示自动检测 |
+| `tagAudioEvents` | string | ElevenLabs 可选 | 是否标记笑声、掌声等音频事件，传 `true` 或 `false`，默认 `false` |
+| `prompt` | string | OpenAI 可选 | 词表/上下文提示，最长 1000 字符；对人名、专有名词、术语很有效 |
+| `temperature` | string | OpenAI 可选 | 0 到 1 之间的采样温度，默认由上游决定 |
+| `timestamps` | string | OpenAI 可选 | 传 `false` 关闭时间戳，默认 `true`；只有 `whisper-1` 这类模型会真正返回词级时间戳 |
+| `diarize` | string | ElevenLabs 可选 | 是否标注说话人，默认 `true` |
+| `numSpeakers` | string | ElevenLabs 可选 | 1–32 的说话人数量提示，配合 `diarize` 使用；留空表示自动 |
+| `timestampsGranularity` | string | ElevenLabs 可选 | `word`（默认）或 `character`，控制时间戳粒度 |
 
 支持格式：
 

@@ -8,6 +8,14 @@ const MAX_SOURCE_REDIRECTS = 5;
 const SOURCE_TIMEOUT_MS = 120000;
 const SOURCE_URL_FIELDS = ["source_url", "url"];
 const AUDIO_EXTENSION_PATTERN = /\.(mp3|wav|m4a|flac|aac|ogg|webm|amr|3gp)$/i;
+const MAX_PROMPT_LENGTH = 1000;
+const OPENAI_LANGUAGE_PATTERN = /^[A-Za-z]{2,3}$/;
+// `whisper-1` is the only model that answers `verbose_json` with `segments` and
+// word-level granularities; the gpt-4o-transcribe family only supports
+// `json`/`text`, so asking for verbose_json there would fail the request.
+const VERBOSE_JSON_MODEL_PATTERN = /whisper/i;
+const ELEVENLABS_TIMESTAMP_GRANULARITIES = ["word", "character"];
+const MAX_SPEAKERS = 32;
 const ALLOWED_AUDIO_TYPES = [
     "audio/mpeg",
     "audio/mp3",
@@ -399,6 +407,103 @@ function buildElevenLabsSentences(words) {
     return sentences;
 }
 
+function readTemperatureField(value) {
+    const raw = String(value ?? "").trim();
+    if (!raw) {
+        return { temperature: null, error: null };
+    }
+    const parsed = Number(raw);
+    if (!Number.isFinite(parsed) || parsed < 0 || parsed > 1) {
+        return { temperature: null, error: "temperature 必须是 0 到 1 之间的数字" };
+    }
+    return { temperature: parsed, error: null };
+}
+
+function readBooleanField(value, fallback) {
+    if (value === null || value === undefined || value === "") {
+        return fallback;
+    }
+    return String(value).toLowerCase() === "true";
+}
+
+function readPromptField(value) {
+    const prompt = String(value ?? "").trim();
+    if (prompt.length > MAX_PROMPT_LENGTH) {
+        return { prompt: "", error: `prompt 最长 ${MAX_PROMPT_LENGTH} 个字符` };
+    }
+    return { prompt, error: null };
+}
+
+function readOpenAiLanguage(value) {
+    const language = String(value ?? "").trim();
+    if (!language || language.toLowerCase() === "auto") {
+        return { language: "", error: null };
+    }
+    if (!OPENAI_LANGUAGE_PATTERN.test(language)) {
+        return { language: "", error: "language 必须是 ISO-639-1 代码，例如 en、zh、ja" };
+    }
+    return { language: language.toLowerCase(), error: null };
+}
+
+function readSpeakerCount(value) {
+    const raw = String(value ?? "").trim();
+    if (!raw) {
+        return { numSpeakers: null, error: null };
+    }
+    const parsed = Number(raw);
+    if (!Number.isInteger(parsed) || parsed < 1 || parsed > MAX_SPEAKERS) {
+        return { numSpeakers: null, error: `numSpeakers 必须是 1 到 ${MAX_SPEAKERS} 之间的整数` };
+    }
+    return { numSpeakers: parsed, error: null };
+}
+
+function readTimestampGranularity(value) {
+    const granularity = String(value ?? "").trim().toLowerCase();
+    if (!granularity) {
+        return { granularity: "word", error: null };
+    }
+    if (!ELEVENLABS_TIMESTAMP_GRANULARITIES.includes(granularity)) {
+        return { granularity: "", error: "timestampsGranularity 只能是 word 或 character" };
+    }
+    return { granularity, error: null };
+}
+
+/**
+ * `verbose_json` words and segments, mapped onto the shape the other engines
+ * already use so the panel renders one format.
+ */
+function normalizeOpenAiWords(result) {
+    const items = Array.isArray(result?.words) ? result.words : [];
+    return items.map(item => {
+        const start = normalizeTimestamp(item?.start);
+        const end = normalizeTimestamp(item?.end);
+        return {
+            text: String(item?.word ?? item?.text ?? ""),
+            start,
+            end,
+            duration: calculateDuration(start, end),
+            type: "word"
+        };
+    }).filter(item => item.text);
+}
+
+function buildOpenAiSentences(result) {
+    const segments = Array.isArray(result?.segments) ? result.segments.filter(isUsableSegment) : [];
+    if (!segments.length) {
+        return [];
+    }
+    return segments.map(segment => {
+        const start = normalizeTimestamp(segment.start);
+        const end = normalizeTimestamp(segment.end);
+        return {
+            text: String(segment.text || "").trim(),
+            start,
+            end,
+            duration: calculateDuration(start, end)
+        };
+    }).filter(sentence => sentence.text);
+}
+
 function openAiError(status) {
     if (status === 401 || status === 403) {
         return "OpenAI 转录服务拒绝了密钥，请检查 Provider 设置里的 API Key";
@@ -517,10 +622,54 @@ async function handleOpenAiTranscription(formData, env) {
     const invalid = validateAudioFile({ size: audioBlob.size, type: audioType, name: audioName });
     if (invalid) return invalid;
 
+    const language = readOpenAiLanguage(formData.get("language"));
+    if (language.error) {
+        return errorResponse(language.error, {
+            status: 400,
+            type: "invalid_request_error",
+            param: "language",
+            code: "invalid_language"
+        });
+    }
+    const prompt = readPromptField(formData.get("prompt"));
+    if (prompt.error) {
+        return errorResponse(prompt.error, {
+            status: 400,
+            type: "invalid_request_error",
+            param: "prompt",
+            code: "invalid_prompt"
+        });
+    }
+    const temperature = readTemperatureField(formData.get("temperature"));
+    if (temperature.error) {
+        return errorResponse(temperature.error, {
+            status: 400,
+            type: "invalid_request_error",
+            param: "temperature",
+            code: "invalid_temperature"
+        });
+    }
+
+    // Word timings only exist in `verbose_json`, and only whisper-1 accepts it.
+    const wantsTimestamps = readBooleanField(formData.get("timestamps"), true);
+    const supportsVerboseJson = VERBOSE_JSON_MODEL_PATTERN.test(model);
+
     const apiFormData = new FormData();
     apiFormData.append("file", audioBlob, audioName);
     apiFormData.append("model", model);
-    apiFormData.append("response_format", "json");
+    apiFormData.append("response_format", wantsTimestamps && supportsVerboseJson ? "verbose_json" : "json");
+    if (wantsTimestamps && supportsVerboseJson) {
+        apiFormData.append("timestamp_granularities[]", "word");
+    }
+    if (language.language) {
+        apiFormData.append("language", language.language);
+    }
+    if (prompt.prompt) {
+        apiFormData.append("prompt", prompt.prompt);
+    }
+    if (temperature.temperature !== null) {
+        apiFormData.append("temperature", String(temperature.temperature));
+    }
 
     const headers = {};
     if (apiKey) {
@@ -554,7 +703,19 @@ async function handleOpenAiTranscription(formData, env) {
         });
     }
 
-    return jsonResponse({ text });
+    // `json` format has no segments at all; `verbose_json` gives sentences and,
+    // with the granularity above, word timings.
+    const parsed = parseWhisperResult(result);
+    if (typeof parsed === "string") {
+        return jsonResponse({ text });
+    }
+
+    const sentences = buildOpenAiSentences(parsed);
+    const words = normalizeOpenAiWords(parsed);
+    if (!sentences.length && !words.length) {
+        return jsonResponse({ text });
+    }
+    return jsonResponse({ text, sentences, words });
 }
 
 async function handleGoogleTranscription(formData, env) {
@@ -663,6 +824,25 @@ async function handleElevenLabsTranscription(formData, env) {
     const sourceUrl = readSourceUrl(formData);
     const languageCode = String(formData.get("language") || "auto").trim().toLowerCase() || "auto";
     const tagAudioEvents = formData.get("tagAudioEvents") === "true";
+    const diarize = readBooleanField(formData.get("diarize"), true);
+    const speakers = readSpeakerCount(formData.get("numSpeakers"));
+    if (speakers.error) {
+        return errorResponse(speakers.error, {
+            status: 400,
+            type: "invalid_request_error",
+            param: "numSpeakers",
+            code: "invalid_num_speakers"
+        });
+    }
+    const granularity = readTimestampGranularity(formData.get("timestampsGranularity"));
+    if (granularity.error) {
+        return errorResponse(granularity.error, {
+            status: 400,
+            type: "invalid_request_error",
+            param: "timestampsGranularity",
+            code: "invalid_timestamp_granularity"
+        });
+    }
 
     let config;
     try {
@@ -697,6 +877,9 @@ async function handleElevenLabsTranscription(formData, env) {
                 sourceUrl: checked.url,
                 languageCode,
                 tagAudioEvents,
+                diarize,
+                numSpeakers: speakers.numSpeakers,
+                timestampsGranularity: granularity.granularity,
                 apiKey,
                 modelId
             });
@@ -711,6 +894,9 @@ async function handleElevenLabsTranscription(formData, env) {
             filename: audioFile.name || "audio",
             languageCode,
             tagAudioEvents,
+            diarize,
+            numSpeakers: speakers.numSpeakers,
+            timestampsGranularity: granularity.granularity,
             apiKey,
             modelId
         });

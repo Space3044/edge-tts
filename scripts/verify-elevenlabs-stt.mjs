@@ -35,6 +35,9 @@ try {
   formData.append("engine", "elevenlabs");
   formData.append("language", "zho");
   formData.append("tagAudioEvents", "false");
+  formData.append("diarize", "false");
+  formData.append("numSpeakers", "3");
+  formData.append("timestampsGranularity", "character");
 
   const request = new Request("https://voicecraft.example.com/v1/audio/transcriptions", {
     method: "POST",
@@ -62,7 +65,9 @@ try {
   ]);
   assert.equal(capturedUrl, "https://api.elevenlabs.io/v1/speech-to-text?allow_unauthenticated=1");
   assert.equal(capturedBody.get("model_id"), "scribe_v2");
-  assert.equal(capturedBody.get("diarize"), "true");
+  assert.equal(capturedBody.get("diarize"), "false", "diarize is now a switch, not a hardcoded true");
+  assert.equal(capturedBody.get("num_speakers"), "3");
+  assert.equal(capturedBody.get("timestamps_granularity"), "character");
   assert.equal(capturedBody.get("tag_audio_events"), "false");
   assert.equal(capturedBody.get("language_code"), "zho");
   assert.equal(capturedBody.get("file").name, "sample.m4a");
@@ -73,6 +78,37 @@ try {
   assert.ok(capturedHeaders["X-Forwarded-For"], "ElevenLabs request should include a forwarded IP signal");
 } finally {
   globalThis.fetch = originalFetch;
+}
+
+// Invalid option values are rejected before anything is sent upstream.
+{
+  const originalFetch2 = globalThis.fetch;
+  let called = false;
+  globalThis.fetch = async () => {
+    called = true;
+    return new Response("{}", { status: 200, headers: { "Content-Type": "application/json" } });
+  };
+  try {
+    const cases = [
+      { field: "numSpeakers", value: "0", code: "invalid_num_speakers" },
+      { field: "numSpeakers", value: "99", code: "invalid_num_speakers" },
+      { field: "timestampsGranularity", value: "sentence", code: "invalid_timestamp_granularity" },
+    ];
+    for (const testCase of cases) {
+      const formData = new FormData();
+      formData.append("file", new File(["audio"], "sample.m4a", { type: "audio/mp4" }));
+      formData.append("engine", "elevenlabs");
+      formData.append(testCase.field, testCase.value);
+      const response = await handleAudioTranscription(
+        new Request("https://voicecraft.example.com/v1/audio/transcriptions", { method: "POST", body: formData })
+      );
+      assert.equal(response.status, 400, `${testCase.field}=${testCase.value} must be rejected`);
+      assert.equal((await response.json()).error.code, testCase.code);
+    }
+    assert.equal(called, false, "an invalid option must not reach ElevenLabs");
+  } finally {
+    globalThis.fetch = originalFetch2;
+  }
 }
 
 console.log("Verified ElevenLabs STT transcription flow.");
