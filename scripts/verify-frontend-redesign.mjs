@@ -343,6 +343,38 @@ assert.ok(
   "voice filters should stay in a compact horizontal row on desktop",
 );
 
+// Voice auditioning: every row carries a preview button that hits the regular
+// TTS endpoint, while the row itself stays a selection target.
+assert.match(
+  source,
+  /\.voice-preview\s*\{[^}]*border-radius:var\(--radius-pill\)/,
+  "the voice preview button should be styled as a round control",
+);
+
+assert.match(
+  CLIENT_SCRIPT,
+  /voice-preview/,
+  "each voice row should render a preview button",
+);
+
+assert.match(
+  CLIENT_SCRIPT,
+  /function previewVoice\(voiceId\)[\s\S]*?fetch\('\/v1\/audio\/speech'/,
+  "previewing a voice should call the same speech endpoint as generation",
+);
+
+assert.match(
+  CLIENT_SCRIPT,
+  /VOICE_PREVIEW_TEXTS/,
+  "each locale should be auditioned in its own language",
+);
+
+assert.match(
+  CLIENT_SCRIPT,
+  /voicePreview\.cache/,
+  "an auditioned voice should be cached instead of re-synthesized",
+);
+
 assert.match(
   source,
   /\.voice-name\s*\{\s*font-size:\.88rem;\s*display:block;\s*min-width:0;\s*line-height:1\.45;\s*padding-bottom:3px;\s*margin-bottom:-3px;\s*white-space:nowrap;\s*overflow:hidden;\s*text-overflow:ellipsis;\s*\}/,

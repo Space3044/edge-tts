@@ -17,7 +17,7 @@ https://github.com/Space3044/edge-tts
 ## 功能
 
 - 文字转语音：输入文本、上传 `.txt` 文件，或直接提交 SSML。
-- 声音库：内置 114 个 Microsoft Edge TTS 声音，支持按语言、性别、名称、地区和 voice ID 搜索。
+- 声音库：内置 114 个 Microsoft Edge TTS 声音，支持按语言、性别、名称、地区和 voice ID 搜索；每行右侧的播放按钮可以直接试听（用该音色自己的语言说一句，结果按音色缓存）。
 - 参数调节：支持语速、音调和语音风格，语速和音调可双击恢复默认值。
 - 生成结果：生成后的 MP3 可在线播放和下载。
 - 语音转文字：上传音频或粘贴公开音频 URL，可使用 OpenAI 兼容转录接口、ElevenLabs Scribe 或 Google Gemini Transcribe；三家都能给出句子级时间戳，词级时间戳见各引擎说明。
@@ -569,7 +569,7 @@ curl -X POST "https://your-worker.example.com/v1/text/polish" \
 文字转语音流程：
 
 1. 选择输入方式：手动文本、上传 txt 或 SSML。
-2. 在左侧声音库中搜索并选择 voice ID。
+2. 在左侧声音库中搜索并选择 voice ID；点行内的 ▶ 可以先试听（不改变当前选择，再点一次停止）。
 3. 调整语速、音调和风格。
 4. 点击生成语音。
 5. 在生成结果区域播放或下载 MP3。
