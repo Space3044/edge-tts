@@ -111,13 +111,20 @@ npx wrangler d1 create voicecraft
 npx wrangler d1 migrations apply voicecraft --remote
 ```
 
-如果不想走迁移链，仓库根目录还有一份合并好的完整建表脚本 `schema.sql`（等价于跑完 `0001`..`0007`）：
+如果不想走迁移链，仓库根目录有一份合并好的完整建表语句 `schema.sql`（等价于跑完 `0001`..`0007`，无注释、无历史包袱），可以直接粘进 D1 控制台的 SQL 编辑器，或者：
 
 ```bash
 npx wrangler d1 execute voicecraft --remote --file=schema.sql
 ```
 
-它会一并把 `0001`..`0007` 写进 `d1_migrations`，所以之后再 `wrangler d1 migrations apply` 不会重复执行，将来新增的迁移照常 apply。**已有数据的库不要跑这个文件**，用 `migrations apply` 走增量。
+它只建表，不写 `d1_migrations`，所以**两种方式只能选一种**：用 `schema.sql` 建好的库不要再对它跑 `wrangler d1 migrations apply`（`0007` 会报 `duplicate column name: quota_limit`）。若之后想切回 wrangler 管版本，先补上迁移账本：
+
+```sql
+CREATE TABLE IF NOT EXISTS d1_migrations (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT UNIQUE, applied_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP NOT NULL);
+INSERT OR IGNORE INTO d1_migrations (name) VALUES ('0001_provider_config.sql'),('0002_microsoft_oauth.sql'),('0003_microsoft_access_token.sql'),('0004_microsoft_playground_cookie.sql'),('0005_drop_microsoft_columns.sql'),('0006_trancy_account.sql'),('0007_trancy_captions.sql');
+```
+
+已有数据的库不要跑 `schema.sql`，用 `migrations apply` 走增量。
 
 npx wrangler secret put SECRETS_ENCRYPTION_KEY   # base64 的 32 字节
 # 不需要任何鉴权密钥：/api/* 交给 Cloudflare Access
