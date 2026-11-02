@@ -121,8 +121,8 @@ await transcribeWithMockedOpenAi("text/plain; charset=utf-8");
   }
 }
 
-// The reserved Microsoft (Azure AI Speech) engine must answer with a clear
-// placeholder error instead of silently running the OpenAI path.
+// The Microsoft engine is real, but it needs a connected account: without one
+// it must fail loudly instead of running the OpenAI path.
 {
   const formData = new FormData();
   formData.append("file", new File(["audio"], "sample.mp3", { type: "audio/mpeg" }));
@@ -132,12 +132,12 @@ await transcribeWithMockedOpenAi("text/plain; charset=utf-8");
     new Request("https://voicecraft.example.com/v1/audio/transcriptions", {
       method: "POST",
       body: formData,
-    })
+    }),
+    {}
   );
   const body = await response.json();
-  assert.equal(response.status, 501);
-  assert.equal(body.error.code, "engine_not_implemented");
-  assert.equal(body.error.param, "engine");
+  assert.equal(response.status, 401);
+  assert.equal(body.error.code, "microsoft_login_required");
 }
 
 console.log("Verified readable OpenAI transcription formatting.");

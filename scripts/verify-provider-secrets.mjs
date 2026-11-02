@@ -188,8 +188,8 @@ const env = {
   assert.equal(publicRead.status, 200);
   const readBody = await publicRead.json();
   assert.equal(readBody.writable, true);
-  assert.equal(readBody.providers.length, 3);
-  assert.deepEqual(readBody.providers.map(entry => entry.provider), ["openai", "elevenlabs", "google"]);
+  assert.equal(readBody.providers.length, 4);
+  assert.deepEqual(readBody.providers.map(entry => entry.provider), ["openai", "elevenlabs", "google", "microsoft"]);
 
   const anonymousWrite = await handleProviders(
     new Request("https://voicecraft.example.com/api/providers/openai", {

@@ -9,7 +9,8 @@
  * writes are refused instead of silently falling back to "anyone can write".
  */
 
-import { PROVIDER_DEFAULTS, isSupportedProvider, listProviderStatus, normalizeProviderName, saveProviderConfig } from "../secrets/store.js";
+import { PROVIDER_DEFAULTS, clearMicrosoftTokens, isSupportedProvider, listProviderStatus, normalizeProviderName, saveProviderConfig } from "../secrets/store.js";
+import { handleMicrosoftLogin } from "./microsoft-auth.js";
 import { errorResponse, jsonResponse } from "../utils/response.js";
 
 const MAX_ENDPOINT_LENGTH = 300;
@@ -81,6 +82,17 @@ function validateEndpoint(value) {
     return { endpoint: endpoint.replace(/\/+$/, ""), error: null };
 }
 
+function validateRegion(value) {
+    const region = String(value ?? "").trim();
+    if (!region) {
+        return { region: "", error: null };
+    }
+    if (!/^[a-z0-9-]{1,40}$/i.test(region)) {
+        return { region: "", error: "Azure 区域只能包含字母、数字和连字符" };
+    }
+    return { region, error: null };
+}
+
 function validateModel(value) {
     const model = String(value ?? "").trim();
     if (model.length > MAX_MODEL_LENGTH) {
@@ -105,6 +117,10 @@ export async function handleProviders(request, env = {}) {
                 providers,
                 defaults: PROVIDER_DEFAULTS,
                 writable: Boolean(String(env?.ADMIN_TOKEN || "").trim()),
+                microsoftOauth: Boolean(
+                    String(env?.MICROSOFT_CLIENT_ID || "").trim() &&
+                    String(env?.MICROSOFT_CLIENT_SECRET || "").trim()
+                ),
                 encryptionReady: true
             });
         } catch (error) {
@@ -114,6 +130,38 @@ export async function handleProviders(request, env = {}) {
                 code: "provider_read_failed"
             });
         }
+    }
+
+    if (request.method === "POST" && provider === "microsoft" && segments.length === 4) {
+        const action = segments[3];
+        const denied = requireAdmin(request, env);
+        if (denied) {
+            return denied;
+        }
+
+        if (action === "login") {
+            return handleMicrosoftLogin(request, env);
+        }
+
+        if (action === "logout") {
+            try {
+                await clearMicrosoftTokens(env);
+                const statuses = await listProviderStatus(env);
+                return jsonResponse({ provider: statuses.find(entry => entry.provider === "microsoft") });
+            } catch (error) {
+                return errorResponse(error instanceof Error ? error.message : "断开微软账号失败", {
+                    status: 500,
+                    code: "microsoft_logout_failed"
+                });
+            }
+        }
+
+        return errorResponse("只支持 POST /api/providers/microsoft/login 和 /logout", {
+            status: 404,
+            type: "invalid_request_error",
+            param: "action",
+            code: "unknown_action"
+        });
     }
 
     if (request.method === "PUT" && segments.length === 3) {
@@ -163,6 +211,16 @@ export async function handleProviders(request, env = {}) {
             });
         }
 
+        const region = validateRegion(body?.region);
+        if (region.error) {
+            return errorResponse(region.error, {
+                status: 400,
+                type: "invalid_request_error",
+                param: "region",
+                code: "invalid_region"
+            });
+        }
+
         const apiKey = typeof body?.apiKey === "string" ? body.apiKey.trim() : "";
         if (apiKey.length > MAX_API_KEY_LENGTH) {
             return errorResponse("API Key 太长", {
@@ -177,6 +235,7 @@ export async function handleProviders(request, env = {}) {
             const updated = await saveProviderConfig(env, provider, {
                 endpoint: endpoint.endpoint,
                 model: model.model,
+                region: region.region,
                 apiKey,
                 clearApiKey: body?.clearApiKey === true
             });

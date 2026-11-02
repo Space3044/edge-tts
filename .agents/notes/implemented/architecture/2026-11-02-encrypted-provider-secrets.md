@@ -24,6 +24,8 @@ CREATE TABLE provider_config (
 
 `endpoint` 和 `model` 明文存，因为界面要回显；只有 API Key 是敏感数据，存密文。空字符串表示「这一行没有密钥」，不用 NULL，避免三值判断扩散到每一层。
 
+Microsoft 的接入让同一张表多了三列（`migrations/0002_microsoft_oauth.sql`）：`region`（拼 Azure 端点）、`refresh_token_cipher`（OAuth 刷新令牌，AAD 为 `microsoft:refresh_token`）、`token_updated_at`。复用 `api_key_cipher` 会造成两种语义混在一列，所以宁可加列。
+
 加密信封格式是 `v1.<iv_b64>.<ciphertext_b64>`：
 
 - 每次写入生成新的 12 字节 IV，不重用；
@@ -35,7 +37,9 @@ CREATE TABLE provider_config (
 
 写接口 `PUT /api/providers/:provider` 用 `Authorization: Bearer $ADMIN_TOKEN` 保护，常量时间比较。`ADMIN_TOKEN` 未配置时写接口返回 `admin_not_configured` 而不是放行，避免「忘了配变量 = 人人可写」。前端把 token 放在 `sessionStorage`，首次保存时 `prompt()` 一次。
 
-引擎 id 保留一个预留值 `microsoft`（Azure AI Speech）：界面上的第四个标签是 disabled 占位，API 收到 `engine=microsoft` 时返回 `501 engine_not_implemented`，不会静默落到 OpenAI 分支。
+第四个引擎 `microsoft`（Azure AI Speech）不用 API Key，而用 **Entra ID 授权码流程**：`POST /api/providers/microsoft/login` 返回 authorize URL（scope `https://cognitiveservices.azure.com/.default offline_access`，PKCE + state 放在 HttpOnly cookie 里），`GET /api/microsoft/callback` 用 code 换 token，只把 refresh token 用 `microsoft:refresh_token` 作为 AAD 加密存进 D1；access token 每次转录时现换、不落库，轮换回来的新 refresh token 会覆盖旧的。转录调 Azure Fast transcription（`/speechtotext/transcriptions:transcribe?api-version=2024-11-15`），音频仍是普通 multipart，没有 base64、没有会话。
+
+之所以选 OAuth 而不是订阅密钥：凭据可以随时在页面上断开（清掉 D1 里的 refresh token），不产生长期有效的静态密钥；代价是依赖 Entra 应用注册和 Speech 资源的 RBAC 角色，refresh token 过期（confidential client 90 天滑动）时要重新登录一次，接口用 `microsoft_login_required` 明示。
 
 引擎层面把 `whisper` 改名为 `openai`，走标准 OpenAI 兼容协议：`{endpoint}/audio/transcriptions`，multipart 传 `file`、`model`、`response_format=json`，配了密钥就带 `Authorization: Bearer`。base 不带 `/audio/transcriptions` 时自动补全，因此 `https://api.openai.com/v1` 和自建 `https://asr.example.com/v1` 都能用。`engine=whisper` 保留为 `openai` 的别名，老调用方不用改。
 
@@ -66,4 +70,4 @@ CREATE TABLE provider_config (
 
 `node scripts/verify-provider-secrets.mjs` 覆盖：加密信封往返、AAD 与换密钥导致的解密失败、掩码、写入后 D1 行内无明文、状态接口不泄露明文、空 key 保留/`clearApiKey` 清空、环境变量回落与 D1 优先级、缺失 `SECRETS_ENCRYPTION_KEY` 时写失败、损坏密文降级为 `keyError`、路由鉴权（匿名 401 / 错误 token 401 / 未配 `ADMIN_TOKEN` 403 / 正确 token 200）、非法 endpoint 与未知 provider。
 
-`scripts/verify-transcription-format.mjs` 覆盖 OpenAI 引擎的字段转发、`engine=whisper` 别名和 base URL 补全；`verify-transcription-url.mjs` 覆盖三个引擎的 URL 模式；`verify-code-hygiene.mjs` 额外断言「注入的客户端脚本必须能通过语法解析」——之前一次性改坏 `client.js` 的括号时，只有浏览器控制台能发现。
+`scripts/verify-microsoft-stt.mjs` 覆盖 OAuth 授权 URL、code/refresh 交换、endpoint 推导、Fast transcription 的请求形状与毫秒→秒映射、refresh token 轮换落库、login/logout 的鉴权与未配置分支。`scripts/verify-transcription-format.mjs` 覆盖 OpenAI 引擎的字段转发、`engine=whisper` 别名和 base URL 补全；`verify-transcription-url.mjs` 覆盖三个引擎的 URL 模式；`verify-code-hygiene.mjs` 额外断言「注入的客户端脚本必须能通过语法解析」——之前一次性改坏 `client.js` 的括号时，只有浏览器控制台能发现。

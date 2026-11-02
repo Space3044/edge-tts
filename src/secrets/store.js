@@ -8,18 +8,21 @@
 
 import { decryptSecret, encryptSecret, importEncryptionKey, maskSecret } from "./crypto.js";
 
-export const PROVIDERS = ["openai", "elevenlabs", "google"];
+export const PROVIDERS = ["openai", "elevenlabs", "google", "microsoft"];
 
 export const PROVIDER_DEFAULTS = {
     openai: { endpoint: "https://api.openai.com/v1", model: "whisper-1" },
     elevenlabs: { endpoint: "https://api.elevenlabs.io", model: "scribe_v2" },
-    google: { endpoint: "https://generativelanguage.googleapis.com", model: "gemini-3.5-transcribe" }
+    google: { endpoint: "https://generativelanguage.googleapis.com", model: "gemini-3.5-transcribe" },
+    // Microsoft uses OAuth + a region-derived host, so it has no model or key.
+    microsoft: { endpoint: "", model: "" }
 };
 
 export const PROVIDER_ENV_KEYS = {
     openai: ["OPENAI_API_KEY"],
     elevenlabs: ["ELEVENLABS_API_KEY"],
-    google: ["GEMINI_API_KEY", "GOOGLE_API_KEY"]
+    google: ["GEMINI_API_KEY", "GOOGLE_API_KEY"],
+    microsoft: []
 };
 
 export function isSupportedProvider(provider) {
@@ -56,13 +59,31 @@ async function readRows(env) {
         return new Map();
     }
     const { results } = await env.DB
-        .prepare("SELECT provider, endpoint, model, api_key_cipher, updated_at FROM provider_config")
+        .prepare("SELECT provider, endpoint, model, api_key_cipher, updated_at, region, refresh_token_cipher, token_updated_at FROM provider_config")
         .all();
     const rows = new Map();
     for (const row of results || []) {
         rows.set(String(row.provider), row);
     }
     return rows;
+}
+
+const REFRESH_TOKEN_AAD = "microsoft:refresh_token";
+
+async function decryptRefreshToken(row, env) {
+    const cipher = String(row?.refresh_token_cipher || "");
+    if (!cipher) {
+        return { refreshToken: "", tokenError: null };
+    }
+    try {
+        const key = await importEncryptionKey(env?.SECRETS_ENCRYPTION_KEY);
+        return {
+            refreshToken: await decryptSecret(cipher, { key, aad: REFRESH_TOKEN_AAD }),
+            tokenError: null
+        };
+    } catch (error) {
+        return { refreshToken: "", tokenError: error instanceof Error ? error.message : String(error) };
+    }
 }
 
 async function decryptRowKey(provider, row, env) {
@@ -130,16 +151,22 @@ export async function listProviderStatus(env) {
         const source = stored.apiKey ? "db" : fromEnv.apiKey ? "env" : "none";
         const apiKey = stored.apiKey || fromEnv.apiKey;
 
+        const region = String(row?.region || "").trim();
+        const connected = Boolean(String(row?.refresh_token_cipher || ""));
+
         statuses.push({
             provider,
             endpoint: String(row?.endpoint || "").trim() || defaults.endpoint,
             model: String(row?.model || "").trim() || defaults.model,
             defaults,
-            configured: Boolean(apiKey),
-            keySource: source,
-            keyTail: apiKey ? maskSecret(apiKey) : "",
+            configured: provider === "microsoft" ? connected : Boolean(apiKey),
+            keySource: provider === "microsoft" ? (connected ? "oauth" : "none") : source,
+            keyTail: provider === "microsoft" ? "" : apiKey ? maskSecret(apiKey) : "",
+            region,
+            connected,
+            tokenUpdatedAt: row?.token_updated_at || null,
             updatedAt: row?.updated_at || null,
-            keyError: stored.keyError
+            keyError: provider === "microsoft" ? null : stored.keyError
         });
     }
 
@@ -157,8 +184,10 @@ export async function saveProviderConfig(env, provider, input = {}) {
     const existing = rows.get(name);
     const defaults = PROVIDER_DEFAULTS[name];
 
-    const endpoint = String(input.endpoint ?? existing?.endpoint ?? "").trim() || defaults.endpoint;
+    const endpointInput = input.endpoint ?? existing?.endpoint ?? "";
+    const endpoint = String(endpointInput).trim() || defaults.endpoint;
     const model = String(input.model ?? existing?.model ?? "").trim() || defaults.model;
+    const region = String(input.region ?? existing?.region ?? "").trim();
 
     let apiKeyCipher = String(existing?.api_key_cipher || "");
     const nextApiKey = typeof input.apiKey === "string" ? input.apiKey.trim() : "";
@@ -172,17 +201,94 @@ export async function saveProviderConfig(env, provider, input = {}) {
     const updatedAt = new Date().toISOString();
     await db
         .prepare(
-            `INSERT INTO provider_config (provider, endpoint, model, api_key_cipher, updated_at)
-             VALUES (?, ?, ?, ?, ?)
+            `INSERT INTO provider_config
+                 (provider, endpoint, model, api_key_cipher, updated_at, region, refresh_token_cipher, token_updated_at)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?)
              ON CONFLICT(provider) DO UPDATE SET
                  endpoint = excluded.endpoint,
                  model = excluded.model,
                  api_key_cipher = excluded.api_key_cipher,
-                 updated_at = excluded.updated_at`
+                 updated_at = excluded.updated_at,
+                 region = excluded.region,
+                 refresh_token_cipher = excluded.refresh_token_cipher,
+                 token_updated_at = excluded.token_updated_at`
         )
-        .bind(name, endpoint, model, apiKeyCipher, updatedAt)
+        .bind(
+            name,
+            endpoint,
+            model,
+            apiKeyCipher,
+            updatedAt,
+            region,
+            String(existing?.refresh_token_cipher || ""),
+            String(existing?.token_updated_at || "")
+        )
         .run();
 
     const statuses = await listProviderStatus(env);
     return statuses.find(status => status.provider === name);
+}
+
+/**
+ * Microsoft account state: the refresh token is the only credential we keep.
+ * Access tokens are minted per request and never stored.
+ */
+export async function getMicrosoftAccount(env) {
+    const row = (await readRows(env)).get("microsoft");
+    const { refreshToken, tokenError } = await decryptRefreshToken(row, env);
+    return {
+        refreshToken,
+        tokenError,
+        region: String(row?.region || "").trim(),
+        endpoint: String(row?.endpoint || "").trim(),
+        tokenUpdatedAt: row?.token_updated_at || null
+    };
+}
+
+export async function saveMicrosoftRefreshToken(env, refreshToken) {
+    const db = requireDatabase(env);
+    const value = String(refreshToken || "").trim();
+    if (!value) {
+        throw new Error("不能保存空的 refresh token");
+    }
+
+    const rows = await readRows(env);
+    const existing = rows.get("microsoft");
+    const key = await importEncryptionKey(env?.SECRETS_ENCRYPTION_KEY);
+    const cipher = await encryptSecret(value, { key, aad: REFRESH_TOKEN_AAD });
+    const now = new Date().toISOString();
+
+    await db
+        .prepare(
+            `INSERT INTO provider_config
+                 (provider, endpoint, model, api_key_cipher, updated_at, region, refresh_token_cipher, token_updated_at)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+             ON CONFLICT(provider) DO UPDATE SET
+                 refresh_token_cipher = excluded.refresh_token_cipher,
+                 token_updated_at = excluded.token_updated_at`
+        )
+        .bind(
+            "microsoft",
+            String(existing?.endpoint || ""),
+            String(existing?.model || ""),
+            String(existing?.api_key_cipher || ""),
+            String(existing?.updated_at || now),
+            String(existing?.region || ""),
+            cipher,
+            now
+        )
+        .run();
+
+    return { tokenUpdatedAt: now };
+}
+
+export async function clearMicrosoftTokens(env) {
+    const db = requireDatabase(env);
+    await db
+        .prepare(
+            `UPDATE provider_config
+             SET refresh_token_cipher = '', token_updated_at = ''
+             WHERE provider = 'microsoft'`
+        )
+        .run();
 }

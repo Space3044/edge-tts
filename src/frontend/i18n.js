@@ -240,14 +240,14 @@ export const translations = {
     // The Microsoft (Azure AI Speech) engine is a labelled placeholder: the tab
     // is disabled until the provider design lands.
     const MICROSOFT_STT_TRANSLATIONS = {
-      en: { 'stt.engineMicrosoft': 'Microsoft', 'stt.engineComingSoon': 'Coming soon' },
-      zh: { 'stt.engineMicrosoft': '微软', 'stt.engineComingSoon': '即将支持' },
-      ja: { 'stt.engineMicrosoft': 'Microsoft', 'stt.engineComingSoon': '近日対応' },
-      ko: { 'stt.engineMicrosoft': 'Microsoft', 'stt.engineComingSoon': '곧 지원' },
-      es: { 'stt.engineMicrosoft': 'Microsoft', 'stt.engineComingSoon': 'Próximamente' },
-      fr: { 'stt.engineMicrosoft': 'Microsoft', 'stt.engineComingSoon': 'Bientôt' },
-      de: { 'stt.engineMicrosoft': 'Microsoft', 'stt.engineComingSoon': 'Demnächst' },
-      ru: { 'stt.engineMicrosoft': 'Microsoft', 'stt.engineComingSoon': 'Скоро' }
+      en: { 'stt.engineMicrosoft': 'Microsoft' },
+      zh: { 'stt.engineMicrosoft': '微软' },
+      ja: { 'stt.engineMicrosoft': 'Microsoft' },
+      ko: { 'stt.engineMicrosoft': 'Microsoft' },
+      es: { 'stt.engineMicrosoft': 'Microsoft' },
+      fr: { 'stt.engineMicrosoft': 'Microsoft' },
+      de: { 'stt.engineMicrosoft': 'Microsoft' },
+      ru: { 'stt.engineMicrosoft': 'Microsoft' }
     };
     Object.keys(MICROSOFT_STT_TRANSLATIONS).forEach(function(lang) { Object.assign(translations[lang], MICROSOFT_STT_TRANSLATIONS[lang]); });
 
@@ -278,6 +278,15 @@ export const translations = {
         'provider.save': 'Save',
         'provider.saving': 'Saving...',
         'provider.saved': 'Saved',
+        'provider.microsoftTitle': 'Microsoft Azure Speech',
+        'provider.region': 'Region',
+        'provider.microsoftHint': 'Sign in with a Microsoft account that has the Cognitive Services Speech User role on the Speech resource.',
+        'provider.microsoftConnect': 'Sign in',
+        'provider.microsoftDisconnect': 'Disconnect',
+        'provider.microsoftConnected': 'Connected',
+        'provider.microsoftDisconnected': 'Not connected',
+        'provider.microsoftConnectedToast': 'Microsoft account connected',
+        'provider.microsoftError': 'Microsoft sign-in failed',
         'provider.statusNone': 'No API key saved',
         'provider.statusEnv': 'API key from environment variable',
         'provider.statusDb': 'API key encrypted in D1',
@@ -302,6 +311,15 @@ export const translations = {
         'provider.save': '保存',
         'provider.saving': '保存中...',
         'provider.saved': '已保存',
+        'provider.microsoftTitle': 'Microsoft Azure Speech',
+        'provider.region': '区域',
+        'provider.microsoftHint': '用拥有该语音资源 Cognitive Services Speech User 角色的微软账号登录。',
+        'provider.microsoftConnect': '登录微软账号',
+        'provider.microsoftDisconnect': '断开',
+        'provider.microsoftConnected': '已连接',
+        'provider.microsoftDisconnected': '未连接',
+        'provider.microsoftConnectedToast': '微软账号已连接',
+        'provider.microsoftError': '微软登录失败',
         'provider.statusNone': '未保存 API Key',
         'provider.statusEnv': 'API Key 来自环境变量',
         'provider.statusDb': 'API Key 已加密保存到 D1',

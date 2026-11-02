@@ -1,7 +1,9 @@
 import { errorResponse, jsonResponse } from "../utils/response.js";
 import { transcribe as transcribeWithElevenLabs } from "../elevenlabs/stt.js";
 import { transcribeWithGoogle } from "../google/stt.js";
-import { resolveProvider } from "../secrets/store.js";
+import { getMicrosoftAccount, saveMicrosoftRefreshToken, resolveProvider } from "../secrets/store.js";
+import { refreshAccessToken } from "../microsoft/oauth.js";
+import { buildMicrosoftEndpoint, transcribeWithMicrosoft } from "../microsoft/stt.js";
 
 const MAX_AUDIO_FILE_SIZE = 50 * 1024 * 1024;
 const MAX_SOURCE_REDIRECTS = 5;
@@ -725,6 +727,131 @@ async function handleElevenLabsTranscription(formData, env) {
     }
 }
 
+async function handleMicrosoftTranscription(formData, env) {
+    const account = await getMicrosoftAccount(env);
+
+    if (account.tokenError) {
+        return errorResponse(account.tokenError, {
+            status: 500,
+            type: "api_error",
+            code: "microsoft_token_unreadable"
+        });
+    }
+
+    if (!account.refreshToken) {
+        return errorResponse("Microsoft 尚未登录：请在服务配置里连接微软账号", {
+            status: 401,
+            type: "authentication_error",
+            code: "microsoft_login_required"
+        });
+    }
+
+    let accessToken;
+    try {
+        const tokens = await refreshAccessToken({ env, refreshToken: account.refreshToken });
+        accessToken = tokens.accessToken;
+        // Entra ID rotates refresh tokens; persist the new one so the old value
+        // does not age out.
+        if (tokens.refreshToken && tokens.refreshToken !== account.refreshToken) {
+            await saveMicrosoftRefreshToken(env, tokens.refreshToken);
+        }
+    } catch (error) {
+        console.error("Microsoft token refresh failed:", error);
+        return errorResponse(
+            "微软授权已失效，请在服务配置里重新登录微软账号",
+            { status: 401, type: "authentication_error", code: "microsoft_login_required" }
+        );
+    }
+
+    let base;
+    try {
+        base = buildMicrosoftEndpoint({
+            endpoint: String(formData.get("endpoint") || "").trim() || account.endpoint,
+            region: String(formData.get("region") || "").trim() || account.region
+        });
+    } catch (error) {
+        return errorResponse(error instanceof Error ? error.message : "Microsoft endpoint 无效", {
+            status: 400,
+            type: "invalid_request_error",
+            param: "region",
+            code: "microsoft_region_required"
+        });
+    }
+
+    const audioFile = formData.get("file");
+    const sourceUrl = readSourceUrl(formData);
+    let data = audioFile;
+    let filename = audioFile && audioFile.name ? audioFile.name : "audio";
+    let mimeType = audioFile && audioFile.type ? audioFile.type : "audio/mpeg";
+
+    if (!data && sourceUrl) {
+        const checked = normalizeSourceUrl(sourceUrl);
+        if (checked.error) return sourceUrlError(checked.error);
+        try {
+            const remote = await fetchSourceAudio(checked.url, MAX_AUDIO_FILE_SIZE);
+            data = remote.blob;
+            filename = sourceFilename(remote.url, remote.contentType);
+            mimeType = remote.contentType || remote.blob.type || "audio/mpeg";
+        } catch (error) {
+            const message = error instanceof Error ? error.message : "音频下载失败";
+            const tooLarge = message.includes("50MB");
+            return errorResponse(message, {
+                status: tooLarge ? 400 : 502,
+                type: tooLarge ? "invalid_request_error" : "api_error",
+                param: tooLarge ? "source_url" : null,
+                code: tooLarge ? "source_too_large" : "source_download_failed"
+            });
+        }
+    }
+    if (!data) return missingAudioResponse();
+
+    if (audioFile) {
+        const invalid = validateAudioFile(audioFile);
+        if (invalid) return invalid;
+    }
+
+    const locale = String(formData.get("locale") || "").trim();
+
+    try {
+        const result = await transcribeWithMicrosoft({
+            accessToken,
+            endpoint: base,
+            data,
+            filename,
+            mimeType,
+            locale
+        });
+        const words = normalizeElevenLabsWords(result);
+        const sentences = Array.isArray(result.sentences) && result.sentences.length
+            ? result.sentences
+            : buildElevenLabsSentences(words);
+        const text = String(result.text || "").trim() || words.map(word => word.text).join(" ").trim();
+        if (!text) {
+            return errorResponse("Microsoft 转录未返回可用文本", {
+                status: 502,
+                type: "api_error",
+                code: "empty_transcription_result"
+            });
+        }
+        return jsonResponse({ text, sentences, words });
+    } catch (error) {
+        const message = error instanceof Error ? error.message : "Microsoft 转录失败";
+        if (message.includes("重新登录")) {
+            return errorResponse(message, {
+                status: 401,
+                type: "authentication_error",
+                code: "microsoft_login_required"
+            });
+        }
+        console.error("Microsoft STT error:", error);
+        return errorResponse(message, {
+            status: 502,
+            type: "api_error",
+            code: "transcription_api_error"
+        });
+    }
+}
+
 export async function handleAudioTranscription(request, env) {
     try {
         if (request.method !== "POST") {
@@ -759,14 +886,7 @@ export async function handleAudioTranscription(request, env) {
             return handleGoogleTranscription(formData, env);
         }
         if (engine === "microsoft") {
-            // Reserved engine id for Azure AI Speech; surfaced clearly so API
-            // callers never get OpenAI results by accident.
-            return errorResponse("Microsoft（Azure AI Speech）引擎尚未实现", {
-                status: 501,
-                type: "invalid_request_error",
-                param: "engine",
-                code: "engine_not_implemented"
-            });
+            return handleMicrosoftTranscription(formData, env);
         }
         return handleOpenAiTranscription(formData, env);
     } catch (error) {

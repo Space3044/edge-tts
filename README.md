@@ -20,7 +20,7 @@ https://github.com/Space3044/edge-tts
 - 声音库：内置 114 个 Microsoft Edge TTS 声音，支持按语言、性别、名称、地区和 voice ID 搜索。
 - 参数调节：支持语速、音调和语音风格，语速和音调可双击恢复默认值。
 - 生成结果：生成后的 MP3 可在线播放和下载。
-- 语音转文字：上传音频或粘贴公开音频 URL，可使用 OpenAI 兼容转录接口、ElevenLabs Scribe 或 Google Gemini Transcribe；ElevenLabs 和 Gemini 都支持纯文本、句子时间戳和词级时间戳查看。微软（Azure AI Speech）引擎的入口已占位，暂未实现。
+- 语音转文字：上传音频或粘贴公开音频 URL，可使用 OpenAI 兼容转录接口、ElevenLabs Scribe、Google Gemini Transcribe 或 Microsoft Azure AI Speech；后三个都支持句子时间戳和词级时间戳查看。
 - AI 润色：调用 OpenAI 兼容接口润色输入文本。
 - 服务配置：转录服务的 endpoint、模型和 API Key 在页面里设置，API Key 用 `SECRETS_ENCRYPTION_KEY` 加密后存进 D1；页面只显示掩码尾巴，不回传明文。
 - 浏览器本地保存：AI 润色的 Base URL、API Key、模型和润色指令只保存在当前浏览器本地。
@@ -208,7 +208,7 @@ zh-CN-YunyangNeural
 POST /v1/audio/transcriptions
 ```
 
-当前实现支持三种转录引擎：`openai`（OpenAI 兼容的 `/audio/transcriptions`）、`elevenlabs` 和 `google`。第四个引擎 `microsoft`（Azure AI Speech）只在界面上占位，请求会返回 `501 engine_not_implemented`。三个引擎的 endpoint、模型和 API Key 都在页面里的 Provider settings 中配置，保存在 D1 的 `provider_config` 表；API Key 用 `SECRETS_ENCRYPTION_KEY` 加密后落库，接口只会返回掩码尾巴。
+当前实现支持四种转录引擎：`openai`（OpenAI 兼容的 `/audio/transcriptions`）、`elevenlabs`、`google` 和 `microsoft`（Azure AI Speech）。三个引擎的 endpoint、模型和 API Key 都在页面里的 Provider settings 中配置，保存在 D1 的 `provider_config` 表；API Key 用 `SECRETS_ENCRYPTION_KEY` 加密后落库，接口只会返回掩码尾巴。
 
 解析顺序是「D1 里保存的值 → 环境变量 → 内置默认值」：D1 没配时回落到 `OPENAI_API_KEY` / `ELEVENLABS_API_KEY` / `GEMINI_API_KEY`（或 `GOOGLE_API_KEY`），都没有就用默认地址和模型。`engine=whisper` 仍然保留为 `openai` 的别名，老调用方不需要改。
 
@@ -225,6 +225,21 @@ Google 的 endpoint、模型和密钥同样在 Provider settings 里配置：end
 ```bash
 npx wrangler secret put GEMINI_API_KEY   # 可选，D1 里保存过密钥就不需要
 ```
+
+Microsoft 用的是 **OAuth 登录**而不是 API Key：Worker 走 Entra ID 授权码流程拿到 access token（audience 是 Cognitive Services），refresh token 加密存在 D1，access token 每次现换、不落库。转录走 Azure 的 Fast transcription 接口：
+
+```text
+POST https://{region}.api.cognitive.microsoft.com
+     /speechtotext/transcriptions:transcribe?api-version=2024-11-15
+```
+
+启用它需要三样东西：
+
+1. 一个 **Speech 资源**（免费层 F0 每月 5 小时），并给你的账号在该资源上分配 `Cognitive Services Speech User` 角色；
+2. 一个 **Entra ID 应用注册**，redirect URI 填 `https://你的域名/api/microsoft/callback`；
+3. 三个 Worker secret：`MICROSOFT_CLIENT_ID`、`MICROSOFT_CLIENT_SECRET`（confidential client，refresh token 90 天滑动）、`MICROSOFT_TENANT`（默认 `common`）。
+
+之后在 Provider settings 里填 Azure 区域（例如 `eastasia`），点「登录微软账号」完成一次授权即可。refresh token 失效时页面会显示「未连接」，转录接口返回 `microsoft_login_required`，重新登录一次就好。
 
 没有可用密钥时，Google 引擎会返回明确的 `google_not_configured` 错误。
 
@@ -282,6 +297,7 @@ URL 模式的行为：
 - `engine=elevenlabs`：Worker 把 URL 原样交给 ElevenLabs 的 `source_url`，不在 Worker 端下载，ElevenLabs 的 2GB URL 上限生效。
 - `engine=openai`（别名 `whisper`）：Worker 自己下载音频（跟随最多 5 次重定向，每一跳都重新校验），再按 OpenAI 的 `file` 字段转发到 `{endpoint}/audio/transcriptions`；沿用 50MB 上限。
 - `engine=google`：Worker 自己下载音频后上传到 Gemini Files API，再调用配置的模型；密钥来自 D1 或 `GEMINI_API_KEY`。
+- `engine=microsoft`：Worker 自己下载音频后以 multipart 传给 Azure Fast transcription；凭据是 OAuth access token，没有密钥可填。
 - 只允许 `http://` / `https://` 的公开地址；本机、内网、云元数据地址会被拒绝。URL 里不能带用户名或密码。
 - 文件上传仍是 50MB 上限；粘贴 URL 时前端不再要求先选文件。
 
@@ -355,10 +371,12 @@ ElevenLabs 响应示例：
 | 参数 | 类型 | 必填 | 说明 |
 | --- | --- | --- | --- |
 | `file` | File | 是 | 音频文件，最大 50MB |
-| `engine` | string | 否 | `openai`、`elevenlabs` 或 `google`，默认 `openai`（`whisper` 是 `openai` 的别名；`microsoft` 为预留值，返回 501） |
+| `engine` | string | 否 | `openai`、`elevenlabs`、`google` 或 `microsoft`，默认 `openai`（`whisper` 是 `openai` 的别名） |
 | `endpoint` | string | 否 | 该引擎的 endpoint 覆盖值，默认取 D1 / 环境变量 / 内置默认；OpenAI 补 `/audio/transcriptions`，Google 用来拼 Files / Interactions 地址 |
 | `model` | string | 否 | 该引擎的模型覆盖值，默认取 D1 配置 |
 | `apiKey` | string | 否 | 仅 OpenAI 引擎支持单次覆盖；默认使用保存在 D1 的密钥 |
+| `region` | string | Microsoft 必填 | Azure 区域，例如 `eastasia`；默认取 Provider settings 里保存的值 |
+| `locale` | string | Microsoft 可选 | BCP-47 语言提示，例如 `zh-CN`；留空由服务自动识别 |
 | `language` | string | ElevenLabs 可选 | ElevenLabs 官方语言代码，默认 `auto` 自动检测。常用值：`eng`、`zho`、`jpn`、`kor`、`spa`、`fra`、`deu`、`rus` |
 | `tagAudioEvents` | string | ElevenLabs 可选 | 是否标记笑声、掌声等音频事件，传 `true` 或 `false` |
 
@@ -472,6 +490,7 @@ node scripts/verify-elevenlabs-stt.mjs
 node scripts/verify-google-stt.mjs
 node scripts/verify-transcription-url.mjs
 node scripts/verify-provider-secrets.mjs
+node scripts/verify-microsoft-stt.mjs
 node -e "import('./index.js').then((m) => { if (!m.default || typeof m.default.fetch !== 'function') throw new Error('Worker fetch export missing'); console.log('Worker entry import ok'); })"
 git diff --check
 ```
@@ -481,7 +500,7 @@ git diff --check
 - Edge TTS 依赖 Microsoft 服务可用性，网络环境会影响生成成功率。
 - 长文本会自动拆分再合成，内容越长，生成时间越久。
 - STT 文件上传限制为 50MB；OpenAI 引擎的 URL 模式同样限制 50MB，ElevenLabs 的 URL 模式由 ElevenLabs 自己限制（2GB），Google 的 URL 模式也受 Worker 50MB 上限约束。
-- 三个引擎都需要可用的密钥：优先用 Provider settings 保存到 D1 的那一份，缺失时回落到 `OPENAI_API_KEY` / `ELEVENLABS_API_KEY` / `GEMINI_API_KEY`。
+- OpenAI / ElevenLabs / Google 需要可用的密钥：优先用 Provider settings 保存到 D1 的那一份，缺失时回落到 `OPENAI_API_KEY` / `ELEVENLABS_API_KEY` / `GEMINI_API_KEY`。Microsoft 用 OAuth，没有密钥，只有 refresh token（同样加密存在 D1）。
 - 文本文件上传限制为 500KB。
 - URL 模式会跟随最多 5 次重定向，并拒绝本机/内网地址；Worker 不会把任意 URL 当作内网代理。
 - 自建 OpenAI 兼容服务如果部署在非标准 HTTPS 端口，Cloudflare Workers 发布环境可能忽略自定义端口，建议使用标准 443 端口或反向代理到标准端口。

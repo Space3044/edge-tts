@@ -11,6 +11,14 @@ SECRETS_ENCRYPTION_KEY=3MA8dqfnN1veywbjKPVE9hDwIq2Ra5TXvsTThon+SEc=
 # Without it the settings panel is read-only.
 ADMIN_TOKEN=change-me-local-admin-token
 
+# Microsoft (Azure AI Speech) uses OAuth instead of an API key: register an app
+# in Entra ID, add https://<your-domain>/api/microsoft/callback as a redirect
+# URI, then paste the client id/secret here. MICROSOFT_TENANT defaults to
+# "common"; use your tenant id for a single-tenant app.
+# MICROSOFT_CLIENT_ID=
+# MICROSOFT_CLIENT_SECRET=
+# MICROSOFT_TENANT=common
+
 # Optional fallbacks, used when D1 has no key for that provider.
 # OPENAI_API_KEY=
 # ELEVENLABS_API_KEY=
