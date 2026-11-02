@@ -234,7 +234,9 @@ Microsoft 有两条路，按你在 Provider settings 里填的东西自动选择
 - 限制：**只吃 mp3/wav，单次 ≤ 25MB、≤ 3615 秒**；音频以 base64 塞进 JSON（Playground 唯一的上传方式）
 - 续期分两种粘法：
   - **只粘贴 `Cookie` 请求头**（只有 playground 域）→ 会话过期后必须重新粘贴，接口返回 `401 microsoft_cookie_expired`
-  - **粘贴多域 JSON**（playground 域 + `login.microsoftonline.com` 域，见下）→ 会话过期时 Worker 自动续期：`/.auth/login/aad?prompt=none` → 拿去微软域的身份 cookie 换 code → POST 回 `/api/auth/login/aad/callback` 拿新的 `AppServiceAuthSession`，成功后把新 jar 写回 D1 并重试转录。身份 cookie 是约 90 天滑动过期，所以一次粘贴能撑很久
+  - **粘贴多域 JSON**（playground 域 + `login.microsoftonline.com` 域，见下）→ 会话过期时 Worker 自动续期：`/.auth/login/aad?prompt=none` → 拿去微软域的身份 cookie 换 code → POST 回 `/.auth/login/aad/callback` 拿新的 `AppServiceAuthSession`，成功后把新 jar 写回 D1 并重试转录
+
+自动续期**依赖 `ESTSAUTHPERSISTENT`（或 `ESTSAUTH`）这个长期身份 cookie**。它只有在登录时选了「是否保持登录状态? → 是」才会下发；如果租户禁用了 KMSI，或者当时点了「否」，cookie 里就没有它，续期会返回明确错误，只能过期后重新粘贴。可以先检查导出内容里有没有 `ESTSAUTHPERSISTENT`：没有就按这个提示重新登录一次。
 - 多域 JSON 长这样（DevTools → Application → Cookies 两个域各导一份，或用 Cookie-Editor 导出后合并）：
 
 ```json

@@ -645,6 +645,35 @@ const expiredExp = Math.floor(Date.now() / 1000) - 60;
   }
 }
 
+// 16a. An interactive page instead of the form_post is reported precisely.
+{
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = async (url) => {
+    const href = String(url);
+    if (href.includes("/.auth/login/aad?prompt=none")) {
+      return new Response(null, { status: 302, headers: { location: "https://login.microsoftonline.com/common/oauth2/v2.0/authorize" } });
+    }
+    if (href.startsWith("https://login.microsoftonline.com")) {
+      return new Response("<html><title>Sign in to your account</title><body>Enter password</body></html>", {
+        status: 200, headers: { "Content-Type": "text/html" }
+      });
+    }
+    throw new Error(`unexpected fetch: ${href}`);
+  };
+
+  try {
+    await assert.rejects(
+      () => renewPlaygroundSession(serializeCookieJar(parseCookieJar(JSON.stringify([
+        { name: "AppServiceAuthSession", value: "dead", domain: "playground.microsoft.ai", path: "/" },
+        { name: "buid", value: "x", domain: "login.microsoftonline.com", path: "/" }
+      ])))),
+      /ESTSAUTHPERSISTENT/
+    );
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+}
+
 // 16b. Route: an expired cookie is renewed and the transcription retried.
 {
   const env = { DB: createFakeD1(), SECRETS_ENCRYPTION_KEY: encryptionKey, CF_ACCESS_TRUSTED: "1" };

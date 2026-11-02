@@ -76,11 +76,22 @@ export async function renewPlaygroundSession(inputJar) {
     });
     currentJar = applySetCookies(currentJar, collectSetCookies(hop2), authorizeUrl);
 
-    const form = hop2.ok ? await readFormPost(hop2) : null;
+    const page = hop2.ok ? await readFormPost(hop2) : null;
+    const form = page?.form || null;
     if (!form) {
         const next = hop2.headers.get("location");
         if (hop2.status >= 300 && hop2.status < 400 && next) {
             throw new Error("微软要求重新登录（prompt=none 被拒绝），需要重新粘贴 cookie");
+        }
+        // A 200 HTML page instead of the auto-posted form means the IdP decided
+        // the user must interact: there is no persistent SSO cookie
+        // (ESTSAUTHPERSISTENT / ESTSAUTH) for this account, which happens when
+        // "Stay signed in?" was declined or the tenant disables KMSI.
+        if (page?.text && /interaction_required|login_required|Sign in to your account/i.test(page.text)) {
+            throw new Error(
+                "微软拒绝了静默登录：cookie 里没有长期身份 cookie（ESTSAUTHPERSISTENT）。"
+                + "请退出后重新登录，并在「是否保持登录状态?」选「是」；如果组织禁用了该选项，就只能过期后重新粘贴 cookie"
+            );
         }
         throw new Error("微软没有返回回调表单，无法续期");
     }
@@ -132,9 +143,9 @@ async function readFormPost(response) {
 
     const hasCode = Object.keys(fields).some(name => name.toLowerCase() === "code");
     if (!hasCode && !action) {
-        return null;
+        return { form: null, text };
     }
-    return { action, fields };
+    return { form: { action, fields }, text };
 }
 
 async function postJson(jar, path, body, { requestId, signal } = {}) {
