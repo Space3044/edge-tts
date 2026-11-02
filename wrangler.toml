@@ -19,27 +19,30 @@ name = "tts-voice-magic-staging"
 # id = "your-kv-namespace-id"
 # preview_id = "your-preview-kv-namespace-id"
 
-# D1：加密保存各家转录服务的 endpoint / model / API Key。
-# 本地 wrangler dev --local 可以直接用这个占位 id；
-# 远端部署前执行 npx wrangler d1 create voicecraft，把返回的 database_id 填到这里。
+# D1：provider 配置（加密后的 API Key）与 Trancy 账号池。
+#
+# binding 必须叫 "DB"：代码里全部通过 env.DB 访问，改了名字所有读写都会拿到 undefined。
+# database_name 只是 wrangler 命令行里使用的名字，真正绑定的是 database_id。
 [[d1_databases]]
 binding = "DB"
-database_name = "voicecraft"
-database_id = "00000000-0000-0000-0000-000000000000"
+database_name = "edge-tts"
+database_id = "15f2f759-3d15-4f74-a14c-8420cfa9f8b3"
 migrations_dir = "migrations"
 
 # 非默认环境不会继承上面的 binding，每个 env 都要重新声明。
 [[env.production.d1_databases]]
 binding = "DB"
-database_name = "voicecraft"
-database_id = "00000000-0000-0000-0000-000000000000"
+database_name = "edge-tts"
+database_id = "15f2f759-3d15-4f74-a14c-8420cfa9f8b3"
 migrations_dir = "migrations"
 
-[[env.staging.d1_databases]]
-binding = "DB"
-database_name = "voicecraft-staging"
-database_id = "00000000-0000-0000-0000-000000000001"
-migrations_dir = "migrations"
+# staging 需要自己建一个库，把 id 填进来再取消注释；
+# 保持注释状态时 `--env staging` 部署出来的 Worker 没有 DB，访问会报绑定未配置。
+# [[env.staging.d1_databases]]
+# binding = "DB"
+# database_name = "edge-tts-staging"
+# database_id = "<staging-database-id>"
+# migrations_dir = "migrations"
 
 # 路由配置
 #
@@ -51,4 +54,3 @@ crons = ["17 3 * * *"]
 # 非默认环境同样不继承 triggers；线上要跑定时续期就得在这里再声明一份。
 [env.production.triggers]
 crons = ["17 3 * * *"]
-

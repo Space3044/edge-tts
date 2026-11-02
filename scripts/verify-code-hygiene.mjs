@@ -194,6 +194,16 @@ assert.doesNotMatch(
   "synthesis should not log and rethrow the same error at multiple levels",
 );
 
+// The D1 binding name is a contract with the code: everything reads `env.DB`.
+{
+  const wranglerToml = read("../wrangler.toml");
+  const bindings = [...wranglerToml.matchAll(/^binding\s*=\s*"([^"]+)"/gm)].map(match => match[1]);
+  assert.ok(bindings.length > 0, "wrangler.toml should declare a D1 binding");
+  for (const binding of bindings) {
+    assert.equal(binding, "DB", "the D1 binding must be named DB: the code reads env.DB");
+  }
+}
+
 assert.doesNotMatch(
   clientSource,
   /currentMode/,

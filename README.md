@@ -58,7 +58,7 @@ https://github.com/Space3044/edge-tts
 
 ```bash
 cp .dev.vars.example .dev.vars        # 填入 SECRETS_ENCRYPTION_KEY
-npx wrangler d1 migrations apply voicecraft --local
+npx wrangler d1 migrations apply edge-tts --local
 npx wrangler dev index.js --local --port 8787
 ```
 
@@ -106,15 +106,17 @@ index.js
 转录服务的配置存放在 D1 的 `provider_config` 表，API Key 先用 AES-256-GCM 加密再落库：
 
 ```bash
-npx wrangler d1 create voicecraft
-# 把输出的 database_id 填进 wrangler.toml（默认、production、staging 三处）
-npx wrangler d1 migrations apply voicecraft --remote
+npx wrangler d1 create edge-tts
+# 把输出的 database_id 填进 wrangler.toml 的 [[d1_databases]]（默认与 production 两处）
+npx wrangler d1 migrations apply edge-tts --remote
 ```
+
+`wrangler.toml` 里的 `binding` 必须叫 `DB`：代码全部通过 `env.DB` 读写，改名后所有接口都会报「D1 binding DB 未配置」。`database_name`（这里叫 `edge-tts`）只是 wrangler 命令行用的名字，真正绑定的是 `database_id`。
 
 如果不想走迁移链，仓库根目录有一份合并好的完整建表语句 `schema.sql`（等价于跑完 `0001`..`0007`，无注释、无历史包袱），可以直接粘进 D1 控制台的 SQL 编辑器，或者：
 
 ```bash
-npx wrangler d1 execute voicecraft --remote --file=schema.sql
+npx wrangler d1 execute edge-tts --remote --file=schema.sql
 ```
 
 它只建表，不写 `d1_migrations`，所以**两种方式只能选一种**：用 `schema.sql` 建好的库不要再对它跑 `wrangler d1 migrations apply`（`0007` 会报 `duplicate column name: quota_limit`）。若之后想切回 wrangler 管版本，先补上迁移账本：
@@ -655,7 +657,7 @@ git diff --check
 - 自建 OpenAI 兼容服务如果部署在非标准 HTTPS 端口，Cloudflare Workers 发布环境可能忽略自定义端口，建议使用标准 443 端口或反向代理到标准端口。
 - 项目需要 D1 存服务配置；没有 D1 binding 时设置接口会返回明确错误，页面里的 Provider settings 不可写。
 - 更换 `SECRETS_ENCRYPTION_KEY` 会让已保存的 API Key 无法解密，需要在页面里重新填写一次。
-- Trancy token 没有 `exp`，不续期会在一个未测出的窗口后失效，所以 `wrangler.toml` 里的 cron 是这条链路的一部分：关掉 cron，账号迟早会变成 `dead`（有密码就点一次重新登录，没有密码只能重贴 token）。部署前记得执行 `npx wrangler d1 migrations apply voicecraft --remote`。
+- Trancy token 没有 `exp`，不续期会在一个未测出的窗口后失效，所以 `wrangler.toml` 里的 cron 是这条链路的一部分：关掉 cron，账号迟早会变成 `dead`（有密码就点一次重新登录，没有密码只能重贴 token）。部署前记得执行 `npx wrangler d1 migrations apply edge-tts --remote`（或用 `schema.sql` 建表）。
 - Trancy 的密码在 D1 里是密文，但**解密只需要 `SECRETS_ENCRYPTION_KEY`**：同时拿到数据库和这个 secret 的人仍能还原密码，所以 `/api/*` 必须挂 Access。换掉 `SECRETS_ENCRYPTION_KEY` 会让已有密码和 token 一起失效，账号需要重新登录或重贴 token。
 - 轮换多个账号等于把免费额度拆给不同账号，这类用法通常违反服务的服务条款；风控或封号在网关里表现为 `status=banned` 或上游 `data:null`，不要把它放在关键路径上。
 
