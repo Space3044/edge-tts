@@ -16,7 +16,7 @@ export const TRANSCRIPTION_STYLES = `
     }
     .engine-tabs {
       display:grid;
-      grid-template-columns:repeat(3,minmax(0,1fr));
+      grid-template-columns:repeat(2,minmax(0,1fr));
       gap:6px;
       padding:4px;
       background:var(--surface);
@@ -39,6 +39,29 @@ export const TRANSCRIPTION_STYLES = `
     .engine-btn:hover {
       color:var(--text);
       background:var(--surface-2);
+    }
+    .engine-btn-placeholder {
+      position:relative;
+      color:var(--text-3);
+      border-style:dashed;
+      border-color:var(--border);
+      cursor:not-allowed;
+    }
+    .engine-btn-placeholder:hover {
+      background:transparent;
+      color:var(--text-3);
+    }
+    .engine-badge {
+      margin-left:8px;
+      padding:1px 6px;
+      border:1px solid var(--border);
+      background:var(--surface-2);
+      color:var(--text-3);
+      font-family:var(--font-mono);
+      font-size:.62rem;
+      font-weight:600;
+      letter-spacing:.02em;
+      text-transform:uppercase;
     }
     .engine-btn.active {
       color:var(--accent);

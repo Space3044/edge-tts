@@ -239,6 +239,20 @@ export const translations = {
     };
     Object.keys(GOOGLE_STT_TRANSLATIONS).forEach(function(lang) { Object.assign(translations[lang], GOOGLE_STT_TRANSLATIONS[lang]); });
 
+    // The Microsoft (Azure AI Speech) engine is a labelled placeholder: the tab
+    // is disabled until the provider design lands.
+    const MICROSOFT_STT_TRANSLATIONS = {
+      en: { 'stt.engineMicrosoft': 'Microsoft', 'stt.engineComingSoon': 'Coming soon' },
+      zh: { 'stt.engineMicrosoft': '微软', 'stt.engineComingSoon': '即将支持' },
+      ja: { 'stt.engineMicrosoft': 'Microsoft', 'stt.engineComingSoon': '近日対応' },
+      ko: { 'stt.engineMicrosoft': 'Microsoft', 'stt.engineComingSoon': '곧 지원' },
+      es: { 'stt.engineMicrosoft': 'Microsoft', 'stt.engineComingSoon': 'Próximamente' },
+      fr: { 'stt.engineMicrosoft': 'Microsoft', 'stt.engineComingSoon': 'Bientôt' },
+      de: { 'stt.engineMicrosoft': 'Microsoft', 'stt.engineComingSoon': 'Demnächst' },
+      ru: { 'stt.engineMicrosoft': 'Microsoft', 'stt.engineComingSoon': 'Скоро' }
+    };
+    Object.keys(MICROSOFT_STT_TRANSLATIONS).forEach(function(lang) { Object.assign(translations[lang], MICROSOFT_STT_TRANSLATIONS[lang]); });
+
     const STT_RESULT_VIEW_TRANSLATIONS = {
       en: { 'stt.viewPlain': 'Text', 'stt.viewSentences': 'Sentences', 'stt.viewWords': 'Words', 'stt.noTimestamps': 'No timestamp data for this result.' },
       zh: { 'stt.viewPlain': '纯文本', 'stt.viewSentences': '句子时间戳', 'stt.viewWords': '词级时间戳', 'stt.noTimestamps': '当前结果没有时间戳数据。' },

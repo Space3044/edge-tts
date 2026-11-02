@@ -35,6 +35,8 @@ CREATE TABLE provider_config (
 
 写接口 `PUT /api/providers/:provider` 用 `Authorization: Bearer $ADMIN_TOKEN` 保护，常量时间比较。`ADMIN_TOKEN` 未配置时写接口返回 `admin_not_configured` 而不是放行，避免「忘了配变量 = 人人可写」。前端把 token 放在 `sessionStorage`，首次保存时 `prompt()` 一次。
 
+引擎 id 保留一个预留值 `microsoft`（Azure AI Speech）：界面上的第四个标签是 disabled 占位，API 收到 `engine=microsoft` 时返回 `501 engine_not_implemented`，不会静默落到 OpenAI 分支。
+
 引擎层面把 `whisper` 改名为 `openai`，走标准 OpenAI 兼容协议：`{endpoint}/audio/transcriptions`，multipart 传 `file`、`model`、`response_format=json`，配了密钥就带 `Authorization: Bearer`。base 不带 `/audio/transcriptions` 时自动补全，因此 `https://api.openai.com/v1` 和自建 `https://asr.example.com/v1` 都能用。`engine=whisper` 保留为 `openai` 的别名，老调用方不用改。
 
 三个引擎的 endpoint 都是可配置的：OpenAI 补 `/audio/transcriptions`，Google 用它拼出 Files API（`{endpoint}/upload/v1beta/files`）和 Interactions API（`{endpoint}/v1beta/interactions`），带 `/v1beta` 的 base 会被归一化，所以指向自建网关也能用。

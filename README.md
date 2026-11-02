@@ -20,7 +20,7 @@ https://github.com/Space3044/edge-tts
 - 声音库：内置 114 个 Microsoft Edge TTS 声音，支持按语言、性别、名称、地区和 voice ID 搜索。
 - 参数调节：支持语速、音调和语音风格，语速和音调可双击恢复默认值。
 - 生成结果：生成后的 MP3 可在线播放和下载。
-- 语音转文字：上传音频或粘贴公开音频 URL，可使用 OpenAI 兼容转录接口、ElevenLabs Scribe 或 Google Gemini Transcribe；ElevenLabs 和 Gemini 都支持纯文本、句子时间戳和词级时间戳查看。
+- 语音转文字：上传音频或粘贴公开音频 URL，可使用 OpenAI 兼容转录接口、ElevenLabs Scribe 或 Google Gemini Transcribe；ElevenLabs 和 Gemini 都支持纯文本、句子时间戳和词级时间戳查看。微软（Azure AI Speech）引擎的入口已占位，暂未实现。
 - AI 润色：调用 OpenAI 兼容接口润色输入文本。
 - 服务配置：转录服务的 endpoint、模型和 API Key 在页面里设置，API Key 用 `SECRETS_ENCRYPTION_KEY` 加密后存进 D1；页面只显示掩码尾巴，不回传明文。
 - 浏览器本地保存：AI 润色的 Base URL、API Key、模型和润色指令只保存在当前浏览器本地。
@@ -208,7 +208,7 @@ zh-CN-YunyangNeural
 POST /v1/audio/transcriptions
 ```
 
-当前实现支持三种转录引擎：`openai`（OpenAI 兼容的 `/audio/transcriptions`）、`elevenlabs` 和 `google`。三个引擎的 endpoint、模型和 API Key 都在页面里的 Provider settings 中配置，保存在 D1 的 `provider_config` 表；API Key 用 `SECRETS_ENCRYPTION_KEY` 加密后落库，接口只会返回掩码尾巴。
+当前实现支持三种转录引擎：`openai`（OpenAI 兼容的 `/audio/transcriptions`）、`elevenlabs` 和 `google`。第四个引擎 `microsoft`（Azure AI Speech）只在界面上占位，请求会返回 `501 engine_not_implemented`。三个引擎的 endpoint、模型和 API Key 都在页面里的 Provider settings 中配置，保存在 D1 的 `provider_config` 表；API Key 用 `SECRETS_ENCRYPTION_KEY` 加密后落库，接口只会返回掩码尾巴。
 
 解析顺序是「D1 里保存的值 → 环境变量 → 内置默认值」：D1 没配时回落到 `OPENAI_API_KEY` / `ELEVENLABS_API_KEY` / `GEMINI_API_KEY`（或 `GOOGLE_API_KEY`），都没有就用默认地址和模型。`engine=whisper` 仍然保留为 `openai` 的别名，老调用方不需要改。
 
@@ -355,7 +355,7 @@ ElevenLabs 响应示例：
 | 参数 | 类型 | 必填 | 说明 |
 | --- | --- | --- | --- |
 | `file` | File | 是 | 音频文件，最大 50MB |
-| `engine` | string | 否 | `openai`、`elevenlabs` 或 `google`，默认 `openai`（`whisper` 是 `openai` 的别名） |
+| `engine` | string | 否 | `openai`、`elevenlabs` 或 `google`，默认 `openai`（`whisper` 是 `openai` 的别名；`microsoft` 为预留值，返回 501） |
 | `endpoint` | string | 否 | 该引擎的 endpoint 覆盖值，默认取 D1 / 环境变量 / 内置默认；OpenAI 补 `/audio/transcriptions`，Google 用来拼 Files / Interactions 地址 |
 | `model` | string | 否 | 该引擎的模型覆盖值，默认取 D1 配置 |
 | `apiKey` | string | 否 | 仅 OpenAI 引擎支持单次覆盖；默认使用保存在 D1 的密钥 |

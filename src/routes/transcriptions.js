@@ -758,6 +758,16 @@ export async function handleAudioTranscription(request, env) {
         if (engine === "google") {
             return handleGoogleTranscription(formData, env);
         }
+        if (engine === "microsoft") {
+            // Reserved engine id for Azure AI Speech; surfaced clearly so API
+            // callers never get OpenAI results by accident.
+            return errorResponse("Microsoft（Azure AI Speech）引擎尚未实现", {
+                status: 501,
+                type: "invalid_request_error",
+                param: "engine",
+                code: "engine_not_implemented"
+            });
+        }
         return handleOpenAiTranscription(formData, env);
     } catch (error) {
         console.error("语音转录处理失败:", error);
