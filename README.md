@@ -107,12 +107,12 @@ npx wrangler d1 create voicecraft
 npx wrangler d1 migrations apply voicecraft --remote
 
 npx wrangler secret put SECRETS_ENCRYPTION_KEY   # base64 的 32 字节
-npx wrangler secret put ADMIN_TOKEN              # 写入服务配置时用的 Bearer token
+npx wrangler secret put ADMIN_TOKEN              # 可选：不用 Access 时才需要
 ```
 
 - `SECRETS_ENCRYPTION_KEY` 只用于加解密，不参与鉴权；换掉它会导致已保存的密钥无法解密，需要重新填写。
-- `ADMIN_TOKEN` 决定 `PUT /api/providers/:provider` 是否可用；没配置时设置面板只读。
-- 两个变量都不写入仓库，`wrangler.toml` 里也不出现明文。
+- 谁能写 Provider 配置由环境决定：本地 `localhost` / `127.0.0.1` / `*.local` 直接放行；线上如果 `/api/*` 已由 Cloudflare Access 保护，设置 `CF_ACCESS_TRUSTED=1` 即可；其他情况设置 `ADMIN_TOKEN` 并用 `Authorization: Bearer` 发送（配置了 `ADMIN_TOKEN` 时它以最高优先级生效）。三种都不满足时写接口返回 `403 write_not_configured`，不会默默放开。
+- 除密钥外的变量都不写入仓库，`wrangler.toml` 里也不出现明文。
 
 ## Cloudflare Access
 
@@ -406,7 +406,7 @@ curl -X PUT "https://your-worker.example.com/api/providers/openai" \
 
 - `apiKey` 留空表示保留已保存的密钥，传 `"clearApiKey": true` 才会清空。
 - 响应只包含 `configured`、`keySource`（`db` / `env` / `none`）和 `keyTail`（例如 `••••a1b2`），不会回传明文。
-- 未配置 `ADMIN_TOKEN` 时写接口返回 `admin_not_configured`，页面里的设置面板变成只读。
+- 写权限按环境判定：本地开发直接放行；`CF_ACCESS_TRUSTED=1` 表示 `/api/*` 由 Cloudflare Access 保护；否则需要 `ADMIN_TOKEN`。都不满足时返回 `write_not_configured`，页面里的设置面板变成只读。
 
 ### 文本 AI 润色
 

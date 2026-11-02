@@ -7,9 +7,16 @@
 # Changing this value makes existing rows undecryptable: re-save the keys afterwards.
 SECRETS_ENCRYPTION_KEY=3MA8dqfnN1veywbjKPVE9hDwIq2Ra5TXvsTThon+SEc=
 
-# Bearer token required by PUT /api/providers/:provider.
-# Without it the settings panel is read-only.
-ADMIN_TOKEN=change-me-local-admin-token
+# Who may write provider settings?
+#
+# - localhost / 127.0.0.1 / *.local: open by default, nothing to configure.
+# - production behind Cloudflare Access (protecting /api/*): set
+#   CF_ACCESS_TRUSTED=1 once and rely on Access for authentication.
+# - anywhere else: set ADMIN_TOKEN and send it as a Bearer token.
+#
+# ADMIN_TOKEN wins over the other two when present.
+# ADMIN_TOKEN=change-me
+# CF_ACCESS_TRUSTED=1
 
 # Microsoft (Azure AI Speech) uses OAuth instead of an API key: register an app
 # in Entra ID, add https://<your-domain>/api/microsoft/callback as a redirect

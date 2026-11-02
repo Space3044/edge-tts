@@ -104,10 +104,16 @@ assert.doesNotMatch(
   "transcription flow should not keep the previous 10MB audio upload limit",
 );
 
+assert.doesNotMatch(
+  clientSource,
+  /ADMIN_TOKEN_STORAGE_KEY|voicecraft-admin-token|readAdminToken/,
+  "the frontend must not hold provider-write credentials; the Worker decides access",
+);
+
 assert.match(
   clientSource,
-  /ADMIN_TOKEN_STORAGE_KEY|voicecraft-admin-token/,
-  "frontend should keep the admin token in sessionStorage, not localStorage",
+  /writeMode|writable/,
+  "frontend should reflect the server-reported write mode",
 );
 
 assert.doesNotMatch(
@@ -194,7 +200,7 @@ assert.doesNotMatch(
   "frontend should not keep unused currentMode state",
 );
 
-for (const key of ["status.fileLabel", "error.copyFailed", "stt.endpoint", "stt.endpointPlaceholder", "stt.endpointHint", "error.endpointRequired", "stt.sourceUrl", "stt.sourceUrlPlaceholder", "stt.sourceUrlHint", "error.audioSourceRequired", "stt.engineOpenai", "stt.engineGoogle", "provider.title", "provider.hint", "provider.apiKey", "provider.model", "provider.save", "provider.statusDb", "provider.statusEnv", "provider.statusNone", "provider.adminTokenPrompt"]) {
+for (const key of ["status.fileLabel", "error.copyFailed", "stt.endpoint", "stt.endpointPlaceholder", "stt.endpointHint", "error.endpointRequired", "stt.sourceUrl", "stt.sourceUrlPlaceholder", "stt.sourceUrlHint", "error.audioSourceRequired", "stt.engineOpenai", "stt.engineGoogle", "provider.title", "provider.hint", "provider.apiKey", "provider.model", "provider.save", "provider.statusDb", "provider.statusEnv", "provider.statusNone"]) {
   assert.ok(i18nSource.includes(`'${key}'`), `translations should include ${key}`);
 }
 

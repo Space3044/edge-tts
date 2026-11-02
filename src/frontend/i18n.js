@@ -290,9 +290,7 @@ export const translations = {
         'provider.statusNone': 'No API key saved',
         'provider.statusEnv': 'API key from environment variable',
         'provider.statusDb': 'API key encrypted in D1',
-        'provider.readOnly': 'ADMIN_TOKEN is not set, provider settings are read-only.',
-        'provider.adminTokenPrompt': 'Enter ADMIN_TOKEN to save provider settings',
-        'provider.adminTokenRejected': 'ADMIN_TOKEN rejected',
+        'provider.readOnly': 'This environment does not allow editing provider settings: set ADMIN_TOKEN, or set CF_ACCESS_TRUSTED=1 once /api/* is behind Cloudflare Access.',
         'provider.loadFailed': 'Could not load provider settings',
         'provider.saveFailed': 'Could not save provider settings',
         'error.providerSaveFailed': 'Save failed'
@@ -323,9 +321,7 @@ export const translations = {
         'provider.statusNone': '未保存 API Key',
         'provider.statusEnv': 'API Key 来自环境变量',
         'provider.statusDb': 'API Key 已加密保存到 D1',
-        'provider.readOnly': '未配置 ADMIN_TOKEN，服务配置只读。',
-        'provider.adminTokenPrompt': '请输入 ADMIN_TOKEN 以保存服务配置',
-        'provider.adminTokenRejected': 'ADMIN_TOKEN 无效',
+        'provider.readOnly': '当前环境不允许修改服务配置：可以设置 ADMIN_TOKEN，或在 /api/* 由 Cloudflare Access 保护后设置 CF_ACCESS_TRUSTED=1。',
         'provider.loadFailed': '读取服务配置失败',
         'provider.saveFailed': '保存服务配置失败',
         'error.providerSaveFailed': '保存失败'

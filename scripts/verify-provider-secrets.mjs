@@ -191,6 +191,7 @@ const env = {
   assert.equal(readBody.providers.length, 4);
   assert.deepEqual(readBody.providers.map(entry => entry.provider), ["openai", "elevenlabs", "google", "microsoft"]);
 
+  // ADMIN_TOKEN configured -> bearer required, on any host.
   const anonymousWrite = await handleProviders(
     new Request("https://voicecraft.example.com/api/providers/openai", {
       method: "PUT",
@@ -212,17 +213,52 @@ const env = {
   assert.equal(wrongToken.status, 401);
   assert.equal(routeEnv.DB.rows.size, 0, "rejected writes must not touch D1");
 
-  const missingAdminEnv = { DB: createFakeD1(), SECRETS_ENCRYPTION_KEY: encryptionKey };
-  const notConfigured = await handleProviders(
+  // No token, not local, no Access opt-in -> locked with a clear code.
+  const lockedEnv = { DB: createFakeD1(), SECRETS_ENCRYPTION_KEY: encryptionKey };
+  const locked = await handleProviders(
     new Request("https://voicecraft.example.com/api/providers/openai", {
       method: "PUT",
-      headers: { "Content-Type": "application/json", Authorization: "Bearer anything" },
+      headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ apiKey: "sk-live-abcdef1234" })
     }),
-    missingAdminEnv
+    lockedEnv
   );
-  assert.equal(notConfigured.status, 403);
-  assert.equal((await notConfigured.json()).error.code, "admin_not_configured");
+  assert.equal(locked.status, 403);
+  assert.equal((await locked.json()).error.code, "write_not_configured");
+  assert.equal(lockedEnv.DB.rows.size, 0);
+
+  // Local development is open so `wrangler dev` needs no configuration.
+  const localEnv = { DB: createFakeD1(), SECRETS_ENCRYPTION_KEY: encryptionKey };
+  const localWrite = await handleProviders(
+    new Request("http://127.0.0.1:8787/api/providers/openai", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ apiKey: "sk-local" })
+    }),
+    localEnv
+  );
+  assert.equal(localWrite.status, 200);
+  assert.equal((await localWrite.json()).provider.configured, true);
+
+  const localRead = await handleProviders(
+    new Request("http://localhost:8787/api/providers", { method: "GET" }),
+    localEnv
+  );
+  const localReadBody = await localRead.json();
+  assert.equal(localReadBody.writeMode, "local-dev");
+  assert.equal(localReadBody.writable, true);
+
+  // Production behind Cloudflare Access: opt in once with CF_ACCESS_TRUSTED=1.
+  const accessEnv = { DB: createFakeD1(), SECRETS_ENCRYPTION_KEY: encryptionKey, CF_ACCESS_TRUSTED: "1" };
+  const accessWrite = await handleProviders(
+    new Request("https://voicecraft.example.com/api/providers/openai", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ apiKey: "sk-access" })
+    }),
+    accessEnv
+  );
+  assert.equal(accessWrite.status, 200);
 
   const authorized = await handleProviders(
     new Request("https://voicecraft.example.com/api/providers/openai", {

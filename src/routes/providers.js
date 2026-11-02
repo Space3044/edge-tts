@@ -36,26 +36,68 @@ function adminTokenFrom(request) {
     return match ? match[1].trim() : "";
 }
 
+function isLocalDevHost(request) {
+    try {
+        const host = new URL(request.url).hostname.toLowerCase().replace(/^\[|\]$/g, "");
+        return host === "localhost" || host === "::1" || host === "127.0.0.1"
+            || host.endsWith(".localhost") || host.endsWith(".local")
+            || host.startsWith("127.");
+    } catch {
+        return false;
+    }
+}
+
+/**
+ * Who may write provider config.
+ *
+ * - `ADMIN_TOKEN` set: the bearer token is required (works everywhere).
+ * - `CF_ACCESS_TRUSTED=1`: trust Cloudflare Access in front of `/api/*`;
+ *   that is the production setup, so no application-level password.
+ * - local dev hosts: open, so `wrangler dev` needs no configuration.
+ *
+ * Anything else is refused instead of falling back to "anyone can write".
+ */
+function writeMode(request, env) {
+    if (String(env?.ADMIN_TOKEN || "").trim()) {
+        return "admin-token";
+    }
+    if (String(env?.CF_ACCESS_TRUSTED || "").trim() === "1") {
+        return "cloudflare-access";
+    }
+    if (isLocalDevHost(request)) {
+        return "local-dev";
+    }
+    return "locked";
+}
+
 function requireAdmin(request, env) {
-    const expected = String(env?.ADMIN_TOKEN || "").trim();
-    if (!expected) {
-        return errorResponse("未配置 ADMIN_TOKEN，无法修改 Provider 配置", {
+    const mode = writeMode(request, env);
+
+    if (mode === "admin-token") {
+        const expected = String(env.ADMIN_TOKEN || "").trim();
+        const provided = adminTokenFrom(request);
+        if (!provided || !constantTimeEqual(provided, expected)) {
+            return errorResponse("ADMIN_TOKEN 无效", {
+                status: 401,
+                type: "authentication_error",
+                code: "invalid_admin_token"
+            });
+        }
+        return null;
+    }
+
+    if (mode === "cloudflare-access" || mode === "local-dev") {
+        return null;
+    }
+
+    return errorResponse(
+        "该环境不允许修改 Provider 配置：设置 ADMIN_TOKEN，或确认 /api/* 已由 Cloudflare Access 保护后设置 CF_ACCESS_TRUSTED=1",
+        {
             status: 403,
             type: "permission_error",
-            code: "admin_not_configured"
-        });
-    }
-
-    const provided = adminTokenFrom(request);
-    if (!provided || !constantTimeEqual(provided, expected)) {
-        return errorResponse("ADMIN_TOKEN 无效", {
-            status: 401,
-            type: "authentication_error",
-            code: "invalid_admin_token"
-        });
-    }
-
-    return null;
+            code: "write_not_configured"
+        }
+    );
 }
 
 function validateEndpoint(value) {
@@ -116,7 +158,8 @@ export async function handleProviders(request, env = {}) {
             return jsonResponse({
                 providers,
                 defaults: PROVIDER_DEFAULTS,
-                writable: Boolean(String(env?.ADMIN_TOKEN || "").trim()),
+                writable: writeMode(request, env) !== "locked",
+                writeMode: writeMode(request, env),
                 microsoftOauth: Boolean(
                     String(env?.MICROSOFT_CLIENT_ID || "").trim() &&
                     String(env?.MICROSOFT_CLIENT_SECRET || "").trim()

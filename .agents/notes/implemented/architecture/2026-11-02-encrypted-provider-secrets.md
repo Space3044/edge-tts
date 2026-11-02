@@ -35,7 +35,7 @@ Microsoft 的接入让同一张表多了三列（`migrations/0002_microsoft_oaut
 
 解析顺序固定为 **D1 行 → 环境变量 → 内置默认**（`src/secrets/store.js` 的 `resolveProvider`）。环境变量名字是 `OPENAI_API_KEY` / `ELEVENLABS_API_KEY` / `GEMINI_API_KEY`|`GOOGLE_API_KEY`。这样已有的线上部署（只配了 `GEMINI_API_KEY`）不需要任何迁移就能继续跑，而页面里配置过的值总是赢。
 
-写接口 `PUT /api/providers/:provider` 用 `Authorization: Bearer $ADMIN_TOKEN` 保护，常量时间比较。`ADMIN_TOKEN` 未配置时写接口返回 `admin_not_configured` 而不是放行，避免「忘了配变量 = 人人可写」。前端把 token 放在 `sessionStorage`，首次保存时 `prompt()` 一次。
+写接口的鉴权模型后来按环境重做过，见 [provider writes are gated by environment](2026-11-02-provider-write-access.md)：本地开发直接放行，`CF_ACCESS_TRUSTED=1` 表示信任 Cloudflare Access，其余情况才需要 `Authorization: Bearer $ADMIN_TOKEN`。
 
 第四个引擎 `microsoft`（Azure AI Speech）不用 API Key，而用 **Entra ID 授权码流程**：`POST /api/providers/microsoft/login` 返回 authorize URL（scope `https://cognitiveservices.azure.com/.default offline_access`，PKCE + state 放在 HttpOnly cookie 里），`GET /api/microsoft/callback` 用 code 换 token，只把 refresh token 用 `microsoft:refresh_token` 作为 AAD 加密存进 D1；access token 每次转录时现换、不落库，轮换回来的新 refresh token 会覆盖旧的。转录调 Azure Fast transcription（`/speechtotext/transcriptions:transcribe?api-version=2024-11-15`），音频仍是普通 multipart，没有 base64、没有会话。
 
