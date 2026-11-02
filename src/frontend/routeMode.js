@@ -2,6 +2,7 @@ export const ROUTE_MODE_SCRIPT = `
     (function() {
       function getModeFromPath() {
         if (window.location.pathname === '/transcription') return 'transcription';
+        if (window.location.pathname === '/trancy') return 'trancy';
         return 'tts';
       }
       function navigateModePath(mode, event) {
@@ -15,14 +16,19 @@ export const ROUTE_MODE_SCRIPT = `
           event.stopImmediatePropagation();
           window.location.assign('/transcription');
         }
+        if (mode === 'trancy' && window.location.pathname !== '/trancy') {
+          event.preventDefault();
+          event.stopImmediatePropagation();
+          window.location.assign('/trancy');
+        }
       }
       document.addEventListener('DOMContentLoaded', function() {
         if (typeof switchMode !== 'function') return;
         switchMode(getModeFromPath(), false);
-        var ttsMode = document.getElementById('ttsMode');
-        var transcriptionMode = document.getElementById('transcriptionMode');
-        if (ttsMode) ttsMode.addEventListener('click', function(event) { navigateModePath('tts', event); }, true);
-        if (transcriptionMode) transcriptionMode.addEventListener('click', function(event) { navigateModePath('transcription', event); }, true);
+        ['tts', 'transcription', 'trancy'].forEach(function(mode) {
+          var button = document.getElementById(mode + 'Mode');
+          if (button) button.addEventListener('click', function(event) { navigateModePath(mode, event); }, true);
+        });
       });
     })();
 `;

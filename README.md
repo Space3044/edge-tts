@@ -24,6 +24,7 @@ https://github.com/Space3044/edge-tts
 - AI 润色：调用 OpenAI 兼容接口润色输入文本。
 - 服务配置：转录服务的 endpoint、模型和 API Key 在页面里设置，API Key 用 `SECRETS_ENCRYPTION_KEY` 加密后存进 D1；页面只显示掩码尾巴，不回传明文。
 - 浏览器本地保存：AI 润色的 Base URL、API Key、模型和润色指令只保存在当前浏览器本地。
+- Trancy 多账号网关：单独一个 Gateway 标签页管理多个 Trancy 账号，支持**邮箱密码登录 / 注册 / 粘贴 token** 三种添加方式；token 加密存进 D1、密码明文保存（为了一键重新登录），Cloudflare cron 每天调 `/1/user/profile` 自动续期，转发接口按最近最少使用轮换账号并自动摘掉失效 token。
 - 多语言界面：支持中文、英文、日文、韩文、西班牙文、法文、德文、俄文。
 
 ## 项目结构
@@ -33,12 +34,13 @@ https://github.com/Space3044/edge-tts
 ├── index.js                         # Cloudflare Worker 入口
 ├── src/
 │   ├── worker.js                    # 路由分发
-│   ├── routes/                      # speech、transcriptions、polish、providers、favicon
+│   ├── routes/                      # speech、transcriptions、polish、providers、trancy、favicon
 │   ├── edge/                        # Edge TTS 端点、签名、SSML、合成逻辑
 │   ├── secrets/                     # API Key 加解密（AES-GCM）与 D1 配置读写
+│   ├── trancy/                      # Trancy token 解析、账号存取与轮换、上游调用
 │   ├── frontend/                    # 页面、样式、客户端脚本、声音库、多语言、favicon
-│   └── utils/                       # CORS、文本切分等工具
-├── migrations/                      # D1 迁移（provider_config 表）
+│   └── utils/                       # CORS、文本切分、写权限判定等工具
+├── migrations/                      # D1 迁移（provider_config、trancy_account 两张表）
 ├── scripts/                         # 验证脚本
 ├── docs/                            # 设计和实现说明
 ├── wrangler.toml                    # Cloudflare Workers 配置
@@ -383,6 +385,81 @@ curl -X PUT "https://your-worker.example.com/api/providers/openai" \
 - 响应只包含 `configured`、`keySource`（`db` / `env` / `none`）和 `keyTail`（例如 `••••a1b2`），不会回传明文。
 - 写权限按环境判定：本地开发直接放行；`CF_ACCESS_TRUSTED=1` 表示 `/api/*` 由 Cloudflare Access 保护；否则需要 `ADMIN_TOKEN`。都不满足时返回 `write_not_configured`，页面里的设置面板变成只读。
 
+### Trancy 多账号网关
+
+`/trancy` 页面把多个 Trancy 账号收进一个池子，对外只有一个转发入口。
+
+鉴权方式（实测）：
+
+- 一个账号就是一条 HS256 JWT，载荷只有 `{ name, id, iat }`，**没有 `exp`、没有 refresh token**。Trancy 网页端把它写进非 httpOnly 的 `trancy` cookie（`.trancy.org`，365 天）；网页和浏览器扩展调用 `api.trancy.org` 时都用 `Authorization: Bearer <token>`。
+- **没有专门的刷新接口**：任何一次 `GET /1/user/profile` 都会返回一条 `iat` 被推到当前秒的新 token，这就是续期。
+- **鉴权失败不返回 401**，而是 `200 {"data":null,"message":"ok"}`。网关判活看 `data` 字段，不看状态码。
+- token 不绑定 IP 和设备指纹，数据中心出口也能用，所以 Worker 直接转发不需要浏览器。
+
+三种添加方式（都返回可用的 token，不需要手动找 cookie）：
+
+| 方式 | 走的接口 | 说明 |
+| --- | --- | --- |
+| 登录 | `POST /1/login` | 用账号邮箱密码登录，成功即拿到 token |
+| 注册 | `POST /1/signup` | 直接注册新账号并落库，密码至少 6 位，无需邮箱验证 |
+| 粘贴 | — | 手动粘 bearer token 或 `trancy=...` cookie，账号没有密码时用这条 |
+
+数据与密钥：
+
+- 存在 D1 的 `trancy_account` 表；**token 用 `SECRETS_ENCRYPTION_KEY` 做 AES-256-GCM 加密**，`aad` 绑定 `trancy:<行 id>`，密文跨行复制解不开。
+- **密码按明文保存**（`trancy_account.password`）：它是一键「重新登录」的前提，Trancy 掉 token 后不用再翻 cookie。密码只会回传给通过写权限校验的请求——`locked` 环境或匿名的 `GET /api/trancy/accounts` 只会看到 `hasPassword: true` 和空字符串。
+- 页面用**邮箱**作为账号标识（还没探测过的账号退回 JWT 里的名字），并显示 token 尾巴（`••••a1b2c3`）、会员状态、最近检查时间和密码（点击可复制）。没有额外的备注名要填。
+- 同一个 Trancy 用户重复添加只更新那一行（按 JWT 里的 `id` 判重），等同于「换 token 复活」。
+
+接口：
+
+```text
+GET    /api/trancy/accounts              # 账号列表（浏览器安全视图）
+POST   /api/trancy/accounts              # 粘贴 token 添加 {"token":"eyJ..."}
+POST   /api/trancy/accounts/login        # 登录并添加 {"email":"...","password":"..."}
+POST   /api/trancy/accounts/signup       # 注册并添加，字段同上
+POST   /api/trancy/accounts/:id/login    # 用保存的密码重新登录（token 失效后的恢复手段）
+POST   /api/trancy/accounts/:id/refresh  # 立刻探测单个账号
+POST   /api/trancy/accounts/refresh      # 立刻探测全部（默认跳过 10 分钟内查过的）
+DELETE /api/trancy/accounts/:id          # 删除账号
+POST   /api/trancy/relay                 # 用池子里的账号转发一次请求
+```
+
+除 `GET /api/trancy/accounts` 外，其余接口和 Provider 配置共用同一套写权限（`ADMIN_TOKEN` / `CF_ACCESS_TRUSTED=1` / 本地放行），都不满足时一律拒绝——转发接口会消耗账号额度，不能裸奔。
+
+转发示例（响应体是 Trancy 原样返回的 JSON，账号信息放在响应头）：
+
+```bash
+curl -X POST "https://your-worker.example.com/api/trancy/relay" \
+  -H "Authorization: Bearer $ADMIN_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"method":"GET","path":"/2/dictionary?text=serendipity&target=zh-CN&native=en"}' \
+  -D-
+# X-Trancy-Email: someone@example.com
+# X-Quota-Limit / X-Quota-Remaining: 上游给了才透传
+```
+
+- `path` 必须是 `api.trancy.org` 上的绝对路径（`/1/`、`/2/`、`/3/`、`/4/` 开头），不能指向别的主机。
+- 选账号规则是「最久没被用过的可用账号」；`dead`、`banned` 或处于失败冷却中的账号不会被选中；响应头 `X-Trancy-Account`（id）和 `X-Trancy-Email` 指出这次是谁出的力。
+- 上游返回 `data:null` 时，网关把该账号标成 `dead`，并在同一次请求里换下一个账号重试一次。
+
+自动续期（每天一次）：
+
+```toml
+# wrangler.toml
+[triggers]
+crons = ["17 3 * * *"]
+```
+
+`src/worker.js` 的 `scheduled` 处理器逐个调 `/1/user/profile`，把新 token 加密写回，同时刷新 `premium` / `banned` 标记；`dead` 账号直接跳过（只有人工重贴 token 才能复活）。非默认环境不继承 triggers，所以 `env.production` 下也声明了一份。
+
+手动跑一次：
+
+```bash
+npx wrangler dev index.js --local --test-scheduled
+curl "http://127.0.0.1:8787/__scheduled?cron=17+3+*+*+*"
+```
+
 ### 文本 AI 润色
 
 接口：
@@ -422,6 +499,7 @@ curl -X POST "https://your-worker.example.com/v1/text/polish" \
 ```text
 /tts              文字转语音
 /transcription    语音转文字
+/trancy           Trancy 多账号网关
 ```
 
 文字转语音流程：
@@ -441,6 +519,14 @@ curl -X POST "https://your-worker.example.com/v1/text/polish" \
 5. ElevenLabs 结果可在纯文本、句子时间戳和词级时间戳之间切换。
 6. 点击句子或词的时间戳会播放上传音频的对应片段。
 7. 复制、编辑转录结果，或把文本送回 TTS。
+
+Trancy 网关流程：
+
+1. 切到 Gateway 标签页。
+2. 选添加方式：`Log in` 填邮箱密码 → 点「登录并添加」；`Sign up` 直接注册新账号；`Token` 才需要自己粘贴 cookie / bearer token。
+3. 添加时 Trancy 直接返回 token，网关一次性拿到 `ok` 状态、邮箱和会员信息，不用再手动刷新。
+4. 之后靠 cron 每天自动续期；某天 token 失效（`dead`）时，点「Log in again」用保存的密码一键换新 token。
+5. 密码点击即可复制。
 
 AI 润色流程：
 
@@ -465,6 +551,7 @@ node scripts/verify-elevenlabs-stt.mjs
 node scripts/verify-google-stt.mjs
 node scripts/verify-transcription-url.mjs
 node scripts/verify-provider-secrets.mjs
+node scripts/verify-trancy-gateway.mjs
 node -e "import('./index.js').then((m) => { if (!m.default || typeof m.default.fetch !== 'function') throw new Error('Worker fetch export missing'); console.log('Worker entry import ok'); })"
 git diff --check
 ```
@@ -480,6 +567,9 @@ git diff --check
 - 自建 OpenAI 兼容服务如果部署在非标准 HTTPS 端口，Cloudflare Workers 发布环境可能忽略自定义端口，建议使用标准 443 端口或反向代理到标准端口。
 - 项目需要 D1 存服务配置；没有 D1 binding 时设置接口会返回明确错误，页面里的 Provider settings 不可写。
 - 更换 `SECRETS_ENCRYPTION_KEY` 会让已保存的 API Key 无法解密，需要在页面里重新填写一次。
+- Trancy token 没有 `exp`，不续期会在一个未测出的窗口后失效，所以 `wrangler.toml` 里的 cron 是这条链路的一部分：关掉 cron，账号迟早会变成 `dead`（有密码就点一次重新登录，没有密码只能重贴 token）。部署前记得执行 `npx wrangler d1 migrations apply voicecraft --remote`。
+- Trancy 的密码在 D1 里是**明文**，谁拿到数据库或 `ADMIN_TOKEN` 就等于拿到这些账号。请只在 Access 保护或仅自己可访问的部署上启用这个功能，不要把这个 Worker 变成公开的账号池。
+- 轮换多个账号等于把免费额度拆给不同账号，这类用法通常违反服务的服务条款；风控或封号在网关里表现为 `status=banned` 或上游 `data:null`，不要把它放在关键路径上。
 
 ## 开源协议
 
