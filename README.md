@@ -128,26 +128,32 @@ INSERT OR IGNORE INTO d1_migrations (name) VALUES ('0001_provider_config.sql'),(
 
 已有数据的库不要跑 `schema.sql`，用 `migrations apply` 走增量。
 
+Secret 只有一个：
+
+```bash
 npx wrangler secret put SECRETS_ENCRYPTION_KEY   # base64 的 32 字节
-# 不需要任何鉴权密钥：/api/* 交给 Cloudflare Access
 ```
 
 - `SECRETS_ENCRYPTION_KEY` 是唯一的 secret：只用于加解密，不参与鉴权；换掉它会导致已保存的密钥和 Trancy token 无法解密，需要重新填写。
-- **鉴权全部交给 Cloudflare Access**：Worker 自己不校验任何 token。`/api/*` 必须挂 Access 策略（见下一节），因为 `GET /api/trancy/accounts/:id/password` 能解出密码、`POST /api/trancy/captions` 会花账号额度。裸部署到公网等于把这些直接暴露出去。
+- **鉴权全部交给 Cloudflare Access，但只保护需要保护的那部分**：文字转语音（`/tts`、`/v1/audio/speech`）是公开的；`/api/*` 必须挂 Access，因为那里能解出密码、能花 Trancy 额度、能改密钥。见下一节的分路径表。
 - 除密钥外的变量都不写入仓库，`wrangler.toml` 里也不出现明文。
 
 ## Cloudflare Access
 
-**这是本项目唯一的鉴权层。** 在 Cloudflare Zero Trust 里为 Worker 域名添加 Access Application，路径至少覆盖全部 API：
+**这是本项目唯一的鉴权层**，但**不是所有接口都要挂它**。文字转语音是公开的，任何人打开 `/tts` 就能生成 MP3；需要保护的只有「会花别人钱」和「能拿到凭据」的部分：
+
+| 路径 | Access |
+| --- | --- |
+| `/`、`/tts`、`/v1/audio/speech`、`/v1/text/polish` | **公开**。TTS 是公开服务；润色用的是调用方自己填在浏览器里的 key |
+| `/transcription`、`/trancy`、`/v1/audio/transcriptions` | 建议保护：转录会消耗 D1 里存的 provider key |
+| `/api/*` | **必须保护**：`GET /api/trancy/accounts/:id/password` 能解出密码，`POST /api/trancy/captions` 会花 Trancy 额度，`PUT /api/providers/:provider` 能改密钥 |
+
+所以 Access Application 的路径至少是这样：
 
 ```text
 /api/*
-```
-
-再按需要收窄页面：如果只想公开文字转语音、把语音转文字藏起来，可以改成：
-
-```text
 /transcription*
+/trancy*
 /v1/audio/transcriptions*
 ```
 
@@ -155,17 +161,17 @@ npx wrangler secret put SECRETS_ENCRYPTION_KEY   # base64 的 32 字节
 
 ## API
 
-下游能用到的接口一览（`/api/*` 全部由 Cloudflare Access 保护，Worker 自身不校验 token）：
+下游能用到的接口一览（Worker 自身不校验任何 token；`/api/*` 靠 Cloudflare Access 挡，`/v1/*` 里 TTS 与润色是公开的）：
 
-| 接口 | 用途 | 计费/成本 |
+| 接口 | 用途 | 计费/成本 | 保护 |
 | --- | --- | --- |
-| `POST /v1/audio/speech` | 文字转语音，返回 MP3 | Edge TTS 免费 |
-| `POST /v1/audio/transcriptions` | 语音转文字，`engine=openai\|elevenlabs\|google` | 按各 provider 的 key 计费 |
-| `POST /v1/text/polish` | 文本润色（透传 OpenAI 兼容接口） | 调用方自己的 key |
-| `POST /api/trancy/captions` | 用账号池生成 YouTube AI 字幕 | **每天每账号 5 个视频额度**，见下文 |
-| `GET /api/providers` | 读转录服务配置（只回掩码尾巴） | 无 |
-| `PUT /api/providers/:provider` | 写转录服务配置 | 无 |
-| `/api/trancy/accounts*` | 账号池管理（增删改、登录、刷新） | 无（面板用） |
+| `POST /v1/audio/speech` | 文字转语音，返回 MP3 | Edge TTS 免费 | 公开 |
+| `POST /v1/audio/transcriptions` | 语音转文字，`engine=openai\|elevenlabs\|google` | 按各 provider 的 key 计费 | 建议 Access |
+| `POST /v1/text/polish` | 文本润色（透传 OpenAI 兼容接口） | 调用方自己的 key | 公开 |
+| `POST /api/trancy/captions` | 用账号池生成 YouTube AI 字幕 | **每天每账号 5 个视频额度**，见下文 | 必须 Access |
+| `GET /api/providers` | 读转录服务配置（只回掩码尾巴） | 无 | Access（随 `/api/*`）|
+| `PUT /api/providers/:provider` | 写转录服务配置 | 无 | Access（随 `/api/*`）|
+| `/api/trancy/accounts*` | 账号池管理（增删改、登录、刷新、按需取密码） | 无（面板用） | Access（随 `/api/*`）|
 
 页面路由：`/tts`、`/transcription`、`/trancy`。
 

@@ -11,6 +11,16 @@ assert.doesNotMatch(readme, /Whisper ASR 地址/, "README should not describe th
 assert.match(readme, /SECRETS_ENCRYPTION_KEY/, "README should document the API key encryption secret");
 assert.match(readme, /Cloudflare Access/, "README should state that /api/* is protected by Cloudflare Access");
 assert.doesNotMatch(readme, /ADMIN_TOKEN/, "no application-level admin token: Access is the only gate");
+assert.match(
+  readme,
+  /`\/v1\/audio\/speech`[^\n]*公开/,
+  "README must state that the TTS endpoint is public (not behind Access)",
+);
+assert.match(
+  readme,
+  /`\/api\/\*`[^\n]*必须/,
+  "README must state that /api/* has to be behind Access",
+);
 assert.match(readme, /provider_config/, "README should document where provider config is stored");
 assert.match(readme, /\/api\/providers/, "README should document the provider settings API");
 assert.match(readme, /schema\.sql/, "README should point at the consolidated schema for a fresh database");

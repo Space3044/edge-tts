@@ -7,13 +7,17 @@
 # Changing this value makes existing rows undecryptable: re-save the keys afterwards.
 SECRETS_ENCRYPTION_KEY=3MA8dqfnN1veywbjKPVE9hDwIq2Ra5TXvsTThon+SEc=
 
-# Authorisation is Cloudflare Access' job.
+# Authorisation is Cloudflare Access' job, and only part of the app needs it.
 #
-# There is no token in this Worker: /api/* is expected to sit behind an Access
-# application, and that includes the endpoints that spend Trancy quota
-# (POST /api/trancy/captions) and the ones that return the stored passwords
-# (GET /api/trancy/accounts). Local `wrangler dev` has no Access in front, so
-# everything is reachable there - which is fine, it is your own machine.
+# Public on purpose: `/tts`, /v1/audio/speech (text to speech) and
+# /v1/text/polish (uses the caller's own key).
+#
+# Behind Access: `/api/*` - it can decrypt the stored Trancy password, spend
+# Trancy quota and rewrite provider keys - plus the /transcription and /trancy
+# pages if you do not want them public.
+#
+# Local `wrangler dev` has no Access in front, so everything is reachable
+# there, which is fine: it is your own machine.
 
 # This is the only secret the Worker needs. Provider keys (OpenAI / ElevenLabs /
 # Google) are entered in the settings panel and stored encrypted in D1 - there is
