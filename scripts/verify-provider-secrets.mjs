@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { bytesToBase64, decryptSecret, encryptSecret, importEncryptionKey, maskSecret } from "../src/secrets/crypto.js";
-import { listProviderStatus, resolveProvider, saveProviderConfig } from "../src/secrets/store.js";
+import { PROVIDER_DEFAULTS, listProviderStatus, resolveProvider, saveProviderConfig } from "../src/secrets/store.js";
 import { handleProviders } from "../src/routes/providers.js";
 
 /** Minimal in-memory stand-in for the two D1 statements the store issues. */
@@ -107,6 +107,21 @@ const env = {
   assert.equal(cleared.configured, false);
   assert.equal(cleared.keySource, "none");
   assert.equal(env.DB.rows.get("openai").api_key_cipher, "");
+}
+
+// 3b. The OpenAI default must stay the official OpenAI API.
+{
+  assert.equal(
+    PROVIDER_DEFAULTS.openai.endpoint,
+    "https://api.openai.com/v1",
+    "the OpenAI provider should default to the official api.openai.com endpoint"
+  );
+  assert.equal(PROVIDER_DEFAULTS.openai.model, "whisper-1");
+
+  const fresh = { DB: createFakeD1(), SECRETS_ENCRYPTION_KEY: encryptionKey };
+  const openai = await resolveProvider(fresh, "openai");
+  assert.equal(openai.endpoint, "https://api.openai.com/v1", "an empty row should fall back to the official endpoint");
+  assert.equal(openai.keySource, "none");
 }
 
 // 4. Environment fallback and DB precedence.
