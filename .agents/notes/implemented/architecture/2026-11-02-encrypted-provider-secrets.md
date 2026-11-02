@@ -37,6 +37,8 @@ CREATE TABLE provider_config (
 
 引擎层面把 `whisper` 改名为 `openai`，走标准 OpenAI 兼容协议：`{endpoint}/audio/transcriptions`，multipart 传 `file`、`model`、`response_format=json`，配了密钥就带 `Authorization: Bearer`。base 不带 `/audio/transcriptions` 时自动补全，因此 `https://api.openai.com/v1` 和自建 `https://asr.example.com/v1` 都能用。`engine=whisper` 保留为 `openai` 的别名，老调用方不用改。
 
+三个引擎的 endpoint 都是可配置的：OpenAI 补 `/audio/transcriptions`，Google 用它拼出 Files API（`{endpoint}/upload/v1beta/files`）和 Interactions API（`{endpoint}/v1beta/interactions`），带 `/v1beta` 的 base 会被归一化，所以指向自建网关也能用。
+
 单次请求仍可覆盖 `endpoint` / `model` / `apiKey`（`apiKey` 仅 OpenAI 引擎），供 API 用户临时测试。
 
 ## Alternatives considered

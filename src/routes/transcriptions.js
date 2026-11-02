@@ -579,6 +579,9 @@ async function handleGoogleTranscription(formData, env) {
 
     const apiKey = config.apiKey;
     const model = String(formData.get("model") || "").trim() || config.model;
+    // Same override contract as the OpenAI engine: the D1 value is the default,
+    // a per-request `endpoint` wins for that call only.
+    const endpoint = String(formData.get("endpoint") || "").trim() || config.endpoint;
 
     const audioFile = formData.get("file");
     const sourceUrl = readSourceUrl(formData);
@@ -613,7 +616,7 @@ async function handleGoogleTranscription(formData, env) {
     }
 
     try {
-        const result = await transcribeWithGoogle({ apiKey, data, filename, mimeType, model });
+        const result = await transcribeWithGoogle({ apiKey, data, filename, mimeType, model, endpoint });
         const words = normalizeElevenLabsWords(result);
         const text = extractElevenLabsText(result) || words.map(word => word.text).join("").trim();
         if (!text) {

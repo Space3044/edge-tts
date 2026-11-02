@@ -2,14 +2,44 @@
  * Google Gemini Transcribe.
  *
  * The Gemini API does not accept a public audio URL: the file is uploaded to
- * the Files API first, then the returned `file.uri` is passed to
- * `gemini-3.5-transcribe`. The Worker holds the API key as a secret and does
- * the upload server-side.
+ * the Files API first, then the returned `file.uri` is passed to the configured
+ * transcribe model. The Worker holds the API key and does the upload
+ * server-side.
  */
 
 export const GOOGLE_TRANSCRIBE_MODEL = "gemini-3.5-transcribe";
-const FILES_ENDPOINT = "https://generativelanguage.googleapis.com/upload/v1beta/files";
-const INTERACTIONS_ENDPOINT = "https://generativelanguage.googleapis.com/v1beta/interactions";
+export const DEFAULT_GOOGLE_ENDPOINT = "https://generativelanguage.googleapis.com";
+
+/**
+ * Derive the Files and Interactions URLs from a configurable base.
+ *
+ * The endpoint is the API root (`https://generativelanguage.googleapis.com`),
+ * which keeps proxies like `https://gateway.example.com/gemini` usable. A base
+ * that already includes `/v1beta` is also accepted.
+ */
+export function buildGoogleEndpoints(endpoint) {
+    const raw = String(endpoint || "").trim() || DEFAULT_GOOGLE_ENDPOINT;
+
+    let url;
+    try {
+        url = new URL(raw);
+    } catch {
+        throw new Error("Google endpoint 格式无效");
+    }
+    if (url.protocol !== "https:" && url.protocol !== "http:") {
+        throw new Error("Google endpoint 必须以 http:// 或 https:// 开头");
+    }
+
+    url.search = "";
+    url.hash = "";
+    const trimmed = url.toString().replace(/\/+$/, "");
+    const root = trimmed.replace(/\/v1beta$/, "");
+
+    return {
+        files: `${root}/upload/v1beta/files`,
+        interactions: `${root}/v1beta/interactions`
+    };
+}
 
 function timeoutSignal(ms, signal) {
     const timeout = AbortSignal.timeout(ms);
@@ -22,9 +52,9 @@ function parseOffset(value) {
 }
 
 /** Upload one blob with the Files API resumable protocol and return its URI. */
-async function uploadFile({ apiKey, data, filename, mimeType, signal }) {
+async function uploadFile({ apiKey, data, filename, mimeType, signal, filesEndpoint }) {
     const size = data.size;
-    const start = await fetch(FILES_ENDPOINT, {
+    const start = await fetch(filesEndpoint, {
         method: "POST",
         headers: {
             "x-goog-api-key": apiKey,
@@ -126,17 +156,26 @@ export async function transcribeWithGoogle({
     filename,
     mimeType = "audio/mpeg",
     model = GOOGLE_TRANSCRIBE_MODEL,
+    endpoint = DEFAULT_GOOGLE_ENDPOINT,
     timeoutMs = 1800000,
     signal
 }) {
     if (!apiKey) {
-        throw new Error("Google transcription is not configured: set GEMINI_API_KEY on the Worker.");
+        throw new Error("Google transcription is not configured: save an API key in provider settings or set GEMINI_API_KEY on the Worker.");
     }
 
+    const endpoints = buildGoogleEndpoints(endpoint);
     const combined = timeoutSignal(timeoutMs, signal);
-    const file = await uploadFile({ apiKey, data, filename, mimeType, signal: combined });
+    const file = await uploadFile({
+        apiKey,
+        data,
+        filename,
+        mimeType,
+        signal: combined,
+        filesEndpoint: endpoints.files
+    });
 
-    const response = await fetch(INTERACTIONS_ENDPOINT, {
+    const response = await fetch(endpoints.interactions, {
         method: "POST",
         headers: {
             "x-goog-api-key": apiKey,

@@ -21,7 +21,7 @@ globalThis.fetch = async (url, init) => {
       headers: { "Content-Type": "audio/mpeg" }
     });
   }
-  if (href === "https://generativelanguage.googleapis.com/upload/v1beta/files") {
+  if (/\/upload\/v1beta\/files$/.test(href)) {
     return new Response(null, {
       status: 200,
       headers: { "x-goog-upload-url": "https://upload.example.com/files/1" }
@@ -30,7 +30,7 @@ globalThis.fetch = async (url, init) => {
   if (href === "https://upload.example.com/files/1") {
     return json({ file: { name: "files/abc", uri: "https://files.example.com/abc", mimeType: "audio/mpeg" } });
   }
-  if (href === "https://generativelanguage.googleapis.com/v1beta/interactions") {
+  if (/\/v1beta\/interactions$/.test(href)) {
     return json({
       output_text: "Hello world.",
       steps: [
@@ -111,6 +111,48 @@ try {
   body = await response.json();
   assert.equal(response.status, 500);
   assert.equal(body.error.code, "google_not_configured");
+
+  // A per-request endpoint must drive both the upload and the interaction call.
+  calls = [];
+  response = await handleAudioTranscription(
+    request(
+      form({
+        engine: "google",
+        endpoint: "https://gateway.example.com/gemini",
+        file: new File(["audio"], "sample.mp3", { type: "audio/mpeg" })
+      })
+    ),
+    { GEMINI_API_KEY: "google-key" }
+  );
+  body = await response.json();
+  assert.equal(response.status, 200, JSON.stringify(body));
+  assert.ok(
+    calls.some((call) => call.url === "https://gateway.example.com/gemini/upload/v1beta/files"),
+    "custom endpoint should be used for the Files API upload"
+  );
+  assert.ok(
+    calls.some((call) => call.url === "https://gateway.example.com/gemini/v1beta/interactions"),
+    "custom endpoint should be used for the interactions call"
+  );
+
+  // A base that already ends with /v1beta must not double the version segment.
+  calls = [];
+  response = await handleAudioTranscription(
+    request(
+      form({
+        engine: "google",
+        endpoint: "https://gateway.example.com/gemini/v1beta/",
+        file: new File(["audio"], "sample.mp3", { type: "audio/mpeg" })
+      })
+    ),
+    { GEMINI_API_KEY: "google-key" }
+  );
+  body = await response.json();
+  assert.equal(response.status, 200, JSON.stringify(body));
+  assert.ok(
+    calls.some((call) => call.url === "https://gateway.example.com/gemini/v1beta/interactions"),
+    "a /v1beta base should resolve to a single version segment"
+  );
 
   console.log("Verified Google Gemini 3.5 Transcribe flow.");
 } finally {

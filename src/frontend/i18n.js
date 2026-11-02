@@ -228,8 +228,8 @@ export const translations = {
     Object.keys(STT_ENGINE_TRANSLATIONS).forEach(function(lang) { Object.assign(translations[lang], STT_ENGINE_TRANSLATIONS[lang]); });
 
     const GOOGLE_STT_TRANSLATIONS = {
-      en: { 'stt.engineGoogle': 'Google', 'stt.googleHint': 'Uses Google Gemini Transcribe with the model and API key saved in provider settings.' },
-      zh: { 'stt.engineGoogle': 'Google', 'stt.googleHint': '使用 Provider 设置里保存的模型和 API Key 调用 Google Gemini Transcribe。' },
+      en: { 'stt.engineGoogle': 'Google', 'stt.googleHint': 'Uses the endpoint, model and API key saved in provider settings for Google Gemini Transcribe.' },
+      zh: { 'stt.engineGoogle': 'Google', 'stt.googleHint': '使用 Provider 设置里保存的 endpoint、模型和 API Key 调用 Google Gemini Transcribe。' },
       ja: { 'stt.engineGoogle': 'Google', 'stt.googleHint': 'Google Gemini 3.5 Transcribe を使用します。Worker の GEMINI_API_KEY で認証します。' },
       ko: { 'stt.engineGoogle': 'Google', 'stt.googleHint': 'Google Gemini 3.5 Transcribe를 사용하며 Worker의 GEMINI_API_KEY로 인증합니다.' },
       es: { 'stt.engineGoogle': 'Google', 'stt.googleHint': 'Usa Google Gemini 3.5 Transcribe con la GEMINI_API_KEY del Worker.' },
@@ -262,6 +262,7 @@ export const translations = {
         'provider.elevenlabsTitle': 'ElevenLabs Scribe',
         'provider.googleTitle': 'Google Gemini Transcribe',
         'provider.endpoint': 'Endpoint',
+        'provider.googleEndpointPlaceholder': 'https://generativelanguage.googleapis.com',
         'provider.save': 'Save',
         'provider.saving': 'Saving...',
         'provider.saved': 'Saved',
@@ -285,6 +286,7 @@ export const translations = {
         'provider.elevenlabsTitle': 'ElevenLabs Scribe',
         'provider.googleTitle': 'Google Gemini Transcribe',
         'provider.endpoint': 'Endpoint',
+        'provider.googleEndpointPlaceholder': 'https://generativelanguage.googleapis.com',
         'provider.save': '保存',
         'provider.saving': '保存中...',
         'provider.saved': '已保存',
