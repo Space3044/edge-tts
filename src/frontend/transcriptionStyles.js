@@ -1,5 +1,5 @@
 export const TRANSCRIPTION_STYLES = `
-    #transcriptionForm > .form-group:nth-of-type(3) {
+    #engineGroup {
       display:grid;
       gap:10px;
       margin:0 0 12px;
@@ -8,7 +8,7 @@ export const TRANSCRIPTION_STYLES = `
       border-left:3px solid var(--accent);
       background:linear-gradient(90deg,var(--accent-soft),var(--surface-2));
     }
-    #transcriptionForm > .form-group:nth-of-type(3) .form-label {
+    #engineGroup .form-label {
       margin:0;
       color:var(--text-2);
       font-size:.76rem;

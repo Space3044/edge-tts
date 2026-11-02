@@ -889,7 +889,7 @@ assert.ok(
 );
 
 [
-  "#transcriptionForm > .form-group:nth-of-type(3)",
+  "#engineGroup",
   ".engine-tabs",
   ".engine-btn.active",
   ".provider-config",
