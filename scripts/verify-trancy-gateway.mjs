@@ -9,6 +9,7 @@ import {
     reloginTrancyAccount,
     deleteTrancyAccount,
     listTrancyAccounts,
+    readTrancyPassword,
     refreshAllTrancyAccounts,
     refreshTrancyAccount
 } from "../src/trancy/store.js";
@@ -397,17 +398,28 @@ const env = { DB: createFakeD1(), SECRETS_ENCRYPTION_KEY: encryptionKey };
     assert.equal(loggedIn.account.status, "ok");
     assert.equal(loggedIn.account.email, "someone@example.com");
 
-    const storedRow = Array.from(env.DB.rows.values()).find(row => row.email === "someone@example.com" && row.password);
-    assert.equal(storedRow.password, "hunter2-plain", "the password is stored as-is");
+    const storedRow = Array.from(env.DB.rows.values()).find(row => row.email === "someone@example.com" && row.password_cipher);
+    assert.ok(storedRow, "the password is stored encrypted");
+    assert.ok(storedRow.password_cipher.startsWith("v1."), "the password uses the AES-GCM envelope");
+    assert.ok(!storedRow.password_cipher.includes("hunter2"), "the plaintext password must not be in the row");
     assert.ok(!String(storedRow.token_cipher).includes("eyJ"), "the token itself stays encrypted");
     const key = await importEncryptionKey(encryptionKey);
     assert.ok(await decryptSecret(storedRow.token_cipher, { key, aad: `trancy:${storedRow.id}` }));
 
-    const withPasswords = await listTrancyAccounts(env, { includePasswords: true });
-    const withoutPasswords = await listTrancyAccounts(env);
-    assert.equal(withPasswords.find(a => a.id === storedRow.id).password, "hunter2-plain");
-    assert.equal(withoutPasswords.find(a => a.id === storedRow.id).password, "", "default view hides it");
-    assert.equal(withoutPasswords.find(a => a.id === storedRow.id).hasPassword, true);
+    const listed = await listTrancyAccounts(env);
+    const listedRow = listed.find(a => a.id === storedRow.id);
+    assert.equal(listedRow.hasPassword, true);
+    assert.ok(!("password" in listedRow), "the list never carries the password");
+
+    // Only the explicit reveal decrypts, and it needs the same AAD.
+    const revealed = await readTrancyPassword(env, storedRow.id);
+    assert.equal(revealed.ok, true);
+    assert.equal(revealed.password, "hunter2-plain", "decryption round-trips through SECRETS_ENCRYPTION_KEY");
+
+    const wrongKeyEnv = { DB: env.DB, SECRETS_ENCRYPTION_KEY: bytesToBase64(crypto.getRandomValues(new Uint8Array(32))) };
+    const unreadable = await readTrancyPassword(wrongKeyEnv, storedRow.id);
+    assert.equal(unreadable.ok, false);
+    assert.equal(unreadable.reason, "password_unreadable", "a rotated key surfaces as unreadable, not as garbage");
 
     // A dead token with a stored password comes back with one click.
     env.DB.rows.get(storedRow.id).status = "dead";
@@ -424,7 +436,7 @@ const env = { DB: createFakeD1(), SECRETS_ENCRYPTION_KEY: encryptionKey };
         }))
     });
     assert.ok(tokenOnlyRow, "the token-only account exists");
-    assert.ok(!tokenOnlyRow.password, "a token-only row never gets a password");
+    assert.ok(!tokenOnlyRow.password_cipher, "a token-only row never gets a password");
     const noCreds = await reloginTrancyAccount(env, tokenOnlyRow.id, { fetchImpl: authFetch });
     assert.equal(noCreds.ok, false);
     assert.equal(noCreds.reason, "no_credentials");
@@ -441,7 +453,7 @@ const env = { DB: createFakeD1(), SECRETS_ENCRYPTION_KEY: encryptionKey };
         fetchImpl: authFetch
     });
     assert.equal(signedUp.ok, true);
-    assert.ok(Array.from(env.DB.rows.values()).some(row => row.password === "secret-123456"));
+    assert.ok(Array.from(env.DB.rows.values()).some(row => String(row.password_cipher || "").startsWith("v1.")));
 }
 
 // 12. HTTP surface for the credential routes.
@@ -460,8 +472,12 @@ const env = { DB: createFakeD1(), SECRETS_ENCRYPTION_KEY: encryptionKey };
     const listed = await call("/api/trancy/accounts");
     const listedPayload = await listed.json();
     assert.ok(
-        listedPayload.accounts.some(account => account.hasPassword && account.password),
-        "passwords come back as-is: Cloudflare Access is the only gate in front of this"
+        listedPayload.accounts.some(account => account.hasPassword),
+        "the list says a password exists without carrying it"
+    );
+    assert.ok(
+        listedPayload.accounts.every(account => !("password" in account)),
+        "no plaintext password in the list response"
     );
 
     // POST /api/trancy/accounts/:id/login must be routed, not swallowed by the
@@ -479,7 +495,7 @@ const env = { DB: createFakeD1(), SECRETS_ENCRYPTION_KEY: encryptionKey };
             throw new Error(`unexpected call ${url}`);
         });
         try {
-            const target = (await listTrancyAccounts(env, { includePasswords: true })).find(account => account.password);
+            const target = (await listTrancyAccounts(env)).find(account => account.hasPassword);
             assert.ok(target, "a password-backed account exists");
             const reloginResponse = await call(`/api/trancy/accounts/${target.id}/login`, {
                 method: "POST",
@@ -489,7 +505,7 @@ const env = { DB: createFakeD1(), SECRETS_ENCRYPTION_KEY: encryptionKey };
             assert.equal(reloginResponse.status, 200, `/:id/login is routed (got ${JSON.stringify(reloginPayload)})`);
             assert.equal(reloginPayload.account.status, "ok");
 
-            const tokenOnly = Array.from(env.DB.rows.values()).find(row => !row.password);
+            const tokenOnly = Array.from(env.DB.rows.values()).find(row => !row.password_cipher);
             assert.ok(tokenOnly, "a token-only row exists");
             const noCredsResponse = await call(`/api/trancy/accounts/${tokenOnly.id}/login`, {
                 method: "POST",

@@ -11,7 +11,8 @@
  * Authentication is Cloudflare Access' job: the whole `/api/*` surface is meant
  * to sit behind an Access application, so the Worker checks no token of its own.
  * That is only acceptable because of what sits behind it (see README):
- * `POST /captions` spends real quota and `GET /accounts` returns the passwords.
+ * `POST /captions` spends real quota and `GET /accounts/:id/password` decrypts
+ * the stored password on request.
  */
 
 import {
@@ -27,6 +28,7 @@ import {
     loginTrancyAccount,
     refreshAllTrancyAccounts,
     refreshTrancyAccount,
+    readTrancyPassword,
     reloginTrancyAccount,
     normalizeIncomingToken
 } from "../trancy/store.js";
@@ -52,7 +54,7 @@ async function handleAccounts(request, env, segments) {
     // /api/trancy/accounts
     if (segments.length === 3) {
         if (request.method === "GET") {
-            const accounts = await listTrancyAccounts(env, { includePasswords: true });
+            const accounts = await listTrancyAccounts(env);
             return jsonResponse({
                 accounts,
                 // The panel needs a denominator before the first caption call,
@@ -192,8 +194,46 @@ async function handleAccounts(request, env, segments) {
     }
 
     // /api/trancy/accounts/:id, /:id/refresh and /:id/login
-    if (segments.length === 4 || (segments.length === 5 && (segments[4] === "refresh" || segments[4] === "login"))) {
+    if (segments.length === 4 || (segments.length === 5 && (segments[4] === "refresh" || segments[4] === "login" || segments[4] === "password"))) {
         const id = String(segments[3] || "");
+
+        if (segments.length === 5 && segments[4] === "password") {
+            if (request.method !== "GET") {
+                return errorResponse("只支持 GET /api/trancy/accounts/:id/password", {
+                    status: 405,
+                    type: "invalid_request_error",
+                    param: "method",
+                    code: "method_not_allowed"
+                });
+            }
+            const stored = await readTrancyPassword(env, id);
+            if (!stored.ok) {
+                const status = stored.reason === "not_found" ? 404
+                    : stored.reason === "no_credentials" ? 409
+                        : 500;
+                return errorResponse(
+                    stored.reason === "no_credentials"
+                        ? "这个账号没有保存密码"
+                        : stored.reason === "password_unreadable"
+                            ? `保存的密码无法解密：${stored.error}`
+                            : "账号不存在",
+                    {
+                        status,
+                        type: "invalid_request_error",
+                        param: "id",
+                        code: stored.reason === "no_credentials"
+                            ? "trancy_no_credentials"
+                            : stored.reason === "password_unreadable"
+                                ? "trancy_password_unreadable"
+                                : "trancy_account_not_found"
+                    }
+                );
+            }
+            return jsonResponse(
+                { password: stored.password },
+                { headers: { "Cache-Control": "no-store" } }
+            );
+        }
 
         if (segments.length === 5 && segments[4] === "login") {
             if (request.method !== "POST") {
@@ -253,7 +293,7 @@ async function handleAccounts(request, env, segments) {
             return jsonResponse({ deleted: id });
         }
 
-        return errorResponse("只支持 DELETE /api/trancy/accounts/:id 和 POST /api/trancy/accounts/:id/login", {
+        return errorResponse("只支持 DELETE /api/trancy/accounts/:id、POST /api/trancy/accounts/:id/login 和 GET /api/trancy/accounts/:id/password", {
             status: 405,
             type: "invalid_request_error",
             param: "method",

@@ -27,7 +27,7 @@ export const TRANCY_STATUS = {
     dead: "dead"
 };
 
-const SELECT_COLUMNS = `id, token_cipher, password, user_id, name, email, premium, banned,
+const SELECT_COLUMNS = `id, token_cipher, password_cipher, user_id, name, email, premium, banned,
     status, token_issued_at, last_checked_at, last_used_at, use_count, fail_count, cooldown_until,
     quota_limit, quota_remaining, quota_checked_at, exhausted_until, day_used, day_used_date,
     created_at, updated_at`;
@@ -47,6 +47,14 @@ function aadFor(id) {
     return `trancy:${id}`;
 }
 
+/**
+ * The password gets its own aad, so a token ciphertext cannot be pasted into
+ * the password column (or the other way round) and still decrypt.
+ */
+function passwordAadFor(id) {
+    return `trancy-password:${id}`;
+}
+
 function nowIso() {
     return new Date().toISOString();
 }
@@ -54,6 +62,24 @@ function nowIso() {
 async function encryptToken(env, id, token) {
     const key = await importEncryptionKey(env?.SECRETS_ENCRYPTION_KEY);
     return encryptSecret(token, { key, aad: aadFor(id) });
+}
+
+async function encryptPassword(env, id, password) {
+    const key = await importEncryptionKey(env?.SECRETS_ENCRYPTION_KEY);
+    return encryptSecret(password, { key, aad: passwordAadFor(id) });
+}
+
+async function decryptPassword(env, row) {
+    const cipher = String(row?.password_cipher || "");
+    if (!cipher) {
+        return { password: "", error: null };
+    }
+    try {
+        const key = await importEncryptionKey(env?.SECRETS_ENCRYPTION_KEY);
+        return { password: await decryptSecret(cipher, { key, aad: passwordAadFor(row.id) }), error: null };
+    } catch (error) {
+        return { password: "", error: error instanceof Error ? error.message : String(error) };
+    }
 }
 
 async function decryptToken(env, row) {
@@ -77,16 +103,15 @@ function isoFromRow(value) {
  * Browser-safe projection. The token never leaves the Worker: the view carries
  * only a tail so the operator can tell which account is stored.
  */
-export function accountView(row, { tokenTail = "", tokenError = null, includePassword = false } = {}) {
+export function accountView(row, { tokenTail = "", tokenError = null } = {}) {
     return {
         id: String(row?.id || ""),
         userId: String(row?.user_id || ""),
         name: String(row?.name || ""),
         email: String(row?.email || ""),
-        // Plaintext by design (see migrations/0006): it powers the one-click
-        // re-login. Only surfaced to callers that already hold write access.
-        password: includePassword ? String(row?.password || "") : "",
-        hasPassword: Boolean(row?.password),
+        // The password is encrypted at rest; it is only decrypted by the explicit
+        // reveal endpoint, or when a re-login actually needs it.
+        hasPassword: Boolean(row?.password_cipher),
         premium: Boolean(row?.premium),
         banned: Boolean(row?.banned),
         status: String(row?.status || TRANCY_STATUS.new),
@@ -137,22 +162,13 @@ async function readRowByUserId(env, userId) {
     return row || null;
 }
 
-/**
- * Every account, browser-safe, oldest first.
- *
- * `includePasswords` is decided by the route from the write guard, not from the
- * caller's wish: a locked deployment gets `password: ""` and `hasPassword` only.
- */
-export async function listTrancyAccounts(env, { includePasswords = false } = {}) {
+/** Every account, browser-safe, oldest first. Never carries the password. */
+export async function listTrancyAccounts(env) {
     const rows = await readRows(env);
     const accounts = [];
     for (const row of rows) {
         const { token, error } = await decryptToken(env, row);
-        accounts.push(accountView(row, {
-            tokenTail: maskTrancyToken(token),
-            tokenError: token ? null : error,
-            includePassword: includePasswords
-        }));
+        accounts.push(accountView(row, { tokenTail: maskTrancyToken(token), tokenError: token ? null : error }));
     }
     return accounts;
 }
@@ -373,20 +389,21 @@ async function saveCredentialLogin(env, { email = "", password = "", token, prof
     const cipher = await encryptToken(env, id, parsed.token);
     const status = profile.banned ? TRANCY_STATUS.banned : TRANCY_STATUS.ok;
     const loginEmail = String(email || profile.email || "").trim();
-    const secret = String(password || "");
+    const secretCipher = password ? await encryptPassword(env, id, password) : "";
 
     if (existing) {
         await db
             .prepare(
                 `UPDATE trancy_account SET
-                     token_cipher = ?, password = ?, user_id = ?, name = ?, email = ?,
+                     token_cipher = ?, password_cipher = ?, user_id = ?, name = ?, email = ?,
                      premium = ?, banned = ?, status = ?, token_issued_at = ?, last_checked_at = ?,
                      fail_count = 0, cooldown_until = '', updated_at = ?
                  WHERE id = ?`
             )
             .bind(
                 cipher,
-                secret || String(existing.password || ""),
+                // An empty password means "keep whatever was stored".
+                secretCipher || String(existing.password_cipher || ""),
                 parsed.userId || existing.user_id || "",
                 profile.name || existing.name || "",
                 loginEmail || existing.email || "",
@@ -403,7 +420,7 @@ async function saveCredentialLogin(env, { email = "", password = "", token, prof
         await db
             .prepare(
                 `INSERT INTO trancy_account
-                     (id, token_cipher, password, user_id, name, email, premium, banned, status,
+                     (id, token_cipher, password_cipher, user_id, name, email, premium, banned, status,
                       token_issued_at, last_checked_at, last_used_at, use_count, fail_count,
                       cooldown_until, created_at, updated_at)
                  VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, '', 0, 0, '', ?, ?)`
@@ -411,7 +428,7 @@ async function saveCredentialLogin(env, { email = "", password = "", token, prof
             .bind(
                 id,
                 cipher,
-                secret,
+                secretCipher,
                 parsed.userId || profile.userId,
                 profile.name,
                 loginEmail,
@@ -461,9 +478,7 @@ export async function loginTrancyAccount(env, { email = "", password = "", mode 
         ok: true,
         reason: null,
         message: "ok",
-        // Same shape as the list: no route hides the password any more, Access
-        // is the only gate.
-        account: accountView(row, { tokenTail: maskTrancyToken(token), includePassword: true })
+        account: accountView(row, { tokenTail: maskTrancyToken(token) })
     };
 }
 
@@ -478,7 +493,16 @@ export async function reloginTrancyAccount(env, id, { fetchImpl = fetch } = {}) 
     }
 
     const email = String(row.email || "").trim();
-    const password = String(row.password || "");
+    const stored = await decryptPassword(env, row);
+    if (stored.error) {
+        return {
+            ok: false,
+            reason: "password_unreadable",
+            message: `保存的密码无法解密（${stored.error}），请重新保存一次`,
+            account: accountView(row)
+        };
+    }
+    const password = stored.password;
     if (!email || !password) {
         return {
             ok: false,
@@ -649,6 +673,28 @@ export async function markCaptionExhausted(env, id, until = nextUtcMidnight()) {
         )
         .bind(until, timestamp, timestamp, id)
         .run();
+}
+
+/**
+ * Decrypt one account's password for the explicit "show it" request.
+ *
+ * This is the only place a plaintext password crosses the Worker boundary, and
+ * it only happens when the operator asks - the list and the caption path never
+ * touch it.
+ */
+export async function readTrancyPassword(env, id) {
+    const row = await readRow(env, id);
+    if (!row) {
+        return { ok: false, reason: "not_found", password: "" };
+    }
+    const stored = await decryptPassword(env, row);
+    if (stored.error) {
+        return { ok: false, reason: "password_unreadable", error: stored.error, password: "" };
+    }
+    if (!stored.password) {
+        return { ok: false, reason: "no_credentials", password: "" };
+    }
+    return { ok: true, reason: null, password: stored.password };
 }
 
 export function normalizeIncomingToken(raw) {

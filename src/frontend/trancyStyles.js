@@ -37,6 +37,8 @@ export const TRANCY_STYLES = `
     .trancy-password { font-family:var(--font-mono); font-size:.74rem; padding:1px 6px; background:var(--surface); border:1px solid var(--border); border-radius:var(--radius-xs); color:var(--text); cursor:pointer; user-select:all; transition:all .12s ease; }
     .trancy-password:hover { border-color:var(--accent-ring); color:var(--accent); }
     .trancy-password.is-hidden { cursor:default; color:var(--text-3); }
+    .trancy-reveal { margin-left:6px; padding:0 6px; font-family:var(--font-mono); font-size:.68rem; text-transform:uppercase; letter-spacing:.04em; color:var(--text-3); background:transparent; border:1px solid var(--border); border-radius:var(--radius-pill); cursor:pointer; transition:color .15s ease,border-color .15s ease; }
+    .trancy-reveal:hover { color:var(--accent); border-color:var(--accent-ring); }
     .trancy-mode-tabs { display:flex; gap:3px; padding:3px; background:var(--surface-2); border:1px solid var(--border); border-radius:var(--radius-pill); }
     .trancy-mode-tabs .tab-btn { flex:1 1 0; padding:5px 8px; font-size:.78rem; border-radius:var(--radius-pill); }
     .trancy-credential-fields { display:grid; gap:10px; }

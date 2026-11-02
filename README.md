@@ -24,7 +24,7 @@ https://github.com/Space3044/edge-tts
 - AI 润色：调用 OpenAI 兼容接口润色输入文本。
 - 服务配置：转录服务的 endpoint、模型和 API Key 在页面里设置，API Key 用 `SECRETS_ENCRYPTION_KEY` 加密后存进 D1；页面只显示掩码尾巴，不回传明文。
 - 浏览器本地保存：AI 润色的 Base URL、API Key、模型和润色指令只保存在当前浏览器本地。
-- Trancy 多账号网关：单独一个 Gateway 标签页管理多个 Trancy 账号，支持**邮箱密码登录 / 注册 / 粘贴 token** 三种添加方式；token 加密存进 D1、密码明文保存（为了一键重新登录），Cloudflare cron 每天调 `/1/user/profile` 自动续期，转发接口按最近最少使用轮换账号并自动摘掉失效 token。
+- Trancy 多账号网关：单独一个 Gateway 标签页管理多个 Trancy 账号，支持**邮箱密码登录 / 注册 / 粘贴 token** 三种添加方式；token 和密码都加密存进 D1（密码只在你点「Show」或重新登录时才解密），Cloudflare cron 每天调 `/1/user/profile` 自动续期，转发接口按最近最少使用轮换账号并自动摘掉失效 token。
 - YouTube 字幕调度：`POST /api/trancy/captions` 按账号的每日 AI 字幕额度（免费号 5 个视频/天）挑账号生成字幕并直接返回，额度耗尽的账号停泊到次日 UTC 零点；网关不保存结果。
 - 多语言界面：支持中文、英文、日文、韩文、西班牙文、法文、德文、俄文。
 
@@ -131,7 +131,7 @@ npx wrangler secret put SECRETS_ENCRYPTION_KEY   # base64 的 32 字节
 ```
 
 - `SECRETS_ENCRYPTION_KEY` 是唯一的 secret：只用于加解密，不参与鉴权；换掉它会导致已保存的密钥和 Trancy token 无法解密，需要重新填写。
-- **鉴权全部交给 Cloudflare Access**：Worker 自己不校验任何 token。`/api/*` 必须挂 Access 策略（见下一节），因为 `GET /api/trancy/accounts` 会回明文密码、`POST /api/trancy/captions` 会花账号额度。裸部署到公网等于把这些直接暴露出去。
+- **鉴权全部交给 Cloudflare Access**：Worker 自己不校验任何 token。`/api/*` 必须挂 Access 策略（见下一节），因为 `GET /api/trancy/accounts/:id/password` 能解出密码、`POST /api/trancy/captions` 会花账号额度。裸部署到公网等于把这些直接暴露出去。
 - 除密钥外的变量都不写入仓库，`wrangler.toml` 里也不出现明文。
 
 ## Cloudflare Access
@@ -419,7 +419,7 @@ curl -X PUT "https://your-worker.example.com/api/providers/openai" \
 ```
 
 - `apiKey` 留空表示保留已保存的密钥，传 `"clearApiKey": true` 才会清空。
-- 响应只包含 `configured`、`keySource`（`db` / `env` / `none`）和 `keyTail`（例如 `••••a1b2`），不会回传明文。
+- 响应只包含 `configured`、`keySource`（`db` / `none`）和 `keyTail`（例如 `••••a1b2`），不会回传明文。
 - 写接口不做应用层校验：只要请求能穿过 Cloudflare Access 就被接受。Access 是唯一的一道门，务必确认 `/api/*` 已覆盖。
 
 ### Trancy 多账号网关
@@ -444,7 +444,7 @@ curl -X PUT "https://your-worker.example.com/api/providers/openai" \
 数据与密钥：
 
 - 存在 D1 的 `trancy_account` 表；**token 用 `SECRETS_ENCRYPTION_KEY` 做 AES-256-GCM 加密**，`aad` 绑定 `trancy:<行 id>`，密文跨行复制解不开。
-- **密码按明文保存**（`trancy_account.password`）：它是一键「重新登录」的前提，Trancy 掉 token 后不用再翻 cookie。`GET /api/trancy/accounts` 会把密码原样返回，所以这个接口必须在 Cloudflare Access 后面。
+- **密码加密保存**（`trancy_account.password_cipher`）：与 token 同一套 AES-256-GCM 信封，`aad` 用 `trancy-password:<行 id>`（与 token 的 `trancy:<行 id>` 不同，两个密文不能互换）。解密只发生在两处：`POST /api/trancy/accounts/:id/login` 真要登录时，以及点「Show」调用的 `GET /api/trancy/accounts/:id/password`。列表接口只回 `hasPassword`，不带明文。
 - 页面用**邮箱**作为账号标识（还没探测过的账号退回 JWT 里的名字），并显示 token 尾巴（`••••a1b2c3`）、会员状态、最近检查时间和密码（点击可复制）。没有额外的备注名要填。
 - 同一个 Trancy 用户重复添加只更新那一行（按 JWT 里的 `id` 判重），等同于「换 token 复活」。
 
@@ -456,6 +456,7 @@ POST   /api/trancy/accounts              # 粘贴 token 添加 {"token":"eyJ..."
 POST   /api/trancy/accounts/login        # 登录并添加 {"email":"...","password":"..."}
 POST   /api/trancy/accounts/signup       # 注册并添加，字段同上
 POST   /api/trancy/accounts/:id/login    # 用保存的密码重新登录（token 失效后的恢复手段）
+GET    /api/trancy/accounts/:id/password # 按需解密出密码，供面板显示/复制（Cache-Control: no-store）
 POST   /api/trancy/accounts/:id/refresh  # 立刻探测单个账号
 POST   /api/trancy/accounts/refresh      # 立刻探测全部（默认跳过 10 分钟内查过的）
 DELETE /api/trancy/accounts/:id          # 删除账号
@@ -655,7 +656,7 @@ git diff --check
 - 项目需要 D1 存服务配置；没有 D1 binding 时设置接口会返回明确错误，页面里的 Provider settings 不可写。
 - 更换 `SECRETS_ENCRYPTION_KEY` 会让已保存的 API Key 无法解密，需要在页面里重新填写一次。
 - Trancy token 没有 `exp`，不续期会在一个未测出的窗口后失效，所以 `wrangler.toml` 里的 cron 是这条链路的一部分：关掉 cron，账号迟早会变成 `dead`（有密码就点一次重新登录，没有密码只能重贴 token）。部署前记得执行 `npx wrangler d1 migrations apply voicecraft --remote`。
-- Trancy 的密码在 D1 里是**明文**，谁拿到数据库或穿过 Access 就等于拿到这些账号。`/api/*` 必须挂 Access，否则 `GET /api/trancy/accounts` 会把密码直接吐给任何访问者。
+- Trancy 的密码在 D1 里是密文，但**解密只需要 `SECRETS_ENCRYPTION_KEY`**：同时拿到数据库和这个 secret 的人仍能还原密码，所以 `/api/*` 必须挂 Access。换掉 `SECRETS_ENCRYPTION_KEY` 会让已有密码和 token 一起失效，账号需要重新登录或重贴 token。
 - 轮换多个账号等于把免费额度拆给不同账号，这类用法通常违反服务的服务条款；风控或封号在网关里表现为 `status=banned` 或上游 `data:null`，不要把它放在关键路径上。
 
 ## 开源协议

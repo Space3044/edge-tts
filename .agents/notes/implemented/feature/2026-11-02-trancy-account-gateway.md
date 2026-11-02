@@ -44,11 +44,11 @@ Status: implemented
 失败的形状是 **`200 {"code":409,"message":"Incorrect password"}`**，判定同样不看状态码，
 `message !== "ok"` 即失败，并且把 Trancy 自己的文案透给前端（`email: Invalid email; ...` 这类校验信息很有用）。
 
-密码明文落库是使用者明确要求的取舍（`migrations/0006` 的 `password` 列），
-换来的能力是 `POST /api/trancy/accounts/:id/login` 一键复活 `dead` 账号。
-代价用**读侧收口**压低：`GET /api/trancy/accounts` 只有在请求本身通过写权限校验时才回 `password`，
-否则只给 `hasPassword: true` 和空串——`locked` 部署、匿名请求都看不到密码。
-token 仍然加密：页面只显示尾巴，密文跨行不可解密。
+密码后来改成**加密落库**（`migrations/0008` 把 `password` 换成 `password_cipher`）：
+与 token 同一套 AES-256-GCM 信封，但 `aad` 用 `trancy-password:<行 id>`，
+所以两个密文不能互换。解密只发生在两处——`POST /accounts/:id/login` 真要登录时，
+以及面板点「Show」时调用的 `GET /accounts/:id/password`。
+列表接口只回 `hasPassword`，明文不经过任何常规读路径。
 
 ### 凭据就是一条 token，不是 cookie jar
 
@@ -101,9 +101,9 @@ token 走 `src/secrets/crypto.js` 的 AES-256-GCM 信封，`aad = trancy:<行 id
 
 - **保留手填备注名**：能让同一个邮箱的两个账号看起来不一样，但实际场景里一个邮箱就是一个账号，
   而 `label` 又与 token 一起成为「两个真相」；识别账号本来就有 `user_id` 和 `email` 两个稳定键。
-- **密码也加密（和 token 同样信封）**：更安全，但页面就没法「显示密码」——而显示密码正是
-  使用者要的可用性（同一密码复用到别处、手动去官网登录核对）。选择明文 + 读侧按写权限收口，
-  而不是加密后到处解不开。真要收紧，改成加密只需改 `saveCredentialLogin` 与 `accountView` 两处。
+- **密码保持明文**：第一版就是这么做的，理由是「面板要能直接看」。后来使用者要求加密，
+  于是改成「默认掩码 + 点 Show 时按需解密」：既保住「能看」这个可用性，
+  又不让明文成为落库形态。
 - **用无头浏览器模拟登录拿 cookie**：能绕过任何未来的前端风控，但要在 Worker 里跑浏览器（不可行）
   或额外维护一台机器；而 `/1/login` 已经是纯 JSON 接口，直接调更短、更快、更稳。
 - **cookie jar 方案（存整条 `Cookie:` 头 + 合并 `Set-Cookie`）**：这是 Microsoft playground 的老路。

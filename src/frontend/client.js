@@ -235,16 +235,27 @@ const CLIENT_SCRIPT_TEMPLATE = `\n    const VOICES = __VOICECRAFT_VOICES__;\n   
       if (account.hasPassword) {
         var credLine = document.createElement('p'); credLine.className = 'trancy-account-meta trancy-account-creds';
         credLine.appendChild(document.createTextNode(t('trancy.password') + ': '));
-        if (account.password) {
-          var passwordText = document.createElement('code'); passwordText.className = 'trancy-password';
-          passwordText.title = t('trancy.copyPassword');
-          passwordText.textContent = account.password;
-          passwordText.addEventListener('click', function() { copyTrancyPassword(account.password); });
-          credLine.appendChild(passwordText);
-        } else {
-          var hidden = document.createElement('span'); hidden.className = 'trancy-password is-hidden'; hidden.textContent = t('trancy.passwordHidden');
-          credLine.appendChild(hidden);
-        }
+        // Stored encrypted: the mask is all the list ever carries. The plaintext
+        // is fetched once, on demand, and then kept only in this closure.
+        var passwordText = document.createElement('code'); passwordText.className = 'trancy-password';
+        passwordText.textContent = '••••••••';
+        var revealed = '';
+        passwordText.addEventListener('click', function() {
+          if (revealed) { copyTrancyPassword(revealed); return; }
+          revealTrancyPassword(account.id, passwordText, function(value) {
+            revealed = value;
+          });
+        });
+        credLine.appendChild(passwordText);
+        var revealBtn = document.createElement('button'); revealBtn.type = 'button'; revealBtn.className = 'trancy-reveal'; revealBtn.textContent = t('trancy.revealPassword');
+        revealBtn.addEventListener('click', function() {
+          if (revealed) { revealed = ''; passwordText.textContent = '••••••••'; revealBtn.textContent = t('trancy.revealPassword'); return; }
+          revealTrancyPassword(account.id, passwordText, function(value) {
+            revealed = value;
+            revealBtn.textContent = t('trancy.hidePassword');
+          });
+        });
+        credLine.appendChild(revealBtn);
         main.appendChild(credLine);
       }
       if (account.status === 'dead' || account.status === 'banned') {
@@ -357,6 +368,18 @@ const CLIENT_SCRIPT_TEMPLATE = `\n    const VOICES = __VOICECRAFT_VOICES__;\n   
         setTrancyStatus(t('trancy.loggedIn'), 'ok');
       } catch (err) { setTrancyStatus(t('trancy.loginFailed') + ': ' + err.message, 'error'); }
       finally { if (button) { button.disabled = false; button.textContent = t('trancy.relogin'); } }
+    }
+    async function revealTrancyPassword(id, element, onRevealed) {
+      try {
+        var response = await fetch(TRANCY_API_URL + '/' + encodeURIComponent(id) + '/password', { headers: { Accept: 'application/json' } });
+        if (!response.ok) throw new Error(await readJsonError(response, t('trancy.passwordUnreadable')));
+        var payload = await response.json();
+        element.textContent = payload.password || '';
+        element.title = t('trancy.copyPassword');
+        if (onRevealed) onRevealed(payload.password || '');
+      } catch (err) {
+        setTrancyStatus(t('trancy.passwordUnreadable') + ': ' + err.message, 'error');
+      }
     }
     function copyTrancyPassword(password) {
       if (!password) return;
