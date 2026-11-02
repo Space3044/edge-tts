@@ -3,7 +3,7 @@ import { transcribe as transcribeWithElevenLabs } from "../elevenlabs/stt.js";
 import { transcribeWithGoogle } from "../google/stt.js";
 import { getMicrosoftAccount, saveMicrosoftTokens, resolveProvider } from "../secrets/store.js";
 import { accessTokenAudienceProblem, canRefreshMicrosoftToken, refreshAccessToken } from "../microsoft/oauth.js";
-import { transcribeWithPlayground } from "../microsoft/playground.js";
+import { renewPlaygroundSession, transcribeWithPlayground } from "../microsoft/playground.js";
 import { buildMicrosoftEndpoint, transcribeWithMicrosoft } from "../microsoft/stt.js";
 
 const MAX_AUDIO_FILE_SIZE = 50 * 1024 * 1024;
@@ -767,11 +767,26 @@ async function transcribeWithPlaygroundEngine(formData, { account, cookies, env 
     } catch (error) {
         const message = error instanceof Error ? error.message : "Playground 转录失败";
         if (message.includes("cookie 已失效")) {
-            return errorResponse("Playground cookie 已失效，请在服务配置里粘贴新的 cookie", {
-                status: 401,
-                type: "authentication_error",
-                code: "microsoft_cookie_expired"
-            });
+            // Renew from the stored Microsoft identity cookies, then retry once.
+            // Requires the multi-domain jar; a playground-only cookie cannot do
+            // this and lands in the catch below.
+            try {
+                const renewed = await renewPlaygroundSession(cookies);
+                const retried = await transcribeWithPlayground({
+                    cookies: renewed.serialized,
+                    data,
+                    filename,
+                    mimeType
+                });
+                await saveMicrosoftTokens(env, { cookies: renewed.serialized });
+                return jsonResponse(retried);
+            } catch (renewError) {
+                console.error("Playground cookie renewal failed:", renewError);
+                return errorResponse(
+                    `Playground cookie 已失效，且无法自动续期：${renewError instanceof Error ? renewError.message : "未知原因"}`,
+                    { status: 401, type: "authentication_error", code: "microsoft_cookie_expired" }
+                );
+            }
         }
         console.error("Microsoft playground STT error:", error);
         return errorResponse(message, {

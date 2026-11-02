@@ -232,7 +232,18 @@ Microsoft 有两条路，按你在 Provider settings 里填的东西自动选择
 登录 [playground.microsoft.ai](https://playground.microsoft.ai/chat)，从开发者工具复制请求头里的 `Cookie` 值，粘到 Microsoft 卡片的「Playground cookie」里。Worker 用这个 cookie 走 Playground 的内部接口（`conversations.create` → `addAudioPromptAndInitResponse` → `/api/chat/stream` 的 SSE），完成后自动删除会话。
 
 - 限制：**只吃 mp3/wav，单次 ≤ 25MB、≤ 3615 秒**；音频以 base64 塞进 JSON（Playground 唯一的上传方式）
-- 有效期：`AppServiceAuthSession` 是服务端会话 cookie，过期后**只能重新粘贴**。Worker 端无法静默续期——Easy Auth 的 `/.auth/login/aad?prompt=none` 会把请求转去 `login.microsoftonline.com`，而静默续期依赖那个域下的微软身份 cookie（`ESTSAUTH` / `ESTSAUTHPERSISTENT`），浏览器里能自动带上，Worker 里带不了。过期时接口返回 `401 microsoft_cookie_expired`
+- 续期分两种粘法：
+  - **只粘贴 `Cookie` 请求头**（只有 playground 域）→ 会话过期后必须重新粘贴，接口返回 `401 microsoft_cookie_expired`
+  - **粘贴多域 JSON**（playground 域 + `login.microsoftonline.com` 域，见下）→ 会话过期时 Worker 自动续期：`/.auth/login/aad?prompt=none` → 拿去微软域的身份 cookie 换 code → POST 回 `/api/auth/login/aad/callback` 拿新的 `AppServiceAuthSession`，成功后把新 jar 写回 D1 并重试转录。身份 cookie 是约 90 天滑动过期，所以一次粘贴能撑很久
+- 多域 JSON 长这样（DevTools → Application → Cookies 两个域各导一份，或用 Cookie-Editor 导出后合并）：
+
+```json
+[
+  { "name": "AppServiceAuthSession", "value": "…", "domain": "playground.microsoft.ai", "path": "/" },
+  { "name": "ESTSAUTHPERSISTENT", "value": "…", "domain": ".login.microsoftonline.com", "path": "/" },
+  { "name": "ESTSAUTH", "value": "…", "domain": ".login.microsoftonline.com", "path": "/" }
+]
+```
 - 首次使用前要在网页上同意生物特征（音频）授权，否则返回 451 并提示
 
 **② Azure 凭据（需要 Azure 订阅）**

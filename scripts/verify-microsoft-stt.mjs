@@ -1,7 +1,8 @@
 import assert from "node:assert/strict";
 import { accessTokenAudienceProblem, accessTokenExpiry, isAccessTokenExpired, refreshAccessToken, decodeAccessToken } from "../src/microsoft/oauth.js";
 import { buildMicrosoftEndpoint, transcribeWithMicrosoft } from "../src/microsoft/stt.js";
-import { PLAYGROUND_MAX_BYTES, extractRichTranscription, normalizeRichTranscription, parseCookieString, transcribeWithPlayground } from "../src/microsoft/playground.js";
+import { PLAYGROUND_MAX_BYTES, extractRichTranscription, normalizeRichTranscription, parseCookieString, renewPlaygroundSession, transcribeWithPlayground } from "../src/microsoft/playground.js";
+import { applySetCookies, cookieHeaderFor, parseCookieJar, serializeCookieJar } from "../src/microsoft/cookies.js";
 import { getMicrosoftAccount, listProviderStatus, saveMicrosoftTokens } from "../src/secrets/store.js";
 import { handleAudioTranscription } from "../src/routes/transcriptions.js";
 import { handleProviders } from "../src/routes/providers.js";
@@ -546,33 +547,189 @@ const expiredExp = Math.floor(Date.now() / 1000) - 60;
   }
 }
 
-// 15. An expired session is reported, not silently retried: the Worker cannot
-//     reach the Microsoft identity cookies that live on another domain.
+// 15. Domain-aware jar: cookies only travel to the host they belong to.
+{
+  const jar = parseCookieJar(JSON.stringify([
+    { name: "AppServiceAuthSession", value: "s1", domain: "playground.microsoft.ai", path: "/" },
+    { name: "ESTSAUTHPERSISTENT", value: "id1", domain: ".login.microsoftonline.com", path: "/" }
+  ]));
+  assert.equal(jar.length, 2);
+  assert.equal(cookieHeaderFor(jar, "https://playground.microsoft.ai/api/x"), "AppServiceAuthSession=s1");
+  assert.equal(
+    cookieHeaderFor(jar, "https://login.microsoftonline.com/common/oauth2/v2.0/authorize"),
+    "ESTSAUTHPERSISTENT=id1"
+  );
+
+  const merged = applySetCookies(jar, ["AppServiceAuthSession=s2; Path=/; HttpOnly"], "https://playground.microsoft.ai/.auth/login/aad/callback");
+  assert.equal(cookieHeaderFor(merged, "https://playground.microsoft.ai/"), "AppServiceAuthSession=s2");
+  assert.equal(cookieHeaderFor(merged, "https://login.microsoftonline.com/"), "ESTSAUTHPERSISTENT=id1");
+
+  const cleared = applySetCookies(merged, ["AppServiceAuthSession=; Max-Age=0"], "https://playground.microsoft.ai/");
+  assert.equal(cookieHeaderFor(cleared, "https://playground.microsoft.ai/"), "");
+
+  const roundTrip = parseCookieJar(serializeCookieJar(merged));
+  assert.equal(roundTrip.length, 2);
+
+  // A playground-only header cannot be renewed on the server side.
+  await assert.rejects(
+    () => renewPlaygroundSession("MSCC=NR; AppServiceAuthSession=abc"),
+    /login\.microsoftonline\.com/
+  );
+}
+
+// 16. Silent renewal walks the Easy Auth hops the way a browser would.
 {
   const originalFetch = globalThis.fetch;
-  globalThis.fetch = async (url) => {
+  const calls = [];
+  globalThis.fetch = async (url, init = {}) => {
     const href = String(url);
-    if (href.includes("conversations.create")) {
-      return new Response("{}", { status: 302, headers: { location: "/.auth/login/aad" } });
+    calls.push({ url: href, cookie: String(init.headers?.Cookie || ""), init });
+
+    if (href.includes("/.auth/login/aad?prompt=none")) {
+      return new Response(null, {
+        status: 302,
+        headers: {
+          location: "https://login.microsoftonline.com/common/oauth2/v2.0/authorize?prompt=none&nonce=n1",
+          "set-cookie": "Nonce=n1; Path=/; HttpOnly"
+        }
+      });
+    }
+    if (href.startsWith("https://login.microsoftonline.com")) {
+      return new Response(
+        "<html><body><form method=\"POST\" action=\"https://playground.microsoft.ai/.auth/login/aad/callback\">" +
+        "<input type=\"hidden\" name=\"code\" value=\"auth-code\"/>" +
+        "<input type=\"hidden\" name=\"state\" value=\"redir=%2Fchat\"/>" +
+        "</form></body></html>",
+        { status: 200, headers: { "Content-Type": "text/html" } }
+      );
+    }
+    if (href.includes("/.auth/login/aad/callback")) {
+      return new Response(null, {
+        status: 302,
+        headers: {
+          location: "/chat",
+          "set-cookie": "AppServiceAuthSession=fresh-session; Path=/; HttpOnly"
+        }
+      });
+    }
+    if (href.endsWith("/.auth/me")) {
+      return new Response("{}", { status: init.headers?.Cookie?.includes("fresh-session") ? 200 : 401 });
     }
     throw new Error(`unexpected fetch: ${href}`);
   };
 
   try {
-    await assert.rejects(
-      () => transcribeWithPlayground({
-        cookies: "AppServiceAuthSession=dead",
-        data: new Blob(["audio"], { type: "audio/mpeg" }),
-        filename: "sample.mp3"
-      }),
-      /cookie 已失效/
-    );
+    const jar = serializeCookieJar(parseCookieJar(JSON.stringify([
+      { name: "AppServiceAuthSession", value: "dead", domain: "playground.microsoft.ai", path: "/" },
+      { name: "ESTSAUTHPERSISTENT", value: "alive", domain: ".login.microsoftonline.com", path: "/" }
+    ])));
+
+    const renewed = await renewPlaygroundSession(jar);
+    assert.match(renewed.serialized, /fresh-session/);
+
+    const loginHop = calls.find(call => call.url.includes("/.auth/login/aad?prompt=none"));
+    assert.match(loginHop.cookie, /AppServiceAuthSession=dead/, "the playground hop sends the playground cookie");
+    assert.ok(!loginHop.cookie.includes("ESTSAUTHPERSISTENT"), "identity cookies must not leak to the playground host");
+
+    const idpHop = calls.find(call => call.url.startsWith("https://login.microsoftonline.com"));
+    assert.match(idpHop.cookie, /ESTSAUTHPERSISTENT=alive/, "the IdP hop sends the identity cookie");
+
+    const callback = calls.find(call => call.url.includes("/.auth/login/aad/callback"));
+    assert.equal(callback.init.method, "POST");
+    assert.match(String(callback.init.body), /code=auth-code/);
+
+    const me = calls.find(call => call.url.endsWith("/.auth/me"));
+    assert.match(me.cookie, /fresh-session/);
   } finally {
     globalThis.fetch = originalFetch;
   }
 }
 
-// 16. Route: playground cookies take precedence over Azure credentials.
+// 16b. Route: an expired cookie is renewed and the transcription retried.
+{
+  const env = { DB: createFakeD1(), SECRETS_ENCRYPTION_KEY: encryptionKey, CF_ACCESS_TRUSTED: "1" };
+  await handleProviders(
+    new Request("https://voicecraft.example.com/api/providers/microsoft", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        cookies: JSON.stringify([
+          { name: "AppServiceAuthSession", value: "dead", domain: "playground.microsoft.ai", path: "/" },
+          { name: "ESTSAUTHPERSISTENT", value: "alive", domain: ".login.microsoftonline.com", path: "/" }
+        ])
+      })
+    }),
+    env
+  );
+
+  const originalFetch = globalThis.fetch;
+  let sessionsSeen = [];
+  let renewals = 0;
+  globalThis.fetch = async (url, init = {}) => {
+    const href = String(url);
+    const cookie = String(init.headers?.Cookie || "");
+
+    if (href.includes("/.auth/login/aad?prompt=none")) {
+      renewals += 1;
+      return new Response(null, { status: 302, headers: { location: "https://login.microsoftonline.com/common/oauth2/v2.0/authorize" } });
+    }
+    if (href.startsWith("https://login.microsoftonline.com")) {
+      return new Response(
+        '<form method="POST" action="https://playground.microsoft.ai/.auth/login/aad/callback"><input name="code" value="c1"></form>',
+        { status: 200 }
+      );
+    }
+    if (href.includes("/.auth/login/aad/callback")) {
+      return new Response(null, { status: 302, headers: { location: "/chat", "set-cookie": "AppServiceAuthSession=fresh; Path=/" } });
+    }
+    if (href.endsWith("/.auth/me")) {
+      return new Response("{}", { status: cookie.includes("fresh") ? 200 : 401 });
+    }
+    if (href.includes("conversations.create")) {
+      sessionsSeen.push(cookie);
+      if (!cookie.includes("fresh")) {
+        return new Response("{}", { status: 302, headers: { location: "/.auth/login/aad" } });
+      }
+      return new Response(JSON.stringify({ id: "conv-r", title: "t" }), { status: 200, headers: { "Content-Type": "application/json" } });
+    }
+    if (href.includes("addAudioPromptAndInitResponse")) {
+      return new Response(JSON.stringify({ userMessage: { id: "u" }, modelMessage: { id: "m" } }), { status: 200, headers: { "Content-Type": "application/json" } });
+    }
+    if (href.endsWith("/api/chat/stream")) {
+      return new Response('data: {"rich_transcription":{"utterances":[{"start":0,"end":1,"text":"renewed ok","words":[]}]}}\n\n', { status: 200 });
+    }
+    if (href.includes("conversations.delete")) {
+      return new Response("{}", { status: 200 });
+    }
+    throw new Error(`unexpected fetch: ${href}`);
+  };
+
+  try {
+    const formData = new FormData();
+    formData.append("file", new File(["audio"], "sample.mp3", { type: "audio/mpeg" }));
+    formData.append("engine", "microsoft");
+
+    const response = await handleAudioTranscription(
+      new Request("https://voicecraft.example.com/v1/audio/transcriptions", { method: "POST", body: formData }),
+      env
+    );
+    const body = await response.json();
+    assert.equal(response.status, 200, JSON.stringify(body));
+    assert.equal(body.text, "renewed ok");
+    assert.equal(renewals, 1, "renewal should run exactly once");
+    assert.equal(sessionsSeen.length, 2, "the transcription should be retried after renewal");
+    assert.equal(sessionsSeen[0].includes("dead"), true);
+    assert.equal(sessionsSeen[1].includes("fresh"), true);
+
+    // The renewed jar is persisted, so the next run needs no renewal.
+    const stored = await getMicrosoftAccount(env);
+    assert.match(stored.playgroundCookies, /fresh/);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+}
+
+// 17. Route: playground cookies take precedence over Azure credentials.
 {
   const env = { DB: createFakeD1(), SECRETS_ENCRYPTION_KEY: encryptionKey, CF_ACCESS_TRUSTED: "1" };
   const saved = await handleProviders(

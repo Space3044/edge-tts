@@ -19,6 +19,8 @@
  * string. Expiry therefore means "paste a fresh cookie".
  */
 
+import { applySetCookies, cookieHeaderFor, hasDomain, parseCookieJar, serializeCookieJar, LOGIN_HOST, PLAYGROUND_HOST } from "./cookies.js";
+
 export const PLAYGROUND_BASE = "https://playground.microsoft.ai";
 export const PLAYGROUND_MODEL = "mai-transcribe-2";
 export const PLAYGROUND_MAX_BYTES = 0x1900000; // 25 MiB, measured on the raw file
@@ -28,45 +30,125 @@ const STREAM_TIMEOUT_MS = 600000;
 
 /** Parse a pasted cookie header ("a=1; b=2") or a JSON cookie array. */
 export function parseCookieString(input) {
-    const raw = String(input || "").trim();
-    if (!raw) {
-        return "";
-    }
-
-    if (raw.startsWith("[") || raw.startsWith("{")) {
-        try {
-            const parsed = JSON.parse(raw);
-            const list = Array.isArray(parsed) ? parsed : parsed?.cookies;
-            if (Array.isArray(list)) {
-                return list
-                    .filter(item => item && item.name)
-                    .map(item => `${item.name}=${item.value ?? ""}`)
-                    .join("; ");
-            }
-        } catch {
-            // Fall through to header parsing.
-        }
-    }
-
-    return raw
-        .replace(/^cookie\s*:\s*/i, "")
-        .split(/\r?\n/)
-        .map(line => line.trim())
-        .filter(Boolean)
+    return parseCookieJar(input)
+        .map(cookie => `${cookie.name}=${cookie.value}`)
         .join("; ");
 }
 
-async function postJson(cookies, path, body, { requestId, signal } = {}) {
+/**
+ * Renew the short-lived playground session from the Microsoft identity
+ * cookies, following the same hops a browser makes:
+ *
+ *   1. GET  playground /.auth/login/aad?prompt=none     -> 302 to the IdP
+ *   2. GET  login.microsoftonline.com/...                -> form_post with code+state
+ *   3. POST playground /.auth/login/aad/callback         -> new AppServiceAuthSession
+ *
+ * Step 2 only succeeds while the identity cookies (ESTSAUTH /
+ * ESTSAUTHPERSISTENT, ~90 day sliding) are still valid, which is why one paste
+ * of both domains keeps working for weeks instead of hours.
+ */
+export async function renewPlaygroundSession(inputJar) {
+    const jar = Array.isArray(inputJar) ? inputJar.map(cookie => ({ ...cookie })) : parseCookieJar(inputJar);
+    if (!jar.length) {
+        throw new Error("Playground 未配置 cookie");
+    }
+    if (!hasDomain(jar, LOGIN_HOST)) {
+        throw new Error(
+            "只能续期带微软身份 cookie 的 jar：请从浏览器同时导出 playground.microsoft.ai 和 login.microsoftonline.com 两个域的 cookie"
+        );
+    }
+
+    const loginEntry = `${PLAYGROUND_BASE}/.auth/login/aad?prompt=none&post_login_redirect_uri=%2Fchat`;
+    const hop1 = await fetch(loginEntry, {
+        headers: { Cookie: cookieHeaderFor(jar, loginEntry) },
+        redirect: "manual"
+    });
+    let currentJar = applySetCookies(jar, collectSetCookies(hop1), loginEntry);
+
+    const authorizeUrl = hop1.headers.get("location");
+    if (!authorizeUrl) {
+        throw new Error("Easy Auth 没有返回微软授权地址，无法续期");
+    }
+
+    const hop2 = await fetch(authorizeUrl, {
+        headers: { Cookie: cookieHeaderFor(currentJar, authorizeUrl) },
+        redirect: "manual"
+    });
+    currentJar = applySetCookies(currentJar, collectSetCookies(hop2), authorizeUrl);
+
+    const form = hop2.ok ? await readFormPost(hop2) : null;
+    if (!form) {
+        const next = hop2.headers.get("location");
+        if (hop2.status >= 300 && hop2.status < 400 && next) {
+            throw new Error("微软要求重新登录（prompt=none 被拒绝），需要重新粘贴 cookie");
+        }
+        throw new Error("微软没有返回回调表单，无法续期");
+    }
+
+    const callbackUrl = form.action || `${PLAYGROUND_BASE}/.auth/login/aad/callback`;
+    const hop3 = await fetch(callbackUrl, {
+        method: "POST",
+        headers: {
+            "Content-Type": "application/x-www-form-urlencoded",
+            Cookie: cookieHeaderFor(currentJar, callbackUrl)
+        },
+        body: new URLSearchParams(form.fields).toString(),
+        redirect: "manual"
+    });
+    currentJar = applySetCookies(currentJar, collectSetCookies(hop3), callbackUrl);
+
+    const probe = await fetch(`${PLAYGROUND_BASE}/.auth/me`, {
+        headers: { Cookie: cookieHeaderFor(currentJar, `${PLAYGROUND_BASE}/.auth/me`), Accept: "application/json" },
+        redirect: "manual"
+    }).catch(() => null);
+
+    if (!probe || probe.status !== 200) {
+        throw new Error("续期后会话仍无效，需要重新粘贴 cookie");
+    }
+
+    return { jar: currentJar, serialized: serializeCookieJar(currentJar) };
+}
+
+function collectSetCookies(response) {
+    if (!response) return [];
+    if (typeof response.headers.getSetCookie === "function") {
+        return response.headers.getSetCookie();
+    }
+    return [response.headers.get("set-cookie")].filter(Boolean);
+}
+
+/** Extract the auto-submitted form fields Easy Auth posts back to the app. */
+async function readFormPost(response) {
+    const text = await response.text().catch(() => "");
+    const formTag = text.match(/<form[^>]*action=["']([^"']+)["'][^>]*>/i);
+    const action = formTag ? formTag[1].replace(/&amp;/g, "&") : "";
+
+    const fields = {};
+    const inputPattern = /<input[^>]*name=["']([^"']+)["'][^>]*value=["']([^"']*)["'][^>]*>/gi;
+    let match;
+    while ((match = inputPattern.exec(text))) {
+        fields[match[1]] = match[2].replace(/&amp;/g, "&");
+    }
+
+    const hasCode = Object.keys(fields).some(name => name.toLowerCase() === "code");
+    if (!hasCode && !action) {
+        return null;
+    }
+    return { action, fields };
+}
+
+async function postJson(jar, path, body, { requestId, signal } = {}) {
+    const url = `${PLAYGROUND_BASE}${path}`;
     const headers = {
         "Content-Type": "application/json",
         Accept: "application/json",
-        Cookie: cookies
+        Cookie: cookieHeaderFor(jar, url)
     };
     if (requestId) {
         headers["x-request-id"] = requestId;
     }
 
-    return fetch(`${PLAYGROUND_BASE}${path}`, {
+    return fetch(url, {
         method: "POST",
         headers,
         body: JSON.stringify(body),
@@ -184,8 +266,8 @@ export function transcribeWithPlayground({
 }
 
 async function runTranscription({ cookies, data, filename, mimeType, diarize, signal }) {
-    const jar = parseCookieString(cookies);
-    if (!jar) {
+    const jar = parseCookieJar(cookies);
+    if (!jar.length || !cookieHeaderFor(jar, PLAYGROUND_BASE)) {
         throw new Error("Playground 未配置 cookie：请登录 playground.microsoft.ai 后复制 cookie");
     }
 
@@ -262,12 +344,13 @@ async function runTranscription({ cookies, data, filename, mimeType, diarize, si
         throw new Error("Playground 没有返回待处理的模型消息 id");
     }
 
-    const streamResponse = await fetch(`${PLAYGROUND_BASE}/api/chat/stream`, {
+    const streamUrl = `${PLAYGROUND_BASE}/api/chat/stream`;
+    const streamResponse = await fetch(streamUrl, {
         method: "POST",
         headers: {
             "Content-Type": "application/json",
             Accept: "text/event-stream",
-            Cookie: jar,
+            Cookie: cookieHeaderFor(jar, streamUrl),
             "x-request-id": crypto.randomUUID()
         },
         body: JSON.stringify({
