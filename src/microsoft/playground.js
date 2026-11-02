@@ -214,6 +214,34 @@ export function extractRichTranscription(sseText) {
     return found;
 }
 
+/**
+ * Cheap liveness probe used by the optional cron trigger. It does not create a
+ * conversation: it only tells us (and the logs) whether the stored session is
+ * still accepted, and keeps it warm if Easy Auth slides on activity.
+ */
+export async function keepPlaygroundSessionAlive(env) {
+    try {
+        const { getMicrosoftAccount } = await import("../secrets/store.js");
+        const account = await getMicrosoftAccount(env);
+        const header = cookieHeaderFor(parseCookieJar(account.playgroundCookies), `${PLAYGROUND_BASE}/.auth/me`);
+        if (!header) {
+            return { checked: false, reason: "no-cookie" };
+        }
+
+        const response = await fetch(`${PLAYGROUND_BASE}/.auth/me`, {
+            headers: { Cookie: header, Accept: "application/json" },
+            redirect: "manual"
+        });
+        if (response.status !== 200) {
+            console.warn(`Playground session probe returned ${response.status}`);
+        }
+        return { checked: true, status: response.status };
+    } catch (error) {
+        console.error("Playground session probe failed:", error);
+        return { checked: false, reason: "error" };
+    }
+}
+
 function seconds(value) {
     const number = Number(value);
     return Number.isFinite(number) ? number : null;

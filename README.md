@@ -236,7 +236,20 @@ Microsoft 有两条路，按你在 Provider settings 里填的东西自动选择
   - **只粘贴 `Cookie` 请求头**（只有 playground 域）→ 会话过期后必须重新粘贴，接口返回 `401 microsoft_cookie_expired`
   - **粘贴多域 JSON**（playground 域 + `login.microsoftonline.com` 域，见下）→ 会话过期时 Worker 自动续期：`/.auth/login/aad?prompt=none` → 拿去微软域的身份 cookie 换 code → POST 回 `/.auth/login/aad/callback` 拿新的 `AppServiceAuthSession`，成功后把新 jar 写回 D1 并重试转录
 
-自动续期**依赖 `ESTSAUTHPERSISTENT`（或 `ESTSAUTH`）这个长期身份 cookie**。它只有在登录时选了「是否保持登录状态? → 是」才会下发；如果租户禁用了 KMSI，或者当时点了「否」，cookie 里就没有它，续期会返回明确错误，只能过期后重新粘贴。可以先检查导出内容里有没有 `ESTSAUTHPERSISTENT`：没有就按这个提示重新登录一次。
+自动续期有两个现实限制：
+
+- 它需要 `ESTSAUTHPERSISTENT`（工作/学校账号）或 `MSPAuth` 系列（个人 Microsoft 账号，位于 `.live.com`）这类长期身份 cookie。工作账号只在登录时选了「保持登录状态」才下发 `ESTSAUTHPERSISTENT`；个人账号的身份 cookie 在 `login.live.com` 域下。
+- **个人 Microsoft 账号（@hotmail.com / @outlook.com 等）实测无法从服务端完成静默续期**：`login.microsoftonline.com` 的 `prompt=none` 对这种服务端模拟直接返回错误页（`Redirecting → /error.aspx?err=504`），只有真实浏览器才能走完那串 JS 跳转。工作账号可以试，成功与否看租户策略。
+
+所以实践上按「会话过期 → 重新粘贴」准备。想尽量延长有效期，可以启用可选的定时探活（每 4 小时 ping 一次 `/.auth/me`）：
+
+```toml
+# wrangler.toml
+[triggers]
+crons = ["23 0-20/4 * * *"]
+```
+
+它不会创建会话，只是把过期时间往后推（如果 Easy Auth 的会话是滑动过期的话），日志里能看到 `Playground session probe returned <status>`。
 - 多域 JSON 长这样（DevTools → Application → Cookies 两个域各导一份，或用 Cookie-Editor 导出后合并）：
 
 ```json
