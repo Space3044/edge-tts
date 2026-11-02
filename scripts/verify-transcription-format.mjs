@@ -121,8 +121,7 @@ await transcribeWithMockedOpenAi("text/plain; charset=utf-8");
   }
 }
 
-// The Microsoft engine is real, but it needs a pasted token: without one
-// it must fail loudly instead of running the OpenAI path.
+// Removed/unknown engines are refused instead of silently running OpenAI.
 {
   const formData = new FormData();
   formData.append("file", new File(["audio"], "sample.mp3", { type: "audio/mpeg" }));
@@ -132,12 +131,11 @@ await transcribeWithMockedOpenAi("text/plain; charset=utf-8");
     new Request("https://voicecraft.example.com/v1/audio/transcriptions", {
       method: "POST",
       body: formData,
-    }),
-    {}
+    })
   );
   const body = await response.json();
-  assert.equal(response.status, 401);
-  assert.equal(body.error.code, "microsoft_token_required");
+  assert.equal(response.status, 400);
+  assert.equal(body.error.code, "unknown_engine");
 }
 
 console.log("Verified readable OpenAI transcription formatting.");

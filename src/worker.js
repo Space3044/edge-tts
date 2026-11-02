@@ -4,7 +4,6 @@ import { handleSpeech } from "./routes/speech.js";
 import { handleTextPolish } from "./routes/polish.js";
 import { handleAudioTranscription } from "./routes/transcriptions.js";
 import { handleProviders } from "./routes/providers.js";
-import { keepPlaygroundSessionAlive } from "./microsoft/playground.js";
 import { handleOptions, makeCORSHeaders } from "./utils/cors.js";
 
 async function handleRequest(request, env = {}) {
@@ -56,12 +55,5 @@ async function handleRequest(request, env = {}) {
 export default {
     async fetch(request, env) {
         return handleRequest(request, env);
-    },
-
-    // Optional cron: probe the playground session so idle time does not count
-    // against it. Enable by adding a cron expression in wrangler.toml
-    // (for example every four hours): crons = ["23 0-20/4 * * *"]
-    async scheduled(event, env, context) {
-        context.waitUntil(keepPlaygroundSessionAlive(env));
     }
 };

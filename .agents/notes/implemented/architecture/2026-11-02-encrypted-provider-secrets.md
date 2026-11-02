@@ -37,13 +37,7 @@ Microsoft 的接入让同一张表多了三列（`migrations/0002_microsoft_oaut
 
 写接口的鉴权模型后来按环境重做过，见 [provider writes are gated by environment](2026-11-02-provider-write-access.md)：本地开发直接放行，`CF_ACCESS_TRUSTED=1` 表示信任 Cloudflare Access，其余情况才需要 `Authorization: Bearer $ADMIN_TOKEN`。
 
-第四个引擎 `microsoft`（Azure AI Speech）最常见的凭据是 **订阅密钥**（`Ocp-Apim-Subscription-Key`，永不过期），也可以改用 **access token**（可选再给 **refresh token**），两个都用 `microsoft:refresh_token` 作为 AAD 加密存 D1。Worker 读 access token 的 JWT 声明：`exp` 决定它是否还能用，`aud` 必须是 `https://cognitiveservices.azure.com`，否则直接拒绝（免得把 Graph/Outlook 的 token 送上去换一个含糊的 401）。access token 过期且存了 refresh token、并且配置了 `MICROSOFT_CLIENT_ID` 时自动续期，轮换回来的新 refresh token 会覆盖旧的；缺任何一项就返回 `microsoft_token_expired`，让用户重新粘贴。
-
-最初实现的是 Entra ID 授权码回调（`/api/providers/microsoft/login` + `/api/microsoft/callback` + PKCE），但在没有自己的 Azure 应用注册时这条路的成本远高于收益：注册应用、配 redirect URI、给应用加 Speech 权限、等管理员同意，一环都不能少，而令牌本来也能从别处拿到。粘贴令牌把「谁来负责授权」交回给运维，Worker 只负责加密保存、判断过期和续期。
-
-订阅密钥存在 `api_key_cipher`（和别的 provider 同一列），token 存在 `access_token_cipher` / `refresh_token_cipher`；两者都有时订阅密钥优先，因为它不需要任何续期逻辑。
-
-转录调 Azure Fast transcription（`/speechtotext/transcriptions:transcribe?api-version=2024-11-15`），音频仍是普通 multipart，没有 base64、没有会话。
+第四个引擎 `microsoft`（Azure AI Speech）先后试过订阅密钥、access token 和 Playground cookie 三种凭据，都因为「免费方案要靠人工反复重贴凭据」而作废，最终整个渠道被移除——设计与否决过程见 [Remove the Microsoft transcription engine](../simplification/2026-11-02-remove-microsoft-engine.md)。
 
 引擎层面把 `whisper` 改名为 `openai`，走标准 OpenAI 兼容协议：`{endpoint}/audio/transcriptions`，multipart 传 `file`、`model`、`response_format=json`，配了密钥就带 `Authorization: Bearer`。base 不带 `/audio/transcriptions` 时自动补全，因此 `https://api.openai.com/v1` 和自建 `https://asr.example.com/v1` 都能用。`engine=whisper` 保留为 `openai` 的别名，老调用方不用改。
 

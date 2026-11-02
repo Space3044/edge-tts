@@ -9,7 +9,7 @@
  * writes are refused instead of silently falling back to "anyone can write".
  */
 
-import { PROVIDER_DEFAULTS, clearMicrosoftTokens, isSupportedProvider, listProviderStatus, normalizeProviderName, saveMicrosoftTokens, saveProviderConfig } from "../secrets/store.js";
+import { PROVIDER_DEFAULTS, isSupportedProvider, listProviderStatus, normalizeProviderName, saveProviderConfig } from "../secrets/store.js";
 import { errorResponse, jsonResponse } from "../utils/response.js";
 
 const MAX_ENDPOINT_LENGTH = 300;
@@ -123,17 +123,6 @@ function validateEndpoint(value) {
     return { endpoint: endpoint.replace(/\/+$/, ""), error: null };
 }
 
-function validateRegion(value) {
-    const region = String(value ?? "").trim();
-    if (!region) {
-        return { region: "", error: null };
-    }
-    if (!/^[a-z0-9-]{1,40}$/i.test(region)) {
-        return { region: "", error: "Azure 区域只能包含字母、数字和连字符" };
-    }
-    return { region, error: null };
-}
-
 function validateModel(value) {
     const model = String(value ?? "").trim();
     if (model.length > MAX_MODEL_LENGTH) {
@@ -159,7 +148,6 @@ export async function handleProviders(request, env = {}) {
                 defaults: PROVIDER_DEFAULTS,
                 writable: writeMode(request, env) !== "locked",
                 writeMode: writeMode(request, env),
-                microsoftOauth: Boolean(String(env?.MICROSOFT_CLIENT_ID || "").trim()),
                 encryptionReady: true
             });
         } catch (error) {
@@ -167,34 +155,6 @@ export async function handleProviders(request, env = {}) {
             return errorResponse(error instanceof Error ? error.message : "读取 Provider 配置失败", {
                 status: 500,
                 code: "provider_read_failed"
-            });
-        }
-    }
-
-    if (request.method === "POST" && provider === "microsoft" && segments.length === 4) {
-        const action = segments[3];
-        const denied = requireAdmin(request, env);
-        if (denied) {
-            return denied;
-        }
-
-        if (action !== "clear-tokens") {
-            return errorResponse("只支持 POST /api/providers/microsoft/clear-tokens", {
-                status: 404,
-                type: "invalid_request_error",
-                param: "action",
-                code: "unknown_action"
-            });
-        }
-
-        try {
-            await clearMicrosoftTokens(env);
-            const statuses = await listProviderStatus(env);
-            return jsonResponse({ provider: statuses.find(entry => entry.provider === "microsoft") });
-        } catch (error) {
-            return errorResponse(error instanceof Error ? error.message : "清除 Microsoft 令牌失败", {
-                status: 500,
-                code: "microsoft_clear_failed"
             });
         }
     }
@@ -246,16 +206,6 @@ export async function handleProviders(request, env = {}) {
             });
         }
 
-        const region = validateRegion(body?.region);
-        if (region.error) {
-            return errorResponse(region.error, {
-                status: 400,
-                type: "invalid_request_error",
-                param: "region",
-                code: "invalid_region"
-            });
-        }
-
         const apiKey = typeof body?.apiKey === "string" ? body.apiKey.trim() : "";
         if (apiKey.length > MAX_API_KEY_LENGTH) {
             return errorResponse("API Key 太长", {
@@ -266,31 +216,14 @@ export async function handleProviders(request, env = {}) {
             });
         }
 
-        const accessToken = typeof body?.accessToken === "string" ? body.accessToken.trim() : undefined;
-        const refreshToken = typeof body?.refreshToken === "string" ? body.refreshToken.trim() : undefined;
-        const cookies = typeof body?.cookies === "string" ? body.cookies.trim() : undefined;
-        if ((accessToken || "").length > 8000 || (refreshToken || "").length > 8000 || (cookies || "").length > 16000) {
-            return errorResponse("Token 太长", {
-                status: 400,
-                type: "invalid_request_error",
-                param: "accessToken",
-                code: "invalid_token"
-            });
-        }
-
         try {
             const updated = await saveProviderConfig(env, provider, {
                 endpoint: endpoint.endpoint,
                 model: model.model,
-                region: region.region,
                 apiKey,
                 clearApiKey: body?.clearApiKey === true
             });
-            if (provider === "microsoft" && (accessToken !== undefined || refreshToken !== undefined || cookies !== undefined)) {
-                await saveMicrosoftTokens(env, { accessToken, refreshToken, cookies });
-            }
-            const statuses = await listProviderStatus(env);
-            return jsonResponse({ provider: statuses.find(entry => entry.provider === provider) || updated });
+            return jsonResponse({ provider: updated });
         } catch (error) {
             console.error("保存 Provider 配置失败:", error);
             return errorResponse(error instanceof Error ? error.message : "保存 Provider 配置失败", {

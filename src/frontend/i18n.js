@@ -237,20 +237,6 @@ export const translations = {
     };
     Object.keys(GOOGLE_STT_TRANSLATIONS).forEach(function(lang) { Object.assign(translations[lang], GOOGLE_STT_TRANSLATIONS[lang]); });
 
-    // The Microsoft (Azure AI Speech) engine is a labelled placeholder: the tab
-    // is disabled until the provider design lands.
-    const MICROSOFT_STT_TRANSLATIONS = {
-      en: { 'stt.engineMicrosoft': 'Microsoft' },
-      zh: { 'stt.engineMicrosoft': '微软' },
-      ja: { 'stt.engineMicrosoft': 'Microsoft' },
-      ko: { 'stt.engineMicrosoft': 'Microsoft' },
-      es: { 'stt.engineMicrosoft': 'Microsoft' },
-      fr: { 'stt.engineMicrosoft': 'Microsoft' },
-      de: { 'stt.engineMicrosoft': 'Microsoft' },
-      ru: { 'stt.engineMicrosoft': 'Microsoft' }
-    };
-    Object.keys(MICROSOFT_STT_TRANSLATIONS).forEach(function(lang) { Object.assign(translations[lang], MICROSOFT_STT_TRANSLATIONS[lang]); });
-
     const STT_RESULT_VIEW_TRANSLATIONS = {
       en: { 'stt.viewPlain': 'Text', 'stt.viewSentences': 'Sentences', 'stt.viewWords': 'Words', 'stt.noTimestamps': 'No timestamp data for this result.' },
       zh: { 'stt.viewPlain': '纯文本', 'stt.viewSentences': '句子时间戳', 'stt.viewWords': '词级时间戳', 'stt.noTimestamps': '当前结果没有时间戳数据。' },
@@ -284,25 +270,6 @@ export const translations = {
         'provider.readOnly': 'This environment does not allow editing provider settings: set ADMIN_TOKEN, or set CF_ACCESS_TRUSTED=1 once /api/* is behind Cloudflare Access.',
         'provider.loadFailed': 'Could not load provider settings',
         'provider.saveFailed': 'Could not save provider settings',
-        'provider.playgroundCookies': 'Playground cookie',
-        'provider.playgroundCookiesPlaceholder': 'Paste the Cookie header value from playground.microsoft.ai',
-        'provider.playgroundCookiesSaved': 'Cookie saved, paste a new one to replace',
-        'provider.playgroundHint': 'Free path: paste the Cookie header value for playground.microsoft.ai. To let the Worker renew it automatically, paste a JSON array instead, with cookies from both playground.microsoft.ai and login.microsoftonline.com.',
-        'provider.azureHint': 'Or use Azure (requires an Azure subscription):',
-        'provider.microsoftTitle': 'Microsoft',
-        'provider.region': 'Region',
-        'provider.microsoftHint': 'Paste the Speech resource subscription key (recommended, it never expires); or paste an access token whose audience is https://cognitiveservices.azure.com, plus a refresh token to renew it.',
-        'provider.subscriptionKey': 'Subscription key',
-        'provider.subscriptionKeyPlaceholder': 'KEY 1 from the Speech resource',
-        'provider.accessToken': 'Access token',
-        'provider.accessTokenPlaceholder': 'Paste access token',
-        'provider.accessTokenSaved': 'Access token saved, paste a new one to replace',
-        'provider.refreshToken': 'Refresh token',
-        'provider.refreshTokenPlaceholder': 'Optional: paste refresh token for auto-renewal',
-        'provider.microsoftExpiresAt': 'Valid until',
-        'provider.microsoftConnected': 'Connected',
-        'provider.microsoftDisconnected': 'Not connected',
-        'provider.microsoftClear': 'Clear tokens',
         'error.providerSaveFailed': 'Save failed'
       },
       zh: {
@@ -325,25 +292,6 @@ export const translations = {
         'provider.readOnly': '当前环境不允许修改服务配置：可以设置 ADMIN_TOKEN，或在 /api/* 由 Cloudflare Access 保护后设置 CF_ACCESS_TRUSTED=1。',
         'provider.loadFailed': '读取服务配置失败',
         'provider.saveFailed': '保存服务配置失败',
-        'provider.playgroundCookies': 'Playground Cookie',
-        'provider.playgroundCookiesPlaceholder': '粘贴 playground.microsoft.ai 的 Cookie 请求头',
-        'provider.playgroundCookiesSaved': '已保存 Cookie，粘贴新的可替换',
-        'provider.playgroundHint': '免费方案：粘贴 playground.microsoft.ai 的 Cookie 请求头即可使用；想让 Worker 自动续期，改为粘贴 JSON 数组，同时包含 playground.microsoft.ai 和 login.microsoftonline.com 两个域的 cookie。',
-        'provider.azureHint': '或使用 Azure（需要 Azure 订阅）：',
-        'provider.microsoftTitle': 'Microsoft',
-        'provider.region': '区域',
-        'provider.microsoftHint': '推荐填 Speech 资源的订阅密钥（永不过期）；也可以粘贴 audience 为 https://cognitiveservices.azure.com 的 access token，配 refresh token 可自动续期。',
-        'provider.subscriptionKey': '订阅密钥',
-        'provider.subscriptionKeyPlaceholder': 'Speech 资源里的 KEY 1',
-        'provider.accessToken': 'Access token',
-        'provider.accessTokenPlaceholder': '粘贴 access token',
-        'provider.accessTokenSaved': '已保存 access token，粘贴新的可替换',
-        'provider.refreshToken': 'Refresh token',
-        'provider.refreshTokenPlaceholder': '可选：填 refresh token 以自动续期',
-        'provider.microsoftExpiresAt': '有效期至',
-        'provider.microsoftConnected': '已连接',
-        'provider.microsoftDisconnected': '未连接',
-        'provider.microsoftClear': '清除令牌',
         'error.providerSaveFailed': '保存失败'
       }
     };

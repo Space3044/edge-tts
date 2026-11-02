@@ -27,7 +27,7 @@ function createFakeD1() {
           if (!statement.includes("INSERT INTO provider_config")) {
             throw new Error(`unexpected WRITE: ${statement}`);
           }
-          if (this._params.length !== 11) {
+          if (this._params.length !== 5) {
             throw new Error(`Wrong number of parameter bindings: got ${this._params.length}`);
           }
           const [provider, endpoint, model, apiKeyCipher, updatedAt] = this._params;
@@ -191,8 +191,8 @@ const env = {
   assert.equal(publicRead.status, 200);
   const readBody = await publicRead.json();
   assert.equal(readBody.writable, true);
-  assert.equal(readBody.providers.length, 4);
-  assert.deepEqual(readBody.providers.map(entry => entry.provider), ["openai", "elevenlabs", "google", "microsoft"]);
+  assert.equal(readBody.providers.length, 3);
+  assert.deepEqual(readBody.providers.map(entry => entry.provider), ["openai", "elevenlabs", "google"]);
 
   // ADMIN_TOKEN configured -> bearer required, on any host.
   const anonymousWrite = await handleProviders(

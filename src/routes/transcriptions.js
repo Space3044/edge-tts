@@ -1,10 +1,7 @@
 import { errorResponse, jsonResponse } from "../utils/response.js";
 import { transcribe as transcribeWithElevenLabs } from "../elevenlabs/stt.js";
 import { transcribeWithGoogle } from "../google/stt.js";
-import { getMicrosoftAccount, saveMicrosoftTokens, resolveProvider } from "../secrets/store.js";
-import { accessTokenAudienceProblem, canRefreshMicrosoftToken, refreshAccessToken } from "../microsoft/oauth.js";
-import { renewPlaygroundSession, transcribeWithPlayground } from "../microsoft/playground.js";
-import { buildMicrosoftEndpoint, transcribeWithMicrosoft } from "../microsoft/stt.js";
+import { resolveProvider } from "../secrets/store.js";
 
 const MAX_AUDIO_FILE_SIZE = 50 * 1024 * 1024;
 const MAX_SOURCE_REDIRECTS = 5;
@@ -728,244 +725,6 @@ async function handleElevenLabsTranscription(formData, env) {
     }
 }
 
-async function transcribeWithPlaygroundEngine(formData, { account, cookies, env }) {
-    const audioFile = formData.get("file");
-    const sourceUrl = readSourceUrl(formData);
-    let data = audioFile;
-    let filename = audioFile && audioFile.name ? audioFile.name : "audio";
-    let mimeType = audioFile && audioFile.type ? audioFile.type : "audio/mpeg";
-
-    if (!data && sourceUrl) {
-        const checked = normalizeSourceUrl(sourceUrl);
-        if (checked.error) return sourceUrlError(checked.error);
-        try {
-            const remote = await fetchSourceAudio(checked.url, MAX_AUDIO_FILE_SIZE);
-            data = remote.blob;
-            filename = sourceFilename(remote.url, remote.contentType);
-            mimeType = remote.contentType || remote.blob.type || "audio/mpeg";
-        } catch (error) {
-            const message = error instanceof Error ? error.message : "音频下载失败";
-            const tooLarge = message.includes("50MB");
-            return errorResponse(message, {
-                status: tooLarge ? 400 : 502,
-                type: tooLarge ? "invalid_request_error" : "api_error",
-                param: tooLarge ? "source_url" : null,
-                code: tooLarge ? "source_too_large" : "source_download_failed"
-            });
-        }
-    }
-    if (!data) return missingAudioResponse();
-
-    if (audioFile) {
-        const invalid = validateAudioFile(audioFile);
-        if (invalid) return invalid;
-    }
-
-    try {
-        const result = await transcribeWithPlayground({ cookies, data, filename, mimeType });
-        return jsonResponse(result);
-    } catch (error) {
-        const message = error instanceof Error ? error.message : "Playground 转录失败";
-        if (message.includes("cookie 已失效")) {
-            // Renew from the stored Microsoft identity cookies, then retry once.
-            // Requires the multi-domain jar; a playground-only cookie cannot do
-            // this and lands in the catch below.
-            try {
-                const renewed = await renewPlaygroundSession(cookies);
-                const retried = await transcribeWithPlayground({
-                    cookies: renewed.serialized,
-                    data,
-                    filename,
-                    mimeType
-                });
-                await saveMicrosoftTokens(env, { cookies: renewed.serialized });
-                return jsonResponse(retried);
-            } catch (renewError) {
-                console.error("Playground cookie renewal failed:", renewError);
-                return errorResponse(
-                    `Playground cookie 已失效，且无法自动续期：${renewError instanceof Error ? renewError.message : "未知原因"}`,
-                    { status: 401, type: "authentication_error", code: "microsoft_cookie_expired" }
-                );
-            }
-        }
-        console.error("Microsoft playground STT error:", error);
-        return errorResponse(message, {
-            status: 502,
-            type: "api_error",
-            code: "transcription_api_error"
-        });
-    }
-}
-
-async function handleMicrosoftTranscription(formData, env) {
-    const account = await getMicrosoftAccount(env);
-
-    if (account.tokenError) {
-        return errorResponse(account.tokenError, {
-            status: 500,
-            type: "api_error",
-            code: "microsoft_token_unreadable"
-        });
-    }
-
-    // A pasted playground cookie jar takes precedence: it is the free path and
-    // does not need an Azure subscription.
-    const playgroundCookies = String(account.playgroundCookies || "").trim();
-    if (playgroundCookies) {
-        return transcribeWithPlaygroundEngine(formData, { account, cookies: playgroundCookies, env });
-    }
-
-    // A subscription key never expires, so it short-circuits the token dance.
-    const subscriptionKey = String(account.subscriptionKey || "").trim();
-
-    if (!subscriptionKey && !account.accessToken && !account.refreshToken) {
-        return errorResponse("Microsoft 未配置凭据：请保存订阅密钥或 access token", {
-            status: 401,
-            type: "authentication_error",
-            code: "microsoft_token_required"
-        });
-    }
-
-    let accessToken = account.accessToken;
-    let renewed = false;
-
-    if (!subscriptionKey && (!accessToken || account.accessTokenExpired)) {
-        if (!account.refreshToken) {
-            return errorResponse("Microsoft access token 已过期，请在服务配置里粘贴新的 access token", {
-                status: 401,
-                type: "authentication_error",
-                code: "microsoft_token_expired"
-            });
-        }
-        if (!canRefreshMicrosoftToken(env)) {
-            return errorResponse("Microsoft access token 已过期，且未配置 MICROSOFT_CLIENT_ID，无法自动续期，请粘贴新的 access token", {
-                status: 401,
-                type: "authentication_error",
-                code: "microsoft_token_expired"
-            });
-        }
-
-        try {
-            const tokens = await refreshAccessToken({ env, refreshToken: account.refreshToken });
-            accessToken = tokens.accessToken;
-            renewed = true;
-            // Entra ID rotates the refresh token; keep whichever value came back.
-            await saveMicrosoftTokens(env, {
-                accessToken: tokens.accessToken,
-                refreshToken: tokens.refreshToken || account.refreshToken
-            });
-        } catch (error) {
-            console.error("Microsoft token refresh failed:", error);
-            return errorResponse(
-                "微软 refresh token 已失效，请在服务配置里粘贴新的 access token / refresh token",
-                { status: 401, type: "authentication_error", code: "microsoft_token_expired" }
-            );
-        }
-    }
-
-    const audienceProblem = subscriptionKey ? null : accessTokenAudienceProblem(accessToken);
-    if (audienceProblem) {
-        return errorResponse(audienceProblem, {
-            status: 400,
-            type: "invalid_request_error",
-            param: "accessToken",
-            code: "microsoft_token_wrong_audience"
-        });
-    }
-
-    let base;
-    try {
-        base = buildMicrosoftEndpoint({
-            endpoint: String(formData.get("endpoint") || "").trim() || account.endpoint,
-            region: String(formData.get("region") || "").trim() || account.region
-        });
-    } catch (error) {
-        return errorResponse(error instanceof Error ? error.message : "Microsoft endpoint 无效", {
-            status: 400,
-            type: "invalid_request_error",
-            param: "region",
-            code: "microsoft_region_required"
-        });
-    }
-
-    const audioFile = formData.get("file");
-    const sourceUrl = readSourceUrl(formData);
-    let data = audioFile;
-    let filename = audioFile && audioFile.name ? audioFile.name : "audio";
-    let mimeType = audioFile && audioFile.type ? audioFile.type : "audio/mpeg";
-
-    if (!data && sourceUrl) {
-        const checked = normalizeSourceUrl(sourceUrl);
-        if (checked.error) return sourceUrlError(checked.error);
-        try {
-            const remote = await fetchSourceAudio(checked.url, MAX_AUDIO_FILE_SIZE);
-            data = remote.blob;
-            filename = sourceFilename(remote.url, remote.contentType);
-            mimeType = remote.contentType || remote.blob.type || "audio/mpeg";
-        } catch (error) {
-            const message = error instanceof Error ? error.message : "音频下载失败";
-            const tooLarge = message.includes("50MB");
-            return errorResponse(message, {
-                status: tooLarge ? 400 : 502,
-                type: tooLarge ? "invalid_request_error" : "api_error",
-                param: tooLarge ? "source_url" : null,
-                code: tooLarge ? "source_too_large" : "source_download_failed"
-            });
-        }
-    }
-    if (!data) return missingAudioResponse();
-
-    if (audioFile) {
-        const invalid = validateAudioFile(audioFile);
-        if (invalid) return invalid;
-    }
-
-    const locale = String(formData.get("locale") || "").trim();
-
-    try {
-        const result = await transcribeWithMicrosoft({
-            accessToken,
-            subscriptionKey,
-            endpoint: base,
-            data,
-            filename,
-            mimeType,
-            locale
-        });
-        if (renewed) {
-            console.log("Microsoft access token renewed from the stored refresh token");
-        }
-        const words = normalizeElevenLabsWords(result);
-        const sentences = Array.isArray(result.sentences) && result.sentences.length
-            ? result.sentences
-            : buildElevenLabsSentences(words);
-        const text = String(result.text || "").trim() || words.map(word => word.text).join(" ").trim();
-        if (!text) {
-            return errorResponse("Microsoft 转录未返回可用文本", {
-                status: 502,
-                type: "api_error",
-                code: "empty_transcription_result"
-            });
-        }
-        return jsonResponse({ text, sentences, words });
-    } catch (error) {
-        const message = error instanceof Error ? error.message : "Microsoft 转录失败";
-        if (message.includes("access token") || message.includes("重新登录")) {
-            return errorResponse(message, {
-                status: 401,
-                type: "authentication_error",
-                code: "microsoft_login_required"
-            });
-        }
-        console.error("Microsoft STT error:", error);
-        return errorResponse(message, {
-            status: 502,
-            type: "api_error",
-            code: "transcription_api_error"
-        });
-    }
-}
-
 export async function handleAudioTranscription(request, env) {
     try {
         if (request.method !== "POST") {
@@ -993,14 +752,19 @@ export async function handleAudioTranscription(request, env) {
         // after the engine was renamed to `openai`.
         const engine = requested === "whisper" ? "openai" : requested;
 
+        if (!["openai", "elevenlabs", "google"].includes(engine)) {
+            return errorResponse(`不支持的引擎: ${requested}`, {
+                status: 400,
+                type: "invalid_request_error",
+                param: "engine",
+                code: "unknown_engine"
+            });
+        }
         if (engine === "elevenlabs") {
             return handleElevenLabsTranscription(formData, env);
         }
         if (engine === "google") {
             return handleGoogleTranscription(formData, env);
-        }
-        if (engine === "microsoft") {
-            return handleMicrosoftTranscription(formData, env);
         }
         return handleOpenAiTranscription(formData, env);
     } catch (error) {
