@@ -75,6 +75,15 @@ export function normalizeCaptionRequest({ videoId, target, source } = {}) {
     return { videoId: video, target: language, source: captionSource, error: null };
 }
 
+async function exhaustedPoolReset(env, source) {
+    if (source === "json3") return "";
+    const accounts = (await listTrancyAccounts(env)).filter(account =>
+        account.status === "ok" && !account.banned && !account.tokenError);
+    const now = Date.now();
+    if (!accounts.length || !accounts.every(account => Date.parse(account.exhaustedUntil) > now)) return "";
+    return accounts.map(account => account.exhaustedUntil).sort()[0];
+}
+
 /**
  * Serve one caption request from the pool.
  *
@@ -83,29 +92,24 @@ export function normalizeCaptionRequest({ videoId, target, source } = {}) {
  * bare 503.
  */
 export async function requestYoutubeCaptions(env, { videoId, target = "en", source = TRANCY_DEFAULT_CAPTION_SOURCE, fetchImpl = fetch } = {}) {
-    const accounts = await pickCaptionAccounts(env, { limit: MAX_ACCOUNTS_PER_REQUEST });
+    const accounts = await pickCaptionAccounts(env, { limit: MAX_ACCOUNTS_PER_REQUEST, source });
     if (!accounts.length) {
         // "The pool is empty" and "the pool is spent" are different answers for
         // the caller: the second one comes with a time to retry.
-        const all = await listTrancyAccounts(env);
-        const now = Date.now();
-        const parked = all
-            .map(account => account.exhaustedUntil)
-            .filter(value => value && Date.parse(value) > now)
-            .sort();
-        if (parked.length) {
+        const resetAt = await exhaustedPoolReset(env, source);
+        if (resetAt) {
             return {
                 ok: false,
                 reason: "no_caption_quota",
                 message: "所有账号今天的 AI 字幕额度都用完了",
-                resetAt: parked[0],
+                resetAt,
                 tried: []
             };
         }
         return {
             ok: false,
             reason: "no_account",
-            message: "没有可用账号：账号池为空、token 过期或正在冷却",
+            message: "没有可用账号：账号池为空、登录不可用、正在冷却或额度耗尽",
             resetAt: nextUtcMidnight(),
             tried: []
         };
@@ -143,14 +147,16 @@ export async function requestYoutubeCaptions(env, { videoId, target = "en", sour
         tried.push(`${account.email || account.id}: ${result.reason}`);
 
         if (result.reason === "daily_limit") {
-            await markCaptionExhausted(env, account.id);
+            if (source !== "json3") {
+                await markCaptionExhausted(env, account.id, nextUtcMidnight(), { quotaLimit: result.quota.limit });
+            }
             continue;
         }
 
         if (result.reason === "rejected" && /token|unauthor|login/i.test(result.message)) {
             // A dead credential is worth one probe: the daily cron may simply
             // not have run yet, and a re-login revives it without a human.
-            await refreshTrancyAccount(env, account.id).catch(() => null);
+            await refreshTrancyAccount(env, account.id, { fetchImpl }).catch(() => null);
             continue;
         }
 
@@ -158,14 +164,17 @@ export async function requestYoutubeCaptions(env, { videoId, target = "en", sour
         await recordTrancyUsage(env, account.id, { ok: false, cooldownMinutes: 2 }).catch(() => null);
     }
 
-    const exhaustedAll = tried.every(entry => entry.endsWith("daily_limit"));
+    // Hitting the retry budget does not prove the rest of the pool is empty.
+    const resetAt = tried.every(entry => entry.endsWith("daily_limit"))
+        ? await exhaustedPoolReset(env, source) : "";
+    const exhaustedAll = Boolean(resetAt);
     return {
         ok: false,
         reason: exhaustedAll ? "no_caption_quota" : "caption_failed",
         message: exhaustedAll
             ? "所有账号今天的 AI 字幕额度都用完了"
-            : "所有可用账号都没能生成字幕",
-        resetAt: nextUtcMidnight(),
+            : "本次尝试的账号未能生成字幕",
+        resetAt: resetAt || nextUtcMidnight(),
         day: utcDay(),
         tried
     };

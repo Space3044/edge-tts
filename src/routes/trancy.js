@@ -57,10 +57,9 @@ async function handleAccounts(request, env, segments) {
             const accounts = await listTrancyAccounts(env);
             return jsonResponse({
                 accounts,
-                // The panel needs a denominator before the first caption call,
-                // and it must be the same number the scheduler assumes.
+                // Reference allowance only; an unknown balance is never 5.
                 defaultDailyLimit: TRANCY_DEFAULT_DAILY_LIMIT
-            });
+            }, { headers: { "Cache-Control": "no-store" } });
         }
 
         if (request.method === "POST") {

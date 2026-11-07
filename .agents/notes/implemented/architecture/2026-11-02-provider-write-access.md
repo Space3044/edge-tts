@@ -2,7 +2,7 @@
 
 Status: implemented
 
-> 已被 [收窄网关：鉴权只留 Cloudflare Access](../../simplification/2026-11-02-access-only-auth-and-drop-relay.md)
+> 已被 [收窄网关：鉴权只留 Cloudflare Access](../simplification/2026-11-02-access-only-auth-and-drop-relay.md)
 > 取代：`ADMIN_TOKEN` / `CF_ACCESS_TRUSTED` / `writeMode` 全部删除，鉴权只在 Access 那一层。
 > 本文保留的是当时为什么需要这些开关的推理（含被否决的方案）。
 

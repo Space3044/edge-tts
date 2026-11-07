@@ -2,6 +2,9 @@
 
 Status: implemented
 
+> 无缓存边界保持不变；后续的额度展示与原子调用计数见
+> [额度观测修复](../bug-fix/2026-11-07-trancy-quota-observations.md)。
+
 ## Problem
 
 [字幕调度按每日额度分配](../feature/2026-11-02-trancy-caption-scheduler.md) 当初把「同视频不花第二次额度」

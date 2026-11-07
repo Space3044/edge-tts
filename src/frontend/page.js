@@ -44,6 +44,7 @@ const TRANCY_PANEL = `<section class="trancy-panel" id="trancyContainer" style="
           </form>
           <div class="trancy-list-card">
             <div class="panel-header"><div><h3 data-i18n="trancy.listTitle">Accounts</h3></div><span class="voice-count" id="trancyCount">0</span></div>
+            <p class="trancy-account-meta" data-i18n="trancy.quotaHint">Quota is last observed during AI caption requests. Checking login does not query quota.</p>
             <div class="trancy-account-list" id="trancyAccountList"></div>
             <p class="empty-state" id="trancyEmptyState" style="display:none" data-i18n="trancy.empty">No accounts yet.</p>
           </div>

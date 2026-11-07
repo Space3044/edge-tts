@@ -473,8 +473,8 @@ POST   /api/trancy/accounts/login        # 登录并添加 {"email":"...","passw
 POST   /api/trancy/accounts/signup       # 注册并添加，字段同上
 POST   /api/trancy/accounts/:id/login    # 用保存的密码重新登录（token 失效后的恢复手段）
 GET    /api/trancy/accounts/:id/password # 按需解密出密码，供面板显示/复制（Cache-Control: no-store）
-POST   /api/trancy/accounts/:id/refresh  # 立刻探测单个账号
-POST   /api/trancy/accounts/refresh      # 立刻探测全部（默认跳过 10 分钟内查过的）
+POST   /api/trancy/accounts/:id/refresh  # 检查单个账号登录并续期 token，不查询额度
+POST   /api/trancy/accounts/refresh      # 批量检查登录（默认跳过 10 分钟内查过的），不查询额度
 DELETE /api/trancy/accounts/:id          # 删除账号
 ```
 
@@ -511,19 +511,22 @@ Authorization: Bearer {token}
 
 - **同步**：一次请求直接返回整段字幕（`data` 是句子数组，带词级时间戳），没有 job id、不需要轮询。
 - **额度**：免费号每个账号每天只能生成少量 AI 字幕（页面上写 5 个/天）。响应头带 `x-quota-limit` / `x-quota-remaining`。
+- **显示口径**：面板显示 AI 字幕响应的「上次观测」余额及观测时间，并非实时余额。尚无观测、跨 UTC 日或 AI 请求未返回余额头时显示「未知」，不按 5 次补齐；网关今日 AI 调用次数单独显示，缓存命中、站外使用会让它与实际扣额不同。汇总只计当前可调度账号的已观测余额，未知账号另计。
+- **检查登录不查询额度**：`/1/user/profile` 只更新凭据及账号资料，不更新 `quotaCheckedAt`。目前没有已验证的独立余额查询接口；面板不会为了探测余额生成字幕。停留在面板时每分钟重读网关记录，回到窗口时也会重读。
+- **原生字幕**：`source=json3` 不记 AI 调用次数、不改 AI 额度；AI 额度耗尽的账号仍可请求原生字幕。
 - **额度用完不返回 429**：`200 {"code":403,"message":"You've reached the daily limit of 5 AI subtitles for free users..."}`，和鉴权失败一样靠 body 判定。
 - 网关**不保存**生成结果：字幕直接回给调用方，同一个视频再请求就再生成一次（上游自己有缓存时不会重复扣额度，但那是对方的行为，不作保证）。
 
 接口（只有一个）：
 
 ```text
-POST /api/trancy/captions   # {"videoId":"npka43vhwNo","source":"json3"}，花额度；target/source 可省略，默认 en/audio
+POST /api/trancy/captions   # {"videoId":"npka43vhwNo","source":"audio"}；target/source 可省略，默认 en/audio
 ```
 
 `POST` 的返回体是 `{data:[...], account, quota:{limit,remaining}, usedToday, sentenceCount}`，同时把 `X-Trancy-Account` / `X-Quota-*` 放进响应头。调度规则：
 
-1. **刚说过「没额度」的账号不再问**：`exhausted_until` 停在下一个 UTC 零点，token 和 `status=ok` 保持不变（cron 照常续期）。
-2. **先花最空的账号**：本地 `day_used`（按 UTC 日）优先，其次上游 `x-quota-remaining`，最后 LRU。
+1. **刚说过「没额度」的账号不再问 AI 字幕**：明确的 daily-limit 拒绝把 `exhausted_until` 设到下一个 UTC 零点，token 和 `status=ok` 保持不变（cron 照常续期）。普通 403 不代表额度耗尽。UTC 零点是网关允许重试的时间，尚未确认上游实际重置时区。
+2. **先用今日调用较少的账号**：本地 `day_used`（按 UTC 日）优先，其次当天观测的 `x-quota-remaining`，最后 LRU。计数使用原子更新；不把本地调用次数当成真实扣额，观测余额为 0 也仍允许一次请求确认是否真的耗尽。
 3. **不存结果**：`trancy_caption` 表和「同视频只生成一次」的占位锁都已删除——重复请求会重复花额度，缓存在调用方那边做。
 
 没有一个账号能用时返回 `503`：
@@ -534,7 +537,7 @@ POST /api/trancy/captions   # {"videoId":"npka43vhwNo","source":"json3"}，花�
  "tried":["acc@example.com: daily_limit"]}
 ```
 
-`tried` 会写清每个被咨询账号的失败原因，`resetAt` 是下一个 UTC 零点。
+`tried` 会写清每个被咨询账号的失败原因，`resetAt` 是下一个 UTC 零点的预计重试时间。每次最多尝试 3 个账号；如果还有未尝试的可用账号，返回 `caption_failed`，不会把整个池子误报为额度耗尽。
 
 给下游程序调用：
 
@@ -658,6 +661,7 @@ node scripts/verify-groq-stt.mjs
 node scripts/verify-transcription-url.mjs
 node scripts/verify-provider-secrets.mjs
 node scripts/verify-trancy-gateway.mjs
+node scripts/verify-trancy-quota.mjs  # Node 22.13+，真实 SQLite 额度回归
 node -e "import('./index.js').then((m) => { if (!m.default || typeof m.default.fetch !== 'function') throw new Error('Worker fetch export missing'); console.log('Worker entry import ok'); })"
 git diff --check
 ```

@@ -2,6 +2,9 @@
 
 Status: implemented
 
+> profile 错误分类与检查登录不查询额度的边界见
+> [额度观测修复](../bug-fix/2026-11-07-trancy-quota-observations.md)。
+
 ## Problem
 
 需要把多个 Trancy 账号合成一个入口：管理凭据、轮换账号、自动续期，并给外部程序一个统一的转发点。
@@ -88,7 +91,7 @@ Status: implemented
 [字幕调度按每日额度分配](2026-11-02-trancy-caption-scheduler.md) 里。
 
 通用转发（`/api/trancy/relay`）和「只有写权限才能看密码」的收口都已删除，
-见 [收窄网关](../../simplification/2026-11-02-access-only-auth-and-drop-relay.md)：
+见 [收窄网关](../simplification/2026-11-02-access-only-auth-and-drop-relay.md)：
 鉴权只留在 Cloudflare Access，Worker 不再有 `ADMIN_TOKEN` 之类的自研开关。
 
 ### 密钥与视图

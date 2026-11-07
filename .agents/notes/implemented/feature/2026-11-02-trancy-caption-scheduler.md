@@ -2,8 +2,11 @@
 
 Status: implemented
 
+> 第 7 条的未知额度估算与调用次数口径由
+> [额度观测修复](../bug-fix/2026-11-07-trancy-quota-observations.md) 取代。
+
 > 第 1、5 条（结果缓存、并发占位锁）已被
-> [删掉字幕缓存](../../simplification/2026-11-02-drop-caption-cache.md) 取代：
+> [删掉字幕缓存](../simplification/2026-11-02-drop-caption-cache.md) 取代：
 > 网关只做额度调度，不保存字幕。
 
 ## Problem
@@ -73,7 +76,7 @@ GET https://api.trancy.org/3/youtube/captions/{videoId}?target=en&source=audio|j
 
 网关不做应用层鉴权：`/api/*` 整体挂在 Cloudflare Access 后面，`TRANCY_API_TOKEN` 之类的窄钥匙
 已经删除，下游改用 Access Service Token。理由与被删掉的 relay 记在
-[收窄网关](../../simplification/2026-11-02-access-only-auth-and-drop-relay.md)。
+[收窄网关](../simplification/2026-11-02-access-only-auth-and-drop-relay.md)。
 
 ### 7. 额度要对人可见
 

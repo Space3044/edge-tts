@@ -39,7 +39,7 @@ function createFakeD1() {
             // for `exhausted_until`; the plain picker only binds (status, now).
             const cooldownNow = String(params[1] || "");
             const exhaustedNow = String(params[2] || cooldownNow);
-            const wantsExhausted = /exhausted_until/.test(sql);
+            const wantsExhausted = /AND \(exhausted_until/.test(sql);
             return all
                 .filter(row => row.status === params[0])
                 .filter(row => !row.cooldown_until || row.cooldown_until <= cooldownNow)
@@ -93,10 +93,19 @@ function createFakeD1() {
                         assert.ok(row, `UPDATE target ${id} exists`);
                         let cursor = 0;
                         assignments.forEach(assignment => {
-                            const [column, expression] = assignment.split("=").map(part => part.trim());
+                            const equals = assignment.indexOf("=");
+                            const column = assignment.slice(0, equals).trim();
+                            const expression = assignment.slice(equals + 1).trim();
                             const increment = expression.match(/^(\w+) \+ 1$/);
                             if (increment) {
                                 row[column] = Number(row[increment[1]] || 0) + 1;
+                            } else if (expression === "CASE WHEN day_used_date = ? THEN day_used ELSE 0 END + ?") {
+                                const day = this._params[cursor++];
+                                row[column] = (row.day_used_date === day ? Number(row.day_used || 0) : 0) + this._params[cursor++];
+                            } else if (expression === "CASE WHEN ? >= 0 THEN ? ELSE quota_limit END") {
+                                const valid = this._params[cursor++] >= 0;
+                                const value = this._params[cursor++];
+                                if (valid) row[column] = value;
                             } else if (expression === "?") {
                                 row[column] = this._params[cursor++];
                             } else {
@@ -689,7 +698,7 @@ const env = { DB: createFakeD1(), SECRETS_ENCRYPTION_KEY: encryptionKey };
         assert.equal(payload.source, "json3");
         assert.equal(payload.sentenceCount, 1);
         assert.equal(new URL(okFetch.calls[0].url).searchParams.get("source"), "json3", "HTTP source reaches Trancy");
-        assert.equal(response.headers.get("X-Quota-Remaining"), "4");
+        assert.equal(response.headers.get("X-Quota-Remaining"), "-1", "native subtitles do not report an AI quota balance");
         assert.ok(!("cached" in payload) && !("pending" in payload), "no cache, no polling");
 
         const noGet = await call("/api/trancy/captions/npka43vhwNo");

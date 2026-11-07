@@ -147,8 +147,12 @@ export async function fetchTrancyProfile(token, { fetchImpl = fetch } = {}) {
 
     const payload = await readJson(response);
     const profile = payload?.data;
-    if (!profile || typeof profile !== "object") {
+    if (payload?.message === "ok" && payload?.data === null) {
         return { ok: false, reason: "token_invalid", error: null, token: "", profile: null };
+    }
+    if (!profile || typeof profile !== "object" || Array.isArray(profile)
+        || !(profile._id || profile.id) || (payload.code && Number(payload.code) !== 200)) {
+        return { ok: false, reason: "invalid_response", error: String(payload?.message || "Trancy profile 响应无效"), token: "", profile: null };
     }
 
     return {
@@ -199,14 +203,22 @@ export async function fetchYoutubeCaptions({ token, videoId, target = "en", sour
 
     const rawLimit = response.headers.get("x-quota-limit");
     const rawRemaining = response.headers.get("x-quota-remaining");
-    const limit = rawLimit !== null && rawLimit !== "" && Number.isFinite(Number(rawLimit)) ? Number(rawLimit) : -1;
-    const remaining = rawRemaining !== null && rawRemaining !== "" && Number.isFinite(Number(rawRemaining)) ? Number(rawRemaining) : -1;
+    const parseQuota = value => value !== null && /^\d+$/.test(value.trim()) && Number.isSafeInteger(Number(value)) ? Number(value) : -1;
+    const limit = source === "json3" ? -1 : parseQuota(rawLimit);
+    const remaining = source === "json3" ? -1 : parseQuota(rawRemaining);
     const quota = {
         limit,
         remaining
     };
 
     const payload = await readJson(response);
+    const message = String(payload?.message || "");
+    // A generic 403 can be authentication or access denial, not quota. The
+    // daily-limit body may arrive with either HTTP 200 or HTTP 403/429.
+    if ((response.ok || response.status === 403 || response.status === 429)
+        && /daily\s+limit|daily\s+(?:AI\s+subtitle\s+)?quota/i.test(message)) {
+        return { ok: false, reason: "daily_limit", message, sentences: null, quota };
+    }
 
     if (!response.ok) {
         return { ok: false, reason: `http_${response.status}`, message: payload?.message || "", sentences: null, quota };
@@ -214,11 +226,6 @@ export async function fetchYoutubeCaptions({ token, videoId, target = "en", sour
 
     if (Array.isArray(payload?.data)) {
         return { ok: true, reason: null, message: "ok", sentences: payload.data, quota };
-    }
-
-    const message = String(payload?.message || "");
-    if (payload?.code === 403 || /daily limit/i.test(message)) {
-        return { ok: false, reason: "daily_limit", message, sentences: null, quota };
     }
 
     return { ok: false, reason: "rejected", message: message || "Trancy 没有返回字幕", sentences: null, quota };

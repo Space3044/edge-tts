@@ -103,14 +103,19 @@ function isoFromRow(value) {
  * Browser-safe projection. The token never leaves the Worker: the view carries
  * only a tail so the operator can tell which account is stored.
  */
-export function accountView(row, { tokenTail = "", tokenError = null } = {}) {
+export function accountView(row, { tokenTail = "", tokenError = null, now = Date.now() } = {}) {
     const rawLimit = Number(row?.quota_limit || 0);
     const rawRemaining = Number(row?.quota_remaining ?? -1);
-    // Auto-heal in projection: an account with quota_limit=0 and quota_remaining=0
-    // that was never parked (exhausted_until is empty) was corrupted by missing headers
-    // on json3 requests (Number(null) === 0). Treat as -1 (unmetered/available).
+    // Legacy missing-header zeros are unknown, never evidence of a full quota.
     const isCorruptedZero = rawLimit === 0 && rawRemaining === 0 && !row?.exhausted_until;
-    const quotaRemaining = isCorruptedZero ? -1 : rawRemaining;
+    const checked = Date.parse(row?.quota_checked_at || "");
+    const fresh = Number.isFinite(checked) && checked <= now && utcDay(checked) === utcDay(now);
+    const exhaustedUntil = Date.parse(row?.exhausted_until || "") > now ? row.exhausted_until : "";
+    const quotaRemaining = exhaustedUntil ? 0 : fresh && !isCorruptedZero ? rawRemaining : -1;
+    const quotaStatus = exhaustedUntil ? "exhausted" : quotaRemaining >= 0 ? "observed"
+        : row?.quota_checked_at && !isCorruptedZero ? "stale" : "unknown";
+    const captionAvailable = row?.status === TRANCY_STATUS.ok && !row?.banned && !tokenError
+        && !(Date.parse(row?.cooldown_until || "") > now) && !exhaustedUntil;
     return {
         id: String(row?.id || ""),
         userId: String(row?.user_id || ""),
@@ -124,20 +129,20 @@ export function accountView(row, { tokenTail = "", tokenError = null } = {}) {
         status: String(row?.status || TRANCY_STATUS.new),
         tokenTail,
         tokenError,
+        captionAvailable,
         tokenIssuedAt: isoFromRow(row?.token_issued_at),
         lastCheckedAt: isoFromRow(row?.last_checked_at),
         lastUsedAt: isoFromRow(row?.last_used_at),
         useCount: Number(row?.use_count || 0),
         failCount: Number(row?.fail_count || 0),
         cooldownUntil: isoFromRow(row?.cooldown_until),
-        // AI-subtitle quota as last reported by Trancy. `quotaRemaining` is -1
-        // until an account has answered once; `usedToday` is our own count, so
-        // the scheduler has a number even when the headers lie.
+        // An observation is not a live balance. Profile refresh cannot update it.
         quotaLimit: rawLimit,
         quotaRemaining,
+        quotaStatus,
         quotaCheckedAt: isoFromRow(row?.quota_checked_at),
-        exhaustedUntil: isoFromRow(row?.exhausted_until),
-        usedToday: isCorruptedZero ? 0 : (String(row?.day_used_date || "") === utcDay() ? Number(row?.day_used || 0) : 0),
+        exhaustedUntil,
+        usedToday: String(row?.day_used_date || "") === utcDay(now) ? Number(row?.day_used || 0) : 0,
         createdAt: isoFromRow(row?.created_at),
         updatedAt: isoFromRow(row?.updated_at)
     };
@@ -169,23 +174,8 @@ async function readRowByUserId(env, userId) {
     return row || null;
 }
 
-/** Reset any accounts corrupted by the legacy Number(null) === 0 header bug on json3 requests. */
-export async function healCorruptedQuotas(env) {
-    try {
-        await requireDatabase(env)
-            .prepare(
-                `UPDATE trancy_account SET quota_remaining = -1, quota_limit = 0, quota_checked_at = '', day_used = 0
-                 WHERE quota_limit = 0 AND quota_remaining = 0 AND (exhausted_until = '' OR exhausted_until IS NULL)`
-            )
-            .run();
-    } catch {
-        // Ignored if DB is mock or unavailable
-    }
-}
-
 /** Every account, browser-safe, oldest first. Never carries the password. */
 export async function listTrancyAccounts(env) {
-    await healCorruptedQuotas(env);
     const rows = await readRows(env);
     const accounts = [];
     for (const row of rows) {
@@ -333,7 +323,7 @@ export async function refreshTrancyAccount(env, id, { fetchImpl = fetch } = {}) 
             refreshed: false,
             reason: "token_unreadable",
             error,
-            account: accountView({ ...row, status: TRANCY_STATUS.dead }, { tokenError: error })
+            account: accountView(await readRow(env, row.id), { tokenError: error })
         };
     }
 
@@ -395,7 +385,7 @@ export async function refreshTrancyAccount(env, id, { fetchImpl = fetch } = {}) 
 }
 
 /**
- * Persist the result of a login/signup call: token cipher plus the plaintext
+ * Persist the result of a login/signup call: token cipher plus the encrypted
  * password that makes the next re-login possible.
  */
 async function saveCredentialLogin(env, { email = "", password = "", token, profile }) {
@@ -596,7 +586,6 @@ export async function recordTrancyUsage(env, id, { ok = true, cooldownMinutes = 
         .run();
 }
 
-/** Normalize then hand back the token, so routes can validate before saving. */
 /**
  * Accounts that may still spend AI-subtitle quota today.
  *
@@ -606,24 +595,23 @@ export async function recordTrancyUsage(env, id, { ok = true, cooldownMinutes = 
  * on every job - that is the difference between "5 videos a day" and "5
  * requests a day".
  */
-export async function pickCaptionAccounts(env, { limit = 3 } = {}) {
-    await healCorruptedQuotas(env);
+export async function pickCaptionAccounts(env, { limit = 3, source = "audio" } = {}) {
     const now = nowIso();
     const { results } = await requireDatabase(env)
         .prepare(
             `SELECT ${SELECT_COLUMNS} FROM trancy_account
               WHERE status = ? AND (cooldown_until = '' OR cooldown_until <= ?)
-                AND (exhausted_until = '' OR exhausted_until <= ?)
               ORDER BY last_used_at ASC`
         )
-        .bind(TRANCY_STATUS.ok, now, now)
+        .bind(TRANCY_STATUS.ok, now)
         .all();
 
     const day = utcDay();
-    const ranked = (results || []).map(row => ({
+    const ranked = (results || []).filter(row => !row.banned
+        && (source === "json3" || !(Date.parse(row.exhausted_until || "") > Date.now()))).map(row => ({
         row,
         usedToday: String(row.day_used_date || "") === day ? Number(row.day_used || 0) : 0,
-        remaining: Number(row.quota_remaining ?? -1)
+        remaining: accountView(row).quotaRemaining
     })).sort((left, right) => {
         if (left.usedToday !== right.usedToday) {
             return left.usedToday - right.usedToday;
@@ -670,27 +658,26 @@ export async function recordCaptionUsage(env, id, { quotaLimit = -1, quotaRemain
     const day = utcDay();
     // Native captions (json3) do not consume the account's daily AI quota
     const isAi = String(source || "").trim() !== "json3";
-    const usedToday = String(row.day_used_date || "") === day
-        ? Number(row.day_used || 0) + (isAi ? 1 : 0)
-        : (isAi ? 1 : 0);
-
-    // Only update quota_limit / quota_remaining when Trancy returned actual quota headers (>= 0).
-    // If quotaRemaining is -1 (e.g. json3 or omitted headers), preserve whatever valid quota the account already had.
-    const nextLimit = quotaRemaining >= 0 ? quotaLimit : Number(row.quota_limit ?? 0);
-    const nextRemaining = quotaRemaining >= 0 ? quotaRemaining : Number(row.quota_remaining ?? -1);
-    const nextCheckedAt = quotaRemaining >= 0 ? timestamp : String(row.quota_checked_at || "");
-
+    // Native captions never alter AI quota. An AI call without a remaining
+    // header invalidates the old balance; guessing a decrement misses caches.
+    const quotaSets = isAi ? `quota_limit = ?, quota_remaining = ?, quota_checked_at = ?, exhausted_until = '',` : "";
+    const quotaParams = isAi ? [
+        quotaLimit >= 0 ? quotaLimit : Number(row.quota_limit ?? 0),
+        quotaRemaining >= 0 ? quotaRemaining : -1,
+        quotaRemaining >= 0 ? timestamp : ""
+    ] : [];
     await requireDatabase(env)
         .prepare(
             `UPDATE trancy_account SET
-                 quota_limit = ?, quota_remaining = ?, quota_checked_at = ?,
-                 day_used = ?, day_used_date = ?, last_used_at = ?,
+                 ${quotaSets}
+                 day_used = CASE WHEN day_used_date = ? THEN day_used ELSE 0 END + ?,
+                 day_used_date = ?, last_used_at = ?,
                  use_count = use_count + 1, updated_at = ?
              WHERE id = ?`
         )
-        .bind(nextLimit, nextRemaining, nextCheckedAt, usedToday, day, timestamp, timestamp, id)
+        .bind(...quotaParams, day, isAi ? 1 : 0, day, timestamp, timestamp, id)
         .run();
-    return usedToday;
+    return Number((await readRow(env, id))?.day_used || 0);
 }
 
 /**
@@ -698,14 +685,15 @@ export async function recordCaptionUsage(env, id, { quotaLimit = -1, quotaRemain
  * free quota is gone - so `status` stays `ok` and the daily cron keeps renewing
  * it.
  */
-export async function markCaptionExhausted(env, id, until = nextUtcMidnight()) {
+export async function markCaptionExhausted(env, id, until = nextUtcMidnight(), { quotaLimit = -1 } = {}) {
     const timestamp = nowIso();
     await requireDatabase(env)
         .prepare(
             `UPDATE trancy_account SET exhausted_until = ?, quota_remaining = 0,
+                 quota_limit = CASE WHEN ? >= 0 THEN ? ELSE quota_limit END,
                  quota_checked_at = ?, updated_at = ? WHERE id = ?`
         )
-        .bind(until, timestamp, timestamp, id)
+        .bind(until, quotaLimit, quotaLimit, timestamp, timestamp, id)
         .run();
 }
 

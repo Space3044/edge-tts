@@ -206,7 +206,7 @@ const CLIENT_SCRIPT_TEMPLATE = `\n    const VOICES = __VOICECRAFT_VOICES__;\n   
       var main = document.createElement('div'); main.className = 'trancy-account-main';
       var title = document.createElement('div'); title.className = 'trancy-account-title';
       var titleText = document.createElement('span'); titleText.className = 'trancy-account-title-text'; titleText.textContent = trancyAccountTitle(account); title.appendChild(titleText);
-      var status = document.createElement('span'); status.className = 'trancy-badge trancy-badge-' + String(account.status || 'new').replace(/[^a-z0-9_-]/gi, ''); status.textContent = String(account.status || 'new'); title.appendChild(status);
+      var status = document.createElement('span'); status.className = 'trancy-badge trancy-badge-' + String(account.status || 'new').replace(/[^a-z0-9_-]/gi, ''); status.textContent = t('trancy.status.' + (account.tokenError ? 'unreadable' : account.status || 'new')); title.appendChild(status);
       var plan = document.createElement('span'); plan.className = 'trancy-badge' + (account.premium ? ' trancy-badge-premium' : ''); plan.textContent = account.premium ? t('trancy.premium') : t('trancy.free'); title.appendChild(plan);
       if (account.exhaustedUntil && new Date(account.exhaustedUntil).getTime() > Date.now()) {
         var outOfQuota = document.createElement('span'); outOfQuota.className = 'trancy-badge trancy-badge-new'; outOfQuota.textContent = t('trancy.quotaBadge'); outOfQuota.title = t('trancy.quotaOut') + ' ' + trancyTimeLabel(account.exhaustedUntil); title.appendChild(outOfQuota);
@@ -215,15 +215,16 @@ const CLIENT_SCRIPT_TEMPLATE = `\n    const VOICES = __VOICECRAFT_VOICES__;\n   
       // The title is already the email, so the meta line starts at the token.
       var bits = [];
       if (account.tokenTail) bits.push(account.tokenTail);
-      // AI-subtitle quota: the numbers that decide whether this account is worth
-      // a request today (five videos per free account per day upstream).
-      // Before the first caption call the quota headers are unknown, so fall back
-      // to Trancy's documented free allowance; the numbers shown are always
-      // "left today / per day", which is the unit the scheduler spends.
-      var dailyLimit = account.quotaLimit > 0 ? account.quotaLimit : trancyState.defaultDailyLimit;
-      var quotaLeft = account.quotaRemaining >= 0 ? account.quotaRemaining : Math.max(0, dailyLimit - account.usedToday);
-      bits.push(t('trancy.quota') + ' ' + quotaLeft + '/' + dailyLimit);
-      if (account.usedToday > 0) bits.push(t('trancy.today') + ' ' + account.usedToday);
+      // Balances are observations from caption responses, not profile checks.
+      var quotaText = account.quotaRemaining >= 0
+        ? t('trancy.quotaObserved') + ' ' + account.quotaRemaining + (account.quotaLimit > 0 ? '/' + account.quotaLimit : '')
+        : t(account.quotaStatus === 'stale' ? 'trancy.quotaStale' : 'trancy.quotaUnknown');
+      bits.push(t('trancy.quota') + ': ' + quotaText);
+      bits.push(t('trancy.gatewayCalls') + ' ' + (account.usedToday || 0));
+      if (account.quotaCheckedAt) bits.push(t('trancy.quotaChecked') + ' ' + trancyTimeLabel(account.quotaCheckedAt));
+      if (account.cooldownUntil && Date.parse(account.cooldownUntil) > Date.now()) {
+        bits.push(t('trancy.cooldown') + ' ' + trancyTimeLabel(account.cooldownUntil));
+      }
       if (account.exhaustedUntil && new Date(account.exhaustedUntil).getTime() > Date.now()) {
         bits.push(t('trancy.quotaOut') + ' ' + trancyTimeLabel(account.exhaustedUntil));
       }
@@ -282,7 +283,7 @@ const CLIENT_SCRIPT_TEMPLATE = `\n    const VOICES = __VOICECRAFT_VOICES__;\n   
       var count = document.getElementById('trancyCount');
       if (!list) return;
       var accounts = trancyState.accounts || [];
-      var usable = accounts.filter(function(account) { return account.status === 'ok'; }).length;
+      var usable = accounts.filter(function(account) { return account.captionAvailable; }).length;
       list.innerHTML = '';
       accounts.forEach(function(account) { list.appendChild(renderTrancyAccount(account)); });
       if (emptyState) emptyState.style.display = accounts.length ? 'none' : 'block';
@@ -296,18 +297,17 @@ const CLIENT_SCRIPT_TEMPLATE = `\n    const VOICES = __VOICECRAFT_VOICES__;\n   
       var quotaSummary = document.getElementById('trancyQuotaSummary');
       if (quotaSummary) {
         var left = 0;
-        var capacity = 0;
+        var unknown = 0;
         accounts.forEach(function(account) {
-          var limit = account.quotaLimit > 0 ? account.quotaLimit : trancyState.defaultDailyLimit;
-          var available = account.quotaRemaining >= 0 ? account.quotaRemaining : Math.max(0, limit - account.usedToday);
-          capacity += limit;
-          left += available;
+          if (!account.captionAvailable) return;
+          if (account.quotaRemaining >= 0) left += account.quotaRemaining;
+          else unknown += 1;
         });
         quotaSummary.innerHTML = '';
         var leftStrong = document.createElement('b'); leftStrong.textContent = String(left);
-        quotaSummary.appendChild(document.createTextNode(t('trancy.quota') + ' '));
+        quotaSummary.appendChild(document.createTextNode(t('trancy.quotaObservedTotal') + ' '));
         quotaSummary.appendChild(leftStrong);
-        quotaSummary.appendChild(document.createTextNode(' / ' + capacity + ' ' + t('trancy.quotaLeft')));
+        if (unknown) quotaSummary.appendChild(document.createTextNode(' · ' + unknown + ' ' + t('trancy.quotaUnknownAccounts')));
       }
     }
     async function loadTrancyAccounts(force) {
@@ -317,7 +317,7 @@ const CLIENT_SCRIPT_TEMPLATE = `\n    const VOICES = __VOICECRAFT_VOICES__;\n   
       // window keeps the first paint at one request.
       if (force !== true && Date.now() - trancyState.loadedAt < 2000) return;
       try {
-        var response = await fetch(TRANCY_API_URL, { headers: { 'Accept': 'application/json' } });
+        var response = await fetch(TRANCY_API_URL, { cache: 'no-store', headers: { 'Accept': 'application/json' } });
         if (!response.ok) throw new Error(await readJsonError(response, t('trancy.loadFailed')));
         var payload = await response.json();
         trancyState.accounts = Array.isArray(payload.accounts) ? payload.accounts : [];
@@ -395,7 +395,9 @@ const CLIENT_SCRIPT_TEMPLATE = `\n    const VOICES = __VOICECRAFT_VOICES__;\n   
       try {
         var response = await fetch(TRANCY_API_URL + '/' + encodeURIComponent(id) + '/refresh', { method: 'POST' });
         if (!response.ok) throw new Error(await readJsonError(response, t('trancy.refreshFailed')));
+        var payload = await response.json();
         await loadTrancyAccounts(true);
+        if (!payload.result || !payload.result.refreshed) throw new Error(payload.result && (payload.result.error || payload.result.reason) || t('trancy.refreshFailed'));
         setTrancyStatus(t('trancy.refreshed'), 'ok');
       } catch (err) { setTrancyStatus(t('trancy.refreshFailed') + ': ' + err.message, 'error'); }
       finally { if (button) { button.disabled = false; button.textContent = t('trancy.refresh'); } }
@@ -409,7 +411,8 @@ const CLIENT_SCRIPT_TEMPLATE = `\n    const VOICES = __VOICECRAFT_VOICES__;\n   
         var payload = await response.json();
         var result = payload.result || {};
         await loadTrancyAccounts(true);
-        setTrancyStatus(t('trancy.refreshed') + ' · ' + (result.ok || 0) + ' ok / ' + (result.failed || 0) + ' ERR / ' + (result.dead || 0) + ' dead', 'ok');
+        var failed = (result.failed || 0) + (result.dead || 0);
+        setTrancyStatus(t('trancy.refreshed') + ' · ' + (result.ok || 0) + ' ok / ' + failed + ' ERR / ' + (result.skipped || 0) + ' ' + t('trancy.skipped'), failed ? 'error' : 'ok');
       } catch (err) { setTrancyStatus(t('trancy.refreshFailed') + ': ' + err.message, 'error'); }
       finally { if (button) { button.disabled = false; } }
     }
@@ -431,6 +434,13 @@ const CLIENT_SCRIPT_TEMPLATE = `\n    const VOICES = __VOICECRAFT_VOICES__;\n   
       });
       var refreshAllBtn = document.getElementById('trancyRefreshAllBtn');
       if (refreshAllBtn) refreshAllBtn.addEventListener('click', function() { refreshAllTrancyAccounts(refreshAllBtn); });
+      function refreshVisibleAccounts() {
+        var panel = document.getElementById('trancyContainer');
+        if (!document.hidden && panel && panel.style.display !== 'none') loadTrancyAccounts(true);
+      }
+      window.addEventListener('focus', refreshVisibleAccounts);
+      document.addEventListener('visibilitychange', refreshVisibleAccounts);
+      setInterval(refreshVisibleAccounts, 60000);
       setTrancyAddMode(trancyState.addMode);
       loadTrancyAccounts(true);
     }

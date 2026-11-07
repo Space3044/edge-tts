@@ -36,7 +36,7 @@ Microsoft（Azure AI Speech）这条渠道一直没找到可持续的落点，�
 - 少了一个会持续需要人工介入的维护面：不再有「cookie 过期了怎么办」这个问题。
 - 代码量净减：四个模块 + 两个脚本 + 面板字段 + 一组翻译 key + 一个迁移新增的列。
 - 恢复路径很明确：`git revert` 这一批改动 + 新增一个把列加回来的迁移；架构笔记
-  [加密的 provider 配置](2026-11-02-encrypted-provider-secrets.md) 里保留了当时 Microsoft 接入的设计描述（含被否决的方案），可以作为参考。
+  [加密的 provider 配置](../architecture/2026-11-02-encrypted-provider-secrets.md) 里保留了当时 Microsoft 接入的设计描述（含被否决的方案），可以作为参考。
 
 ## Testing
 
