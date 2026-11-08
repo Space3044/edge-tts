@@ -18,6 +18,7 @@
 import {
     normalizeCaptionRequest,
     requestYoutubeCaptions,
+    pollYoutubeCaptions,
     TRANCY_DEFAULT_DAILY_LIMIT
 } from "../trancy/captions.js";
 import {
@@ -309,12 +310,11 @@ async function handleAccounts(request, env, segments) {
 }
 
 /**
- * `POST /api/trancy/captions {videoId, target?, source?}` - one entry, nothing stored.
+ * POST reads or starts generation; GET follows a protected continuation ticket.
  *
  * `target` is optional (defaults to `en`) and `source` is optional (defaults to
  * `audio`, with `json3` also supported), so downstream only needs the video id.
- * The transcript is returned in the response; the gateway keeps no copy,
- * which means repeating a video spends quota again.
+ * The transcript is returned in the response; the gateway keeps no copy.
  */
 async function handleCaptions(request, env) {
     if (request.method !== "POST") {
@@ -353,23 +353,42 @@ async function handleCaptions(request, env) {
     }
 
     const result = await requestYoutubeCaptions(env, normalized);
+    return captionResponse(result);
+}
+
+function captionResponse(result) {
     if (!result.ok) {
-        const status = result.reason === "caption_not_found" ? 409
-            : result.reason === "no_account" || result.reason === "no_caption_quota" ? 503 : 502;
+        const status = result.reason === "invalid_caption_ticket" ? 400
+            : result.reason === "generation_timeout" ? 410
+            : result.reason === "generation_not_found" ? 404
+            : result.reason === "permission_denied" ? 403
+            : result.reason === "caption_not_found" ? 409
+            : ["no_account", "no_caption_quota", "daily_limit", "caption_account_unavailable"].includes(result.reason) ? 503 : 502;
         return jsonResponse({
             error: {
                 message: result.message,
                 type: "api_error",
-                param: "videoId",
+                param: result.reason === "invalid_caption_ticket" ? "ticket" : "videoId",
                 code: result.reason
             },
             resetAt: result.resetAt,
-            tried: result.tried
-        }, { status });
+            tried: result.tried,
+            retryable: result.retryable === true
+        }, { status, headers: { "Cache-Control": "no-store" } });
     }
 
+    if (result.pending) return jsonResponse(result, {
+        status: 202,
+        headers: {
+            "Cache-Control": "no-store",
+            Location: result.statusUrl,
+            "Retry-After": String(result.retryAfterMs / 1000),
+            "Access-Control-Expose-Headers": "Location, Retry-After"
+        }
+    });
     return jsonResponse(result, {
         headers: {
+            "Cache-Control": "no-store",
             "X-Trancy-Account": result.account.id,
             "X-Quota-Limit": String(result.quota.limit),
             "X-Quota-Remaining": String(result.quota.remaining),
@@ -391,6 +410,10 @@ export async function handleTrancy(request, env = {}) {
         }
         if (segments.length === 3 && segments[2] === "captions") {
             return await handleCaptions(request, env);
+        }
+        if (segments.length === 4 && segments[2] === "captions" && segments[3] === "status") {
+            if (request.method !== "GET") return errorResponse("只支持 GET /api/trancy/captions/status", { status: 405, code: "method_not_allowed" });
+            return captionResponse(await pollYoutubeCaptions(env, new URL(request.url).searchParams.get("ticket")));
         }
         return errorResponse("未知的 Trancy 接口", {
             status: 404,

@@ -1,5 +1,5 @@
 /**
- * The only two things the gateway is allowed to say to Trancy.
+ * Trancy authentication, caption reads, generation submission and status queries.
  *
  * `fetchTrancyProfile` doubles as the renewal: the endpoint answers with a
  * freshly issued token whose `iat` is the current second, and an unrefreshed
@@ -171,69 +171,83 @@ export async function fetchTrancyProfile(token, { fetchImpl = fetch } = {}) {
     };
 }
 
-/**
- * `GET /3/youtube/captions/{videoId}?target=en&source=audio|json3`
- *
- * Synchronous: the whole transcript (sentences plus word timings) comes back in
- * one response, no job id, no polling. What makes it interesting is that each
- * free account may only do a handful a day, and the refusal is shaped like
- * every other Trancy error - HTTP 200 with `{"code":403,"message":"You've
- * reached the daily limit of 5 AI subtitles for free users..."}`. The response
- * headers `x-quota-limit` / `x-quota-remaining` are the only structured signal,
- * so both are read and handed back for the scheduler to persist.
- */
-export async function fetchYoutubeCaptions({ token, videoId, target = "en", source = TRANCY_DEFAULT_CAPTION_SOURCE, fetchImpl = fetch } = {}) {
-    const url = `${TRANCY_API_ORIGIN}/${TRANCY_CAPTION_VERSION}/youtube/captions/${encodeURIComponent(videoId)}`
-        + `?target=${encodeURIComponent(target)}&source=${encodeURIComponent(source)}`;
+/** Quota headers are observations; native captions never update AI balance. */
+function captionQuota(response, source) {
+    const parse = value => value !== null && /^\d+$/.test(value.trim()) && Number.isSafeInteger(Number(value)) ? Number(value) : -1;
+    return source === "json3" ? { limit: -1, remaining: -1 } : {
+        limit: parse(response.headers.get("x-quota-limit")),
+        remaining: parse(response.headers.get("x-quota-remaining"))
+    };
+}
 
+async function captionRequest(path, { token, source = "audio", body, fetchImpl = fetch }) {
     let response;
+    let payload;
     try {
-        response = await fetchImpl(url, {
-            method: "GET",
+        response = await fetchImpl(`${TRANCY_API_ORIGIN}${path}`, {
+            method: body ? "POST" : "GET",
             headers: {
                 Authorization: `Bearer ${token}`,
                 "x-locale": "en",
-                Accept: "application/json"
+                Accept: "application/json",
+                ...(body ? { "Content-Type": "application/json" } : {})
             },
+            ...(body ? { body: JSON.stringify(body) } : {}),
             signal: timeoutSignal()
         });
-    } catch (error) {
-        return { ok: false, reason: "network", message: String(error?.message || error), sentences: null, quota: { limit: -1, remaining: -1 } };
+        payload = await readJson(response);
+    } catch {
+        // In particular, a failed POST response does not prove no job was created.
+        return { ok: false, reason: "network", message: "Trancy 请求超时或网络异常", quota: { limit: -1, remaining: -1 } };
     }
-
-    const rawLimit = response.headers.get("x-quota-limit");
-    const rawRemaining = response.headers.get("x-quota-remaining");
-    const parseQuota = value => value !== null && /^\d+$/.test(value.trim()) && Number.isSafeInteger(Number(value)) ? Number(value) : -1;
-    const limit = source === "json3" ? -1 : parseQuota(rawLimit);
-    const remaining = source === "json3" ? -1 : parseQuota(rawRemaining);
-    const quota = {
-        limit,
-        remaining
-    };
-
-    const payload = await readJson(response);
+    const quota = captionQuota(response, source);
     const message = String(payload?.message || "");
-    // An absent AI track is a video result, not a rejected account. Preserve
-    // this upstream distinction so the scheduler does not rotate credentials.
-    if ((response.ok || response.status === 409)
-        && Number(payload?.code ?? response.status) === 409
-        && /^AI caption not found[.!]?$/i.test(message.trim())) {
-        return { ok: false, reason: "caption_not_found", message, sentences: null, quota };
-    }
-    // A generic 403 can be authentication or access denial, not quota. The
-    // daily-limit body may arrive with either HTTP 200 or HTTP 403/429.
+    const code = Number(payload?.code ?? response.status);
+    const failure = reason => ({ ok: false, reason, message, quota });
+    if ((response.ok || response.status === 409) && code === 409
+        && /^AI caption not found[.!]?$/i.test(message.trim())) return failure("caption_not_found");
     if ((response.ok || response.status === 403 || response.status === 429)
-        && /daily\s+limit|daily\s+(?:AI\s+subtitle\s+)?quota/i.test(message)) {
-        return { ok: false, reason: "daily_limit", message, sentences: null, quota };
-    }
+        && /daily\s+limit|daily\s+(?:AI\s+subtitle\s+)?quota/i.test(message)) return failure("daily_limit");
+    if (code === 401 || /token.*(?:invalid|expired)|unauthor|login required/i.test(message)) return failure("authentication_required");
+    if (code === 403) return failure("permission_denied");
+    if (!response.ok) return failure(`http_${response.status}`);
+    if (payload?.code && code !== 200) return failure("rejected");
+    return { ok: true, payload, quota };
+}
 
-    if (!response.ok) {
-        return { ok: false, reason: `http_${response.status}`, message: payload?.message || "", sentences: null, quota };
+/** Reads an existing transcript; a missing AI track needs a separate POST. */
+export async function fetchYoutubeCaptions({ token, videoId, target = "en", source = TRANCY_DEFAULT_CAPTION_SOURCE, fetchImpl = fetch } = {}) {
+    const path = `/${TRANCY_CAPTION_VERSION}/youtube/captions/${encodeURIComponent(videoId)}`
+        + `?target=${encodeURIComponent(target)}&source=${encodeURIComponent(source)}`;
+    const result = await captionRequest(path, { token, source, fetchImpl });
+    if (!result.ok) return { ...result, sentences: null };
+    if (Array.isArray(result.payload?.data) && result.payload.data.length > 0) {
+        return { ok: true, reason: null, message: "ok", sentences: result.payload.data, quota: result.quota };
     }
+    return { ok: false, reason: "invalid_response", message: "Trancy 没有返回有效字幕", sentences: null, quota: result.quota };
+}
 
-    if (Array.isArray(payload?.data)) {
-        return { ok: true, reason: null, message: "ok", sentences: payload.data, quota };
+/** Official client: POST /2/youtube/captions -> { message: "ok", data: "pending" }. */
+export async function submitYoutubeCaptions({ token, videoId, target = "en", fetchImpl = fetch } = {}) {
+    const result = await captionRequest("/2/youtube/captions", {
+        token, fetchImpl,
+        body: { id: videoId, title: "", cover: `https://i.ytimg.com/vi/${videoId}/maxresdefault.jpg`,
+            duration: 0, target, language: target, ipaddress: "1.1.1.1" }
+    });
+    if (!result.ok) return result;
+    if (result.payload?.message === "ok" && ["pending", "downloaded", "ok"].includes(result.payload?.data)) {
+        return { ok: true, status: result.payload.data, quota: result.quota };
     }
+    return { ok: false, reason: "invalid_response", message: "Trancy 未确认生成任务，请先查询状态", quota: result.quota };
+}
 
-    return { ok: false, reason: "rejected", message: message || "Trancy 没有返回字幕", sentences: null, quota };
+/** Upstream owns the job. Polling never submits a replacement or spends local usage. */
+export async function fetchYoutubeCaptionStatus({ token, videoId, target = "en", fetchImpl = fetch } = {}) {
+    const result = await captionRequest(`/2/youtube/captions/${encodeURIComponent(videoId)}/status?target=${encodeURIComponent(target)}`, { token, fetchImpl });
+    if (!result.ok) return result;
+    const status = result.payload?.data?.status;
+    if (result.payload?.message === "ok" && ["none", "pending", "downloaded", "ok", "error"].includes(status)) {
+        return { ok: true, status, retry: result.payload.data.retry === true, quota: result.quota };
+    }
+    return { ok: false, reason: "invalid_response", message: "Trancy 返回了未知的生成状态", quota: result.quota };
 }

@@ -2,6 +2,9 @@
 
 Status: implemented
 
+> 不存字幕及调用方去重的边界仍保留；上游异步生成所需的 202 与实时查询见
+> [字幕生成](../feature/2026-11-09-trancy-caption-generation.md)，它不恢复缓存表或占位锁。
+
 > 无缓存边界保持不变；后续的额度展示与原子调用计数见
 > [额度观测修复](../bug-fix/2026-11-07-trancy-quota-observations.md)。
 

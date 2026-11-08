@@ -2,6 +2,9 @@
 
 Status: implemented
 
+> 同步返回只适用于已有字幕；新视频需要单独提交生成，见
+> [异步生成与查询](2026-11-09-trancy-caption-generation.md)。
+
 > 第 7 条的未知额度估算与调用次数口径由
 > [额度观测修复](../bug-fix/2026-11-07-trancy-quota-observations.md) 取代。
 

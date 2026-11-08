@@ -2,6 +2,9 @@
 
 Status: implemented
 
+> 缺字幕错误分类仍保留；缺字幕后发起生成和查询的流程由
+> [异步生成](../feature/2026-11-09-trancy-caption-generation.md)补齐，本文“不生成”的边界已被替代。
+
 ## Problem
 
 批量学习材料请求 `source=audio` 时，网关连续返回 `caption_failed`，`tried` 只显示账号 `rejected`，并附次日 UTC 零点。真实上游 HTTP 200 内是 `code: 409, message: "AI caption not found"`。调度器丢弃具体原因，同一视频最多换三个账号并增加失败计数、设置冷却，容易被误解为整个账号池失效或当天额度耗尽。

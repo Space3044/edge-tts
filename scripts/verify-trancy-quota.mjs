@@ -113,7 +113,7 @@ for (const status of [200, 403, 429]) {
     assert.equal(daily.reason, "daily_limit");
 }
 const denied = await fetchYoutubeCaptions({ fetchImpl: async () => reply({ code: 403, message: "Permission denied" }) });
-assert.equal(denied.reason, "rejected", "a generic 403 must not exhaust an account's quota");
+assert.equal(denied.reason, "permission_denied", "a generic 403 must not exhaust an account's quota");
 for (const value of ["", " ", "-2", "1.5", "Infinity", "1e3", "0x10", "9007199254740992"]) {
     const result = await fetchYoutubeCaptions({ fetchImpl: async () => reply({ data: [] }, { "x-quota-remaining": value }) });
     assert.equal(result.quota.remaining, -1, `invalid header ${value} is unknown`);
@@ -160,7 +160,7 @@ const missingFetch = async () => {
     missingCalls++;
     return reply({ code: 409, message: "AI caption not found" });
 };
-const noTrack = await requestYoutubeCaptions(env, { videoId: "mFGzioRMW5s", fetchImpl: missingFetch });
+const noTrack = await requestYoutubeCaptions(env, { videoId: "mFGzioRMW5s", source: "json3", fetchImpl: missingFetch });
 assert.equal(noTrack.reason, "caption_not_found");
 assert.equal(noTrack.resetAt, "");
 assert.equal(missingCalls, 1, "do not retry a video-level absence with more accounts");
@@ -171,7 +171,7 @@ try {
     globalThis.fetch = missingFetch;
     const response = await handleTrancy(new Request("https://example.com/api/trancy/captions", {
         method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ videoId: "mFGzioRMW5s", source: "audio" })
+        body: JSON.stringify({ videoId: "mFGzioRMW5s", source: "json3" })
     }), env);
     assert.equal(response.status, 409);
     const body = await response.json();

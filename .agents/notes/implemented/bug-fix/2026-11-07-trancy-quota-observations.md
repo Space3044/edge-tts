@@ -2,6 +2,9 @@
 
 Status: implemented
 
+> [异步生成与查询](../feature/2026-11-09-trancy-caption-generation.md)补充计数口径：
+> 直接读取成功或提交被确认各记一次，后续查询及该任务结果获取不重复记本地计数。
+
 ## Problem
 
 用户反馈剩余额度不对，刷新也不变。账号刷新仅请求 `/1/user/profile`，不读字幕额度；

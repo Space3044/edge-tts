@@ -25,7 +25,7 @@ https://github.com/Space3044/edge-tts
 - 服务配置：转录服务的 endpoint、模型和 API Key 在页面里设置，API Key 用 `SECRETS_ENCRYPTION_KEY` 加密后存进 D1；页面只显示掩码尾巴，不回传明文。
 - 浏览器本地保存：AI 润色的 Base URL、API Key、模型和润色指令只保存在当前浏览器本地。
 - Trancy 多账号网关：单独一个 Gateway 标签页管理多个 Trancy 账号，支持**邮箱密码登录 / 注册 / 粘贴 token** 三种添加方式；token 和密码都加密存进 D1（密码只在你点「Show」或重新登录时才解密），Cloudflare cron 每天调 `/1/user/profile` 自动续期，转发接口按最近最少使用轮换账号并自动摘掉失效 token。
-- YouTube 字幕调度：`POST /api/trancy/captions` 按账号的每日 AI 字幕额度（免费号 5 个视频/天）挑账号生成字幕并直接返回，额度耗尽的账号停泊到次日 UTC 零点；网关不保存结果。
+- YouTube 字幕调度：`POST /api/trancy/captions` 按账号额度读取字幕或提交生成；生成中返回 202 与查询地址，完成后返回词级字幕。网关不保存字幕，实际额度以上游响应为准。
 - 多语言界面：支持中文、英文、日文、韩文、西班牙文、法文、德文、俄文。
 
 ## 项目结构
@@ -168,7 +168,7 @@ npx wrangler secret put SECRETS_ENCRYPTION_KEY   # base64 的 32 字节
 | `POST /v1/audio/speech` | 文字转语音，返回 MP3 | Edge TTS 免费 | 公开 |
 | `POST /v1/audio/transcriptions` | 语音转文字，`engine=openai\|groq\|elevenlabs\|google` | 按各 provider 的 key 计费 | 建议 Access |
 | `POST /v1/text/polish` | 文本润色（透传 OpenAI 兼容接口） | 调用方自己的 key | 公开 |
-| `POST /api/trancy/captions` | 用账号池生成 YouTube AI 字幕 | **每天每账号 5 个视频额度**，见下文 | 必须 Access |
+| `POST /api/trancy/captions`、`GET /api/trancy/captions/status` | 读取或生成 YouTube AI 字幕，查询进度并取回结果 | 额度以上游响应为准，见下文 | 必须 Access |
 | `GET /api/providers` | 读转录服务配置（只回掩码尾巴） | 无 | Access（随 `/api/*`）|
 | `PUT /api/providers/:provider` | 写转录服务配置 | 无 | Access（随 `/api/*`）|
 | `/api/trancy/accounts*` | 账号池管理（增删改、登录、刷新、按需取密码） | 无（面板用） | Access（随 `/api/*`）|
@@ -499,76 +499,64 @@ curl "http://127.0.0.1:8787/__scheduled?cron=17+3+*+*+*"
 
 ### YouTube 字幕调度（AI 字幕额度）
 
-目标是这个接口，它决定了整个池子的调度方式：
+Trancy 将读取和生成分成三个接口，均使用 `Authorization: Bearer {token}`：
 
 ```text
-GET https://api.trancy.org/3/youtube/captions/{videoId}?target=en&source=audio
-# source 也可以是 json3
-Authorization: Bearer {token}
+GET  /3/youtube/captions/{videoId}?target=en&source=audio  # 读取已有 AI 字幕
+POST /2/youtube/captions                                # 提交生成
+GET  /2/youtube/captions/{videoId}/status?target=en       # 查询 none / pending / downloaded / ok / error
 ```
 
-实测契约：
+`source=json3` 只读取 YouTube 原生字幕。`source=audio` 读取返回 `409 / AI caption not found` 时，网关先查上游状态；已有任务则继续查询，没有任务才提交生成。明确失败且上游允许重试的任务，可通过新的 POST 重新发起。没有自动降级为 JSON3。
 
-- **同步**：一次请求直接返回整段字幕（`data` 是句子数组，带词级时间戳），没有 job id、不需要轮询。
-- **额度**：免费号每个账号每天只能生成少量 AI 字幕（页面上写 5 个/天）。响应头带 `x-quota-limit` / `x-quota-remaining`。
-- **显示口径**：面板显示 AI 字幕响应的「上次观测」余额及观测时间，并非实时余额。尚无观测、跨 UTC 日或 AI 请求未返回余额头时显示「未知」，不按 5 次补齐；网关今日 AI 调用次数单独显示，缓存命中、站外使用会让它与实际扣额不同。汇总只计当前可调度账号的已观测余额，未知账号另计。
-- **检查登录不查询额度**：`/1/user/profile` 只更新凭据及账号资料，不更新 `quotaCheckedAt`。目前没有已验证的独立余额查询接口；面板不会为了探测余额生成字幕。停留在面板时每分钟重读网关记录，回到窗口时也会重读。
-- **原生字幕**：`source=json3` 不记 AI 调用次数、不改 AI 额度；AI 额度耗尽的账号仍可请求原生字幕。
-- **额度用完不返回 429**：`200 {"code":403,"message":"You've reached the daily limit of 5 AI subtitles for free users..."}`，和鉴权失败一样靠 body 判定。
-- 网关**不保存**生成结果：字幕直接回给调用方，同一个视频再请求就再生成一次（上游自己有缓存时不会重复扣额度，但那是对方的行为，不作保证）。
+真实验证：2026-11-09，对此前没有 AI 字幕的视频 `mFGzioRMW5s`，状态从 `none` 经过提交返回的 `pending` 变为 `ok`，最终读取到 378 段、4,103 个带时间戳的词。生成是异步的，[官方说明](https://www.trancy.org/ai-subtitle)提示通常需要 2–5 分钟；是否允许生成仍取决于账号权限和实际额度。
 
-接口（只有一个）：
+对外接口：
 
 ```text
-POST /api/trancy/captions   # {"videoId":"npka43vhwNo","source":"audio"}；target/source 可省略，默认 en/audio
+POST /api/trancy/captions         # {"videoId":"mFGzioRMW5s","source":"audio"}
+GET  /api/trancy/captions/status?ticket=...  # 使用响应中的 statusUrl 原样查询
 ```
 
-`POST` 的返回体是 `{data:[...], account, quota:{limit,remaining}, usedToday, sentenceCount}`，同时把 `X-Trancy-Account` / `X-Quota-*` 放进响应头。调度规则：
+`target` 可省略，默认 `en`；`source` 可省略，默认 `audio`，仅支持 `audio` 和 `json3`。
 
-1. **刚说过「没额度」的账号不再问 AI 字幕**：明确的 daily-limit 拒绝把 `exhausted_until` 设到下一个 UTC 零点，token 和 `status=ok` 保持不变（cron 照常续期）。普通 403 不代表额度耗尽。UTC 零点是网关允许重试的时间，尚未确认上游实际重置时区。
-2. **先用今日调用较少的账号**：本地 `day_used`（按 UTC 日）优先，其次当天观测的 `x-quota-remaining`，最后 LRU。计数使用原子更新；不把本地调用次数当成真实扣额，观测余额为 0 也仍允许一次请求确认是否真的耗尽。
-3. **不存结果**：`trancy_caption` 表和「同视频只生成一次」的占位锁都已删除——重复请求会重复花额度，缓存在调用方那边做。
+- **200**：字幕已经存在或生成完成，返回 `{ok:true,data:[...],account,quota:{limit,remaining},usedToday,sentenceCount}`，以及 `X-Trancy-Account`、`X-Quota-Limit`、`X-Quota-Remaining` 响应头。
+- **202**：上游正在处理，返回 `{ok:true,pending:true,status,statusUrl,retryAfterMs,videoId,target,source,account,usedToday}`。`Location` 同样给出相对查询地址，`Retry-After` 给出秒数；通常间隔 5 秒，`downloaded` 阶段为 10 秒。此时没有 `data`，调用方必须检查 HTTP 状态。
+- **错误**：返回 `{error:{code,message,...},retryable,resetAt,tried}`。`retryable=true` 时保留原查询地址稍后重试；不要重新 POST。`generation_failed`、`generation_not_found` 分别表示处理失败或未找到提交结果，新的 POST 才会重新检查是否可生成。查询凭据 90 分钟后返回 `410 generation_timeout`。
 
-没有一个账号能用时返回 `503`：
+查询使用加密且防篡改的 `ticket` 固定视频、语言、账号和截止时间，里面没有账号 token 或密码。Worker 重启后仍可查询；账号凭据重新登录或续期后使用 D1 中的新值。任务提交后即使该账号额度耗尽或因其他请求冷却，查询仍用原账号；但账号被删除、封禁或凭据不可用时会明确报错，需恢复账号后重试。
 
-```json
-{"error":{"code":"no_caption_quota","message":"所有账号今天的 AI 字幕额度都用完了"},
- "resetAt":"2026-11-03T00:00:00.000Z",
- "tried":["acc@example.com: daily_limit"]}
-```
+网关不保存字幕、任务表或并发占位锁。任务状态由 Trancy 保存，查询地址由调用方保留。相同视频的并发新 POST 仍可能重复提交，去重和字幕缓存由调用方负责。顺序请求会先检查上游状态，查询接口本身永远不会提交任务。
 
-`tried` 会写清每个被咨询账号的失败类别。只有确认整个可用账号池额度耗尽时才返回非空 `resetAt`，表示网关允许重试的时间；普通失败、冷却与登录异常不承诺次日恢复。每次最多尝试 3 个账号；如果还有未尝试的可用账号，返回 `caption_failed`，不会把整个池子误报为额度耗尽。
+额度和故障规则：
 
-上游返回 `409 / AI caption not found` 时，网关以 HTTP 409、`error.code=caption_not_found` 保留原因，停止本次换账号尝试，不修改账号用量、冷却或额度。它表示当前请求没有取得该视频的 AI 字幕，不代表账号失效，也不证明 GET 接口能为任意新视频创建字幕。2026-11-08 实测：随机视频返回此错误，历史样本仍返回 108 段字幕及 `x-quota-limit=2`、`x-quota-remaining=1`；不能把默认展示值 5 当成所有账号的实际额度。新视频生成入口仍待核实。
+1. 按今日调用数、已观测余额、LRU 选择账号，每次最多尝试 3 个。只有明确 daily-limit 拒绝才停泊到次日 UTC 零点，保持登录状态；普通权限拒绝不会当作额度耗尽或账号故障。
+2. `usedToday` 是本地计数：直接读取成功或生成被确认接收记一次；后续状态查询和该任务的结果获取不重复计数。它不是上游扣额数，实际余额以 `x-quota-limit` / `x-quota-remaining` 为准。提交响应不确定时不虚构已接收计数。
+3. 成功获取 AI 结果会刷新余额观测；缺失余额头时余额变为未知。查询不解除账号已经记录的额度停泊。`source=json3` 不改 AI 计数或余额，AI 额度耗尽仍可读原生字幕。
+4. 生成 POST 超时、5xx 或响应无法解析时返回 `202 submission_unknown`，查询原账号确认结果，不换号重复提交。提交后短暂未查到任务先等待；30 秒后仍为 `none` 则明确返回 `generation_not_found`，由调用方决定是否重试。
+5. 全部可用账号明确耗尽才返回 `503 no_caption_quota` 和非空 `resetAt`。部分尝试失败不能推断整个账号池耗尽，也不承诺次日恢复。
+6. 面板展示余额及观测时间；未知余额不按默认 5 补齐。检查登录不查询余额。未知账号单独统计，默认额度只作参考，不能乘以账号数当成可用视频数。
 
-给下游程序调用：
-
-- 入口只有一个：`POST /api/trancy/captions`（生成并直接返回字幕）。
-- 鉴权只有一层：Cloudflare Access。下游程序要么用 Access 的 Service Token
-  （请求头 `CF-Access-Client-Id` / `CF-Access-Client-Secret`），要么把 Worker 放在自用域名后面。
-  Worker 里不再有任何自己的 token 逻辑。
-- **`target` 可以省略**，默认 `en`；**`source` 也可以省略**，默认 `audio`，只允许 `audio` 或 `json3`；下游只要知道 videoId。
-- **同一视频并发会各花一次额度**：没有缓存也没有锁，两个并发请求就是两次生成。
-  需要去重请在调用方做（这也是它「不需要缓存」的前提）。
-
-下游调用示例：
+下游调用示例（两种请求都携带相同的 Cloudflare Access 身份）：
 
 ```bash
 curl -s -X POST "$GW/api/trancy/captions" \
   -H "CF-Access-Client-Id: $ACCESS_CLIENT_ID" \
   -H "CF-Access-Client-Secret: $ACCESS_CLIENT_SECRET" \
   -H "Content-Type: application/json" \
-  -d '{"videoId":"npka43vhwNo"}'
-# 200 → {"data":[...],"account":{...},"quota":{...},"sentenceCount":108}
-# 400 → {"error":{"code":"invalid_caption_request"}}
-# 503 → {"error":{"code":"no_caption_quota"},"resetAt":"...","tried":[...]}
+  -d '{"videoId":"mFGzioRMW5s"}'
+# 200 → {"data":[...],"account":{...},"quota":{...},"sentenceCount":378}
+# 202 → {"pending":true,"status":"pending","statusUrl":"/api/trancy/captions/status?ticket=...","retryAfterMs":5000,...}
+# 403 → {"error":{"code":"permission_denied",...}}
+# 503 → {"error":{"code":"no_caption_quota",...},"resetAt":"...","tried":[...]}
+
+# 将响应中的 statusUrl 保存为 STATUS_URL，按 retryAfterMs 间隔查询，直到 200 或终态错误。
+curl -s "$GW$STATUS_URL" \
+  -H "CF-Access-Client-Id: $ACCESS_CLIENT_ID" \
+  -H "CF-Access-Client-Secret: $ACCESS_CLIENT_SECRET"
 ```
 
-面板上的额度显示：
-
-- 每个账号一行 `AI subtitles <剩余>/<每日上限> · today <今天已用>`；上限来自上游 `x-quota-limit`，账号还没请求过时按官方的 5 显示。
-- 顶部 `AI subtitles <池子剩余> / <池子容量> left` 是整池汇总，直接回答「今天还能做几个视频」。
-- 额度用完的账号会多一个 `QUOTA OUT` 徽章，并写出恢复时间（下一个 UTC 零点）。这种账号 `status` 仍是 `ok`，cron 照常续期。
+从旧调用方式升级：已有字幕的 200 格式兼容；新视频现在可能返回 202，调用方需要增加查询循环。`ticket` 只保护查询参数，鉴权仍由 Cloudflare Access 负责。这个 GET 是实时查询上游，不是以前已删除的字幕缓存读取接口。所有字幕响应使用 `Cache-Control: no-store`。
 
 ### 文本 AI 润色
 
@@ -664,6 +652,7 @@ node scripts/verify-transcription-url.mjs
 node scripts/verify-provider-secrets.mjs
 node scripts/verify-trancy-gateway.mjs
 node scripts/verify-trancy-quota.mjs  # Node 22.13+，真实 SQLite 额度回归
+node scripts/verify-trancy-generation.mjs  # 生成、202 查询、账号固定与异常恢复
 node -e "import('./index.js').then((m) => { if (!m.default || typeof m.default.fetch !== 'function') throw new Error('Worker fetch export missing'); console.log('Worker entry import ok'); })"
 git diff --check
 ```

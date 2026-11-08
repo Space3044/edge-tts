@@ -648,7 +648,24 @@ export async function pickCaptionAccounts(env, { limit = 3, source = "audio" } =
     return picked;
 }
 
-/** Book one caption generation against an account and store the quota headers. */
+/** Continue a previously submitted job even if the account has spent its quota. */
+export async function readCaptionAccount(env, id) {
+    const row = await readRow(env, id);
+    if (!row || row.status !== TRANCY_STATUS.ok || row.banned) return null;
+    const { token } = await decryptToken(env, row);
+    return token ? { id: row.id, email: String(row.email || ""), token, usedToday: accountView(row).usedToday } : null;
+}
+
+/** Result retrieval observes balance without charging every status poll as a generation. */
+export async function observeCaptionQuota(env, id, { limit = -1, remaining = -1 } = {}) {
+    const timestamp = nowIso();
+    await requireDatabase(env).prepare(`UPDATE trancy_account SET
+        quota_limit = CASE WHEN ? >= 0 THEN ? ELSE quota_limit END,
+        quota_remaining = ?, quota_checked_at = ?, updated_at = ? WHERE id = ?`)
+        .bind(limit, limit, remaining, remaining >= 0 ? timestamp : "", timestamp, id).run();
+}
+
+/** Book one successful immediate read or accepted generation, never a status poll. */
 export async function recordCaptionUsage(env, id, { quotaLimit = -1, quotaRemaining = -1, source = "audio" } = {}) {
     const row = await readRow(env, id);
     if (!row) {
