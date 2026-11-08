@@ -354,7 +354,8 @@ async function handleCaptions(request, env) {
 
     const result = await requestYoutubeCaptions(env, normalized);
     if (!result.ok) {
-        const status = result.reason === "no_account" || result.reason === "no_caption_quota" ? 503 : 502;
+        const status = result.reason === "caption_not_found" ? 409
+            : result.reason === "no_account" || result.reason === "no_caption_quota" ? 503 : 502;
         return jsonResponse({
             error: {
                 message: result.message,

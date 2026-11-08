@@ -110,7 +110,7 @@ export async function requestYoutubeCaptions(env, { videoId, target = "en", sour
             ok: false,
             reason: "no_account",
             message: "没有可用账号：账号池为空、登录不可用、正在冷却或额度耗尽",
-            resetAt: nextUtcMidnight(),
+            resetAt: "",
             tried: []
         };
     }
@@ -146,6 +146,12 @@ export async function requestYoutubeCaptions(env, { videoId, target = "en", sour
 
         tried.push(`${account.email || account.id}: ${result.reason}`);
 
+        if (result.reason === "caption_not_found") {
+            // Missing video captions do not invalidate credentials or prove
+            // quota exhaustion. Another account cannot supply the missing track.
+            return { ok: false, reason: result.reason, message: result.message, resetAt: "", tried };
+        }
+
         if (result.reason === "daily_limit") {
             if (source !== "json3") {
                 await markCaptionExhausted(env, account.id, nextUtcMidnight(), { quotaLimit: result.quota.limit });
@@ -174,7 +180,7 @@ export async function requestYoutubeCaptions(env, { videoId, target = "en", sour
         message: exhaustedAll
             ? "所有账号今天的 AI 字幕额度都用完了"
             : "本次尝试的账号未能生成字幕",
-        resetAt: resetAt || nextUtcMidnight(),
+        resetAt,
         day: utcDay(),
         tried
     };

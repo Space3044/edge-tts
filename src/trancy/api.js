@@ -213,6 +213,13 @@ export async function fetchYoutubeCaptions({ token, videoId, target = "en", sour
 
     const payload = await readJson(response);
     const message = String(payload?.message || "");
+    // An absent AI track is a video result, not a rejected account. Preserve
+    // this upstream distinction so the scheduler does not rotate credentials.
+    if ((response.ok || response.status === 409)
+        && Number(payload?.code ?? response.status) === 409
+        && /^AI caption not found[.!]?$/i.test(message.trim())) {
+        return { ok: false, reason: "caption_not_found", message, sentences: null, quota };
+    }
     // A generic 403 can be authentication or access denial, not quota. The
     // daily-limit body may arrive with either HTTP 200 or HTTP 403/429.
     if ((response.ok || response.status === 403 || response.status === 429)

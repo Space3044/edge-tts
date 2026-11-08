@@ -537,7 +537,9 @@ POST /api/trancy/captions   # {"videoId":"npka43vhwNo","source":"audio"}；targe
  "tried":["acc@example.com: daily_limit"]}
 ```
 
-`tried` 会写清每个被咨询账号的失败原因，`resetAt` 是下一个 UTC 零点的预计重试时间。每次最多尝试 3 个账号；如果还有未尝试的可用账号，返回 `caption_failed`，不会把整个池子误报为额度耗尽。
+`tried` 会写清每个被咨询账号的失败类别。只有确认整个可用账号池额度耗尽时才返回非空 `resetAt`，表示网关允许重试的时间；普通失败、冷却与登录异常不承诺次日恢复。每次最多尝试 3 个账号；如果还有未尝试的可用账号，返回 `caption_failed`，不会把整个池子误报为额度耗尽。
+
+上游返回 `409 / AI caption not found` 时，网关以 HTTP 409、`error.code=caption_not_found` 保留原因，停止本次换账号尝试，不修改账号用量、冷却或额度。它表示当前请求没有取得该视频的 AI 字幕，不代表账号失效，也不证明 GET 接口能为任意新视频创建字幕。2026-11-08 实测：随机视频返回此错误，历史样本仍返回 108 段字幕及 `x-quota-limit=2`、`x-quota-remaining=1`；不能把默认展示值 5 当成所有账号的实际额度。新视频生成入口仍待核实。
 
 给下游程序调用：
 

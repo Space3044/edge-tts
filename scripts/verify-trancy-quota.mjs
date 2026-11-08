@@ -131,12 +131,56 @@ const partial = await requestYoutubeCaptions(env, {
 });
 assert.equal(calls, 3);
 assert.equal(partial.reason, "caption_failed", "untried accounts can still have quota");
+assert.equal(partial.resetAt, "", "partial failure cannot promise pool-wide recovery at midnight");
 assert.equal((await pickCaptionAccounts(env)).length, 1);
 sqlite.prepare("UPDATE trancy_account SET cooldown_until = ? WHERE exhausted_until = ''").run(new Date(Date.now() + 60_000).toISOString());
 const cooling = await requestYoutubeCaptions(env, { videoId: "npka43vhwNo", fetchImpl: async () => { throw new Error("unexpected request"); } });
 assert.equal(cooling.reason, "no_account", "a mix of cooling and exhausted accounts is not total quota exhaustion");
+assert.equal(cooling.resetAt, "", "cooldown or login failure has no known quota reset time");
 const listResponse = await handleTrancy(new Request("https://example.com/api/trancy/accounts"), env);
 assert.equal(listResponse.headers.get("cache-control"), "no-store");
+
+// Real upstream response: a missing AI track must not retire healthy accounts.
+for (const status of [200, 409]) {
+    const missing = await fetchYoutubeCaptions({
+        videoId: "mFGzioRMW5s",
+        fetchImpl: async () => reply({ code: 409, message: "AI caption not found" }, {}, status)
+    });
+    assert.equal(missing.reason, "caption_not_found");
+    assert.equal(missing.message, "AI caption not found");
+}
+const differentConflict = await fetchYoutubeCaptions({
+    fetchImpl: async () => reply({ code: 409, message: "Account not allowed" })
+});
+assert.equal(differentConflict.reason, "rejected", "other 409 responses keep their existing handling");
+sqlite.exec("UPDATE trancy_account SET cooldown_until = '', exhausted_until = ''");
+const beforeMissing = sqlite.prepare("SELECT * FROM trancy_account ORDER BY id").all();
+let missingCalls = 0;
+const missingFetch = async () => {
+    missingCalls++;
+    return reply({ code: 409, message: "AI caption not found" });
+};
+const noTrack = await requestYoutubeCaptions(env, { videoId: "mFGzioRMW5s", fetchImpl: missingFetch });
+assert.equal(noTrack.reason, "caption_not_found");
+assert.equal(noTrack.resetAt, "");
+assert.equal(missingCalls, 1, "do not retry a video-level absence with more accounts");
+assert.deepEqual(sqlite.prepare("SELECT * FROM trancy_account ORDER BY id").all(), beforeMissing,
+    "missing captions must not change quota, usage, token status or cooldown");
+const originalFetch = globalThis.fetch;
+try {
+    globalThis.fetch = missingFetch;
+    const response = await handleTrancy(new Request("https://example.com/api/trancy/captions", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ videoId: "mFGzioRMW5s", source: "audio" })
+    }), env);
+    assert.equal(response.status, 409);
+    const body = await response.json();
+    assert.equal(body.error.code, "caption_not_found");
+    assert.equal(body.error.message, "AI caption not found");
+    assert.equal(body.resetAt, "");
+} finally {
+    globalThis.fetch = originalFetch;
+}
 
 // Run the real rendering and refresh handlers against a tiny DOM, so the
 // numeric summary and failure feedback remain covered without a browser setup.
